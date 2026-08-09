@@ -1,0 +1,28 @@
+{
+  "name": "cazone-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "seed:super-admin": "node scripts/seed-super-admin.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^2.4.3",
+    "next": "^14.2.35",
+    "next-auth": "^4.24.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-icons": "^4.12.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "prisma": "^5.20.0",
+    "tailwindcss": "^3.4.0"
+  }
+}

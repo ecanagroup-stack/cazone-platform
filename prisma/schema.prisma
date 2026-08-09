@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  super_admin
+  owner
+  manager
+  staff
+  customer
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+// The tenant. Everything else in the system belongs to exactly one Organization
+// (except User, which is null-organization only for the super_admin platform operator).
+model Organization {
+  id    String @id @default(cuid())
+  name  String
+  slug  String @unique
+
+  phone    String?
+  email    String?
+  currency String  @default("NGN")
+
+  logoUrl       String?
+  address       String?
+  invoiceFooter String?
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+
+  // Billing — Paystack fields are inert placeholders until that phase lands, same as the precedent
+  // set in ecana_shop-app's Organization model. subscriptionEndsAt is the current PAID period end,
+  // distinct from trialEndsAt; both are set manually by super_admin for now.
+  subscriptionStatus       SubscriptionStatus @default(trialing)
+  trialEndsAt              DateTime?
+  subscriptionEndsAt       DateTime?
+  monthlyPrice             Int                @default(0)
+  freeForever              Boolean            @default(false)
+  paystackCustomerCode     String?
+  paystackSubscriptionCode String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services  Service[]
+  branches  Branch[]
+  users     User[]
+  auditLogs AuditLog[]
+}
+
+// A vertical the organization has switched on — "the organization can select how many of the
+// services they want, eg hotel, shop, warehouse, petrol station etc." `type` is a validated string
+// (see lib/services.js SERVICE_TYPES) rather than a Postgres enum, so adding a new vertical later is
+// a catalog-list edit, not a migration.
+model Service {
+  id             String  @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  type     String
+  name     String?
+  isActive Boolean @default(true)
+  config   Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  branches Branch[]
+
+  @@unique([organizationId, type])
+  @@index([organizationId])
+}
+
+// A branch of a specific service — "branches will be handled the way petrol-station-app handles
+// different stations under one admin." organizationId is denormalized from the parent Service so
+// tenant-scoped queries never need to join through Service just to filter by tenant.
+model Branch {
+  id        String  @id @default(cuid())
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  code     String
+  address  String?
+  isActive Boolean @default(true)
+  config   Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  userAccess UserBranchAccess[]
+
+  @@unique([organizationId, code])
+  @@index([serviceId])
+  @@index([organizationId])
+}
+
+// Login identities (email/username/phone) are GLOBALLY unique, so the login lookup can resolve a
+// user to their tenant unambiguously before the tenant is known. organizationId is required for
+// every role except super_admin (the platform operator, not a member of any organization).
+model User {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  role Role @default(staff)
+
+  name          String
+  email         String? @unique
+  username      String? @unique
+  phone         String? @unique
+  passwordHash  String
+  actionPinHash String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  branchAccess UserBranchAccess[]
+
+  @@index([organizationId])
+}
+
+// Many-to-many: scopes a manager/staff user to specific branches, possibly across different
+// services. An owner (or a manager meant to run the whole org) simply has no rows here and is
+// treated as whole-organization access by role check — see lib/permissions.js — rather than every
+// branch needing a seeded row.
+model UserBranchAccess {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, branchId])
+}
+
+// Append-only. actorUserId/actorName are denormalized (not a live FK to User) so a user's audit
+// trail survives their own removal — "removing a user never deletes their history."
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  actorUserId String
+  actorName   String
+  action      String
+  entityType  String
+  entityId    String
+  before      Json?
+  after       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
