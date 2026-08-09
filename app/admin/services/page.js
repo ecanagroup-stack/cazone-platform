@@ -139,7 +139,7 @@ export default function ServicesPage() {
         </form>
       </Modal>
 
-      <Modal open={!!addBranchFor} onClose={() => setAddBranchFor(null)} title={`Add branch to ${addBranchFor?.name || addBranchFor ? serviceLabel(addBranchFor?.type) : ''}`}>
+      <Modal open={!!addBranchFor} onClose={() => setAddBranchFor(null)} title={`Add branch to ${addBranchFor ? (addBranchFor.name || serviceLabel(addBranchFor.type)) : ''}`}>
         <form onSubmit={handleAddBranch} className="space-y-4">
           <Field label="Branch name" required>
             <input type="text" value={newBranch.name} onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })} className={inputCls} required autoFocus />

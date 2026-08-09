@@ -38,7 +38,9 @@ export const POST = withOrg(async (request) => {
     const isEmail = identifier.includes('@');
     const isPhone = /^\+?\d[\d\s-]{6,}$/.test(identifier);
     const idField = isEmail ? 'email' : isPhone ? 'phone' : 'username';
-    const idValue = isEmail || isPhone ? identifier : identifier.toLowerCase();
+    // Always lowercase for storage — login (lib/auth.js) always lowercases the identifier it
+    // searches with, so a mixed-case email/username stored as-is would never match at login.
+    const idValue = identifier.toLowerCase();
 
     const existing = await prisma.user.findFirst({ where: { [idField]: idValue } });
     if (existing) throw new ApiError('That login is already taken', 400);

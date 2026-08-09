@@ -66,7 +66,7 @@ export async function POST(request) {
   const ownerName = (body.ownerName || '').trim();
   const ownerUsername = (body.ownerUsername || '').trim().toLowerCase();
   const ownerPassword = body.ownerPassword || '';
-  const slug = (body.slug || orgName ? slugify(body.slug || orgName) : '');
+  const slug = slugify(body.slug || orgName);
 
   try {
     if (!orgName || !serviceType || !branchName || !ownerName || !ownerUsername || !ownerPassword) {
