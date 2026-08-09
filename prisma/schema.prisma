@@ -59,6 +59,23 @@ model Organization {
   branches  Branch[]
   users     User[]
   auditLogs AuditLog[]
+
+  customers       Customer[]
+  customerAdjustments CustomerAdjustment[]
+  payments        Payment[]
+  products        Product[]
+  priceRules      PriceRule[]
+  priceGroups     PriceGroup[]
+  orders          Order[]
+  stockMoves      StockMove[]
+  deliveries      Delivery[]
+  reconciliations Reconciliation[]
+  shifts          Shift[]
+  cashDeposits    CashDeposit[]
+  flags           Flag[]
+  vehicles        Vehicle[]
+  suppliers       Supplier[]
+  counters        Counter[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -78,6 +95,7 @@ model Service {
   createdAt DateTime @default(now())
 
   branches Branch[]
+  products Product[]
 
   @@unique([organizationId, type])
   @@index([organizationId])
@@ -103,6 +121,14 @@ model Branch {
   createdAt DateTime @default(now())
 
   userAccess UserBranchAccess[]
+
+  orders          Order[]
+  stockMoves      StockMove[]
+  deliveries      Delivery[]
+  reconciliations Reconciliation[]
+  shifts          Shift[]
+  cashDeposits    CashDeposit[]
+  flags           Flag[]
 
   @@unique([organizationId, code])
   @@index([serviceId])
@@ -169,4 +195,459 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([organizationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Core commerce/operations models — consolidated from petrol-station-app and
+// ecana_shop-app per C:\Users\mail2\.claude\plans\federated-booping-sifakis.md.
+// Each of these does double duty for every vertical pack rather than being
+// reimplemented per pack. All money fields are Int (smallest currency unit,
+// e.g. kobo) — never float — per the core-algorithms skill's first rule.
+// ---------------------------------------------------------------------------
+
+// The credit/account holder — a fleet card (fuel) and a materials account customer are the same
+// entity. Belongs to the tenant, not a branch or a service, so one customer can transact across
+// every branch of every service and receive one statement (platform-architecture skill).
+model Customer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  priceGroupId String?
+  priceGroup   PriceGroup? @relation(fields: [priceGroupId], references: [id])
+
+  code         String?
+  name         String
+  phone        String?
+  email        String?
+  businessName String?
+
+  creditLimit Int     @default(0)
+  onHold      Boolean @default(false)
+  // Cache only — Order/Payment rows are the source of truth (core-algorithms skill §3). Recompute
+  // and alert on drift; never let this field be the only record of a balance.
+  balance     Int     @default(0)
+
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  orders      Order[]
+  adjustments CustomerAdjustment[]
+  payments    Payment[]
+  priceRules  PriceRule[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+// A manual balance move not tied to a specific Order — surcharge or refund.
+model CustomerAdjustment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  type          String // surcharge | refund
+  amount        Int
+  reason        String?
+  balanceBefore Int
+  balanceAfter  Int
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([customerId])
+}
+
+// Money received against a customer's account. `allocations` records which Order(s) it settles —
+// oldest-due-first unless the payer specified otherwise (core-algorithms skill §3). An unallocated
+// remainder is a credit on the account, never silently absorbed.
+model Payment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  amount     Int
+  method     String // cash | transfer | pos | cheque
+  reference  String?
+  recordedBy String?
+  createdAt  DateTime @default(now())
+
+  allocations PaymentAllocation[]
+
+  @@index([organizationId])
+  @@index([customerId])
+}
+
+// Join record, not arithmetic — reversing a payment reverses its allocations (core-algorithms
+// skill §3). No organizationId of its own: always reached via an already-scoped Payment/Order.
+model PaymentAllocation {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([orderId])
+}
+
+// Generic catalog: one product concept spanning fuel/cement/stone dust/shop items, instead of a
+// separate model per vertical. Whatever is genuinely product-specific (octane, bag size + grade,
+// quarry + size) lives in `attributes`, not in new columns or new tables.
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  serviceId      String
+  service        Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  sku  String?
+  name String
+  unit String // litre | bag | tonne | each ...
+
+  // Regulated products (e.g. fuel PMS pricing) cannot be discounted — see PriceRule resolution order.
+  priceRegulated   Boolean @default(false)
+  conversionFactor Float?
+  attributes       Json    @default("{}")
+  isActive         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  priceRules      PriceRule[]
+  orderLines      OrderLine[]
+  stockMoves      StockMove[]
+  deliveries      Delivery[]
+  reconciliations Reconciliation[]
+
+  @@unique([organizationId, serviceId, sku])
+  @@index([organizationId])
+}
+
+// Named customer segments (e.g. "contractors") a PriceRule can target instead of one customer.
+model PriceGroup {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name      String
+  createdAt DateTime @default(now())
+
+  customers  Customer[]
+  priceRules PriceRule[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// Effective-dated price resolution (core-algorithms skill §1): regulated > customer+qty band >
+// customer > price group+qty band > price group > list price. Changing a price never mutates a
+// row — it closes one (sets validTo) and opens another, so a historic order always reprices
+// identically. The winning rule's id is written onto the OrderLine, never recomputed later.
+model PriceRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId   String?
+  customer     Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  priceGroupId String?
+  priceGroup   PriceGroup? @relation(fields: [priceGroupId], references: [id], onDelete: Cascade)
+
+  qtyBandMin Float?
+  qtyBandMax Float?
+  price      Int
+  validFrom  DateTime  @default(now())
+  validTo    DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+
+  orderLines OrderLine[]
+
+  @@index([organizationId])
+  @@index([productId])
+}
+
+// The itemized transaction — an invoice (credit sale) and a cash sale are the same shape, only
+// customerId/paymentMethod differ. orderNumber is minted from Counter, gapless, inside the same
+// transaction that creates the row (core-algorithms skill §8). offlineId + the (organizationId,
+// offlineId) unique index make replay from an offline device idempotent (skill §7).
+model Order {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+
+  orderNumber   String
+  status        String   @default("active") // active | void
+  subtotal      Int
+  discount      Int      @default(0)
+  grandTotal    Int
+  paymentMethod String? // cash | credit | pos | transfer
+  offlineId     String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  lines       OrderLine[]
+  allocations PaymentAllocation[]
+
+  @@unique([organizationId, orderNumber])
+  @@unique([organizationId, offlineId])
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([customerId])
+}
+
+// No organizationId of its own — always reached via an already-scoped Order. priceRuleId is the
+// rule that resolved this line's price; the price is never recomputed from it later.
+model OrderLine {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceRuleId String?
+  priceRule   PriceRule? @relation(fields: [priceRuleId], references: [id])
+
+  qty       Float
+  unitPrice Int
+  lineTotal Int
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// The stock ledger (core-algorithms skill §4) — there is no mutable quantity field anyone writes
+// to directly. Any "current stock" figure is a cache computed from this table and recomputed
+// nightly. Moves are append-only; a mistake is corrected by an opposing move, never an edit.
+model StockMove {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  qty              Float // signed
+  reason           String // purchase | sale | transfer | adjustment | stocktake | loss
+  ref              String?
+  conversionFactor Float?
+  note             String?
+  offlineId        String?
+  userId           String?
+  at               DateTime @default(now())
+
+  @@unique([organizationId, offlineId])
+  @@index([organizationId])
+  @@index([branchId, productId])
+}
+
+// A delivery batch arriving — generalizes petrol-station-app's truck-offload StockMovement,
+// ecana_shop-app's ATC (cement collection lifecycle) and QuarryPurchase (stone dust batch).
+// `status` is nullable/free-text so a simple one-step delivery doesn't need to touch every stage
+// of a multi-stage lifecycle like ATC's pending->assigned->loaded->arrived->closed.
+model Delivery {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplierId     String?
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+  vehicleId      String?
+  vehicle        Vehicle?     @relation(fields: [vehicleId], references: [id])
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity          Float
+  costPerUnit       Int
+  totalCost         Int
+  status            String? // pending | assigned | loaded | arrived | received | closed
+  receivedAt        DateTime?
+  linkedStockMoveId String?
+  createdBy         String?
+  createdAt         DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// The shared bulk-reconciliation abstraction (core-algorithms skill §5) — a tank dip and a
+// stockpile survey are the same problem underneath: book = opening + receipts - sales, variance =
+// measured - book. Each product declares its own tolerance; within it, this record IS the
+// adjustment; outside it, status stays "exception" until a manager acknowledges with a reason.
+model Reconciliation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  periodStart DateTime
+  periodEnd   DateTime
+  opening     Float
+  receipts    Float
+  sales       Float
+  book        Float
+  measured    Float
+  variance    Float
+  variancePct Float
+  tolerance   Float
+
+  status             String  @default("pending") // within_tolerance | exception | acknowledged
+  acknowledgedBy     String?
+  acknowledgedReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([branchId, productId])
+}
+
+// A cashier/attendant's session at a till or pump (core-algorithms skill §6) — not fuel-specific;
+// a shop till reconciliation is the same shape as a forecourt cash-up. Reopening a closed shift is
+// owner-only and always audited (reopenedBy/reopenedAt), never a silent edit.
+model Shift {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  openedBy     String
+  openingFloat Int     @default(0)
+  countedCash  Int?
+  countedFloat Int?
+  expectedCash Int?
+  difference   Int?
+  status       String  @default("open") // open | closed
+  note         String?
+
+  openedAt   DateTime  @default(now())
+  closedAt   DateTime?
+  reopenedBy String?
+  reopenedAt DateTime?
+
+  cashDeposits CashDeposit[]
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// Nothing fuel-specific about "cashier deposits cash to the bank, admin approves" — used by every
+// vertical the same way.
+model CashDeposit {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shiftId        String?
+  shift          Shift?       @relation(fields: [shiftId], references: [id])
+
+  amount        Int
+  bankName      String?
+  accountNumber String?
+  initiatedBy   String
+  status        String  @default("pending") // pending | approved | rejected
+  approvedBy    String?
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// The "anything wrong" exceptions queue (platform-ui skill §7) — consolidates petrol-station-app's
+// Flag + AuditComment + AuditorComment (three overlapping models) into one. targetType/targetId
+// point at whatever record (a Reconciliation, a Shift, an Order...) the flag concerns.
+model Flag {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String?
+  branch         Branch?      @relation(fields: [branchId], references: [id])
+
+  targetType     String
+  targetId       String?
+  severity       String  @default("info") // info | concern | issue
+  classification String? // observation | concern | issue | recommendation
+  reason         String
+  status         String  @default("open") // open | acknowledged | resolved
+  raisedBy       String
+  resolvedBy     String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// A delivery vehicle — was `Truck` in both source apps, identically shaped. Generic enough for a
+// fuel tanker or a cement/stone dust truck.
+model Vehicle {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  plateNumber String
+  driverName  String?
+  driverPhone String?
+  ownership   String? // own | supplier
+  capacity    Float?
+  type        String? // tanker | truck ...
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  deliveries Delivery[]
+
+  @@unique([organizationId, plateNumber])
+  @@index([organizationId])
+}
+
+// A delivery source — a fuel depot is the same shape as a cement depot or a quarry.
+model Supplier {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  type     String? // depot | quarry | fuel_depot ...
+  phone    String?
+  address  String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  deliveries Delivery[]
+
+  @@index([organizationId])
+}
+
+// Atomic per-org, per-document-type sequence generator (core-algorithms skill §8) — gapless
+// numbering for orders/invoices/receipts. Allocate from this inside the same transaction that
+// creates the record, never from a count or a timestamp.
+model Counter {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  key String
+  seq Int    @default(0)
+
+  @@unique([organizationId, key])
 }
