@@ -76,6 +76,13 @@ model Organization {
   vehicles        Vehicle[]
   suppliers       Supplier[]
   counters        Counter[]
+
+  // Fuel pack
+  tanks                Tank[]
+  dispensers           Dispenser[]
+  meterReadings        MeterReading[]
+  attendants           Attendant[]
+  attendantAssignments AttendantAssignment[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -129,6 +136,13 @@ model Branch {
   shifts          Shift[]
   cashDeposits    CashDeposit[]
   flags           Flag[]
+
+  // Fuel pack
+  tanks                Tank[]
+  dispensers           Dispenser[]
+  meterReadings        MeterReading[]
+  attendants           Attendant[]
+  attendantAssignments AttendantAssignment[]
 
   @@unique([organizationId, code])
   @@index([serviceId])
@@ -327,6 +341,7 @@ model Product {
   stockMoves      StockMove[]
   deliveries      Delivery[]
   reconciliations Reconciliation[]
+  tanks           Tank[]
 
   @@unique([organizationId, serviceId, sku])
   @@index([organizationId])
@@ -546,6 +561,10 @@ model Shift {
 
   cashDeposits CashDeposit[]
 
+  // Fuel pack
+  meterReadings        MeterReading[]
+  attendantAssignments AttendantAssignment[]
+
   @@index([organizationId])
   @@index([branchId])
 }
@@ -650,4 +669,148 @@ model Counter {
   seq Int    @default(0)
 
   @@unique([organizationId, key])
+}
+
+// ---------------------------------------------------------------------------
+// Fuel pack — genuinely vertical-specific, per platform-architecture skill's seven-slot rule
+// ("settings" and "captureMethods"). Everything else fuel needs (products, orders, the stock
+// ledger, reconciliation, shifts, cash deposits) already lives in core above. Notably absent: a
+// TankStockEntry model — a tank dip is just fuel's `measured` input into the core
+// Reconciliation.reconcile(), not a separate table (core-algorithms skill §5). PumpReassignment
+// from petrol-station-app isn't ported either — a mid-shift swap is a new AttendantAssignment row
+// (endedAt closes the old one) plus an AuditLog entry, not a dedicated model.
+// ---------------------------------------------------------------------------
+
+// Physical tank at a branch, holding one product. "settings" pack contribution.
+model Tank {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+
+  label     String
+  capacity  Float
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  dispensers Dispenser[]
+
+  @@unique([branchId, label])
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// A pump. "settings" pack contribution.
+model Dispenser {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tankId         String?
+  tank           Tank?        @relation(fields: [tankId], references: [id])
+
+  label     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  meterReadings        MeterReading[]
+  attendantAssignments AttendantAssignment[]
+
+  @@unique([branchId, label])
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// The fuel-specific "captureMethod": a pump's meter opening/closing for a shift. Fuel's tighter
+// three-way check per core-algorithms skill §5/§6 — cash, sales records and pump meter movement
+// must agree — is computed from this plus the shift's Order/StockMove rows, not stored here.
+model MeterReading {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dispenserId    String
+  dispenser      Dispenser    @relation(fields: [dispenserId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  opening Float
+  closing Float?
+  rtt     Float @default(0) // return-to-tank
+
+  discrepancyFlag Boolean  @default(false)
+  discrepancyNote String?
+  reviewStatus    String   @default("pending") // pending | reviewed
+  recordedBy      String?
+  createdAt       DateTime @default(now())
+
+  @@unique([shiftId, dispenserId])
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// Non-login HR record — most pump attendants don't get a User account, just a staff record for
+// assignment and performance tracking. Deliberately distinct from User, same as
+// petrol-station-app kept it.
+model Attendant {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  staffNumber    String
+  name           String
+  phone          String?
+  position       String?
+  employmentType String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  notes       AttendantNote[]
+  assignments AttendantAssignment[]
+
+  @@unique([branchId, staffNumber])
+  @@index([organizationId])
+}
+
+// No organizationId of its own — always reached via an already-scoped Attendant.
+model AttendantNote {
+  id          String    @id @default(cuid())
+  attendantId String
+  attendant   Attendant @relation(fields: [attendantId], references: [id], onDelete: Cascade)
+
+  note      String
+  addedBy   String?
+  createdAt DateTime @default(now())
+
+  @@index([attendantId])
+}
+
+// Links an attendant to a pump for a shift. A mid-shift swap creates a new row and sets `endedAt`
+// on the old one, rather than mutating or deleting — the AuditLog captures who changed it and why.
+model AttendantAssignment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dispenserId    String
+  dispenser      Dispenser    @relation(fields: [dispenserId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  attendantId    String
+  attendant      Attendant    @relation(fields: [attendantId], references: [id], onDelete: Cascade)
+
+  assignedBy String?
+  assignedAt DateTime  @default(now())
+  endedAt    DateTime?
+
+  @@index([organizationId])
+  @@index([shiftId, dispenserId])
 }
