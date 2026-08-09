@@ -3,17 +3,23 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Same three groups, same order, for every vertical (platform-ui skill, section 1): Sell, Manage,
-// Know. A group with no items yet (Sell — no pack has registered a counter screen) is hidden rather
-// than shown empty. A pack may add at most two items, only under Manage, when it lands.
+// Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
+// counter itself — one entry per pack, not a list of pages. Manage gets at most two items per pack.
+// Hardcoded per-pack for now (only one pack exists); once a second pack lands this should switch to
+// reading the org's enabled services instead of a static array.
 const GROUPS = [
-  { label: 'Sell', items: [] },
+  {
+    label: 'Sell',
+    items: [{ href: '/admin/fuel/shift', label: 'Pumps' }],
+  },
   {
     label: 'Manage',
     items: [
       { href: '/admin/services', label: 'Services & Branches' },
       { href: '/admin/users', label: 'Users' },
       { href: '/admin/billing', label: 'Billing' },
+      { href: '/admin/fuel/tanks', label: 'Tanks & Dispensers' },
+      { href: '/admin/fuel/attendants', label: 'Attendants' },
     ],
   },
   {

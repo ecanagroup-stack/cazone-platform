@@ -738,6 +738,9 @@ model MeterReading {
   dispenser      Dispenser    @relation(fields: [dispenserId], references: [id], onDelete: Cascade)
   shiftId        String
   shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  // Set when this reading is closed — the Order it produced, so shift-end cash-up can sum exactly
+  // this shift's sales instead of approximating by timestamp.
+  orderId        String?      @unique
 
   opening Float
   closing Float?
