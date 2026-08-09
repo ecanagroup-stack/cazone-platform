@@ -10,7 +10,10 @@ import { usePathname } from 'next/navigation';
 const GROUPS = [
   {
     label: 'Sell',
-    items: [{ href: '/admin/fuel/shift', label: 'Pumps' }],
+    items: [
+      { href: '/admin/fuel/shift', label: 'Pumps' },
+      { href: '/admin/materials/counter', label: 'Counter' },
+    ],
   },
   {
     label: 'Manage',
@@ -20,6 +23,8 @@ const GROUPS = [
       { href: '/admin/billing', label: 'Billing' },
       { href: '/admin/fuel/tanks', label: 'Tanks & Dispensers' },
       { href: '/admin/fuel/attendants', label: 'Attendants' },
+      { href: '/admin/materials/products', label: 'Products' },
+      { href: '/admin/materials/suppliers', label: 'Suppliers' },
     ],
   },
   {
