@@ -11,6 +11,7 @@ const blankForm = { name: '', unit: 'bag', category: 'shop', price: '', grade: '
 export default function ProductsPage() {
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('service') || '';
+  const branchId = searchParams.get('branch') || '';
 
   const [products, setProducts] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -19,11 +20,12 @@ export default function ProductsPage() {
 
   const load = useCallback(async () => {
     if (!serviceId) { setProducts(null); return; }
-    const r = await fetch(`/api/admin/materials/products?serviceId=${serviceId}`);
+    const qs = new URLSearchParams({ serviceId, ...(branchId ? { branchId } : {}) });
+    const r = await fetch(`/api/admin/materials/products?${qs}`);
     const d = await r.json();
     if (d.success) setProducts(d.data);
     else toast.error(d.error || 'Failed to load');
-  }, [serviceId]);
+  }, [serviceId, branchId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -79,12 +81,13 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left font-medium">Unit</th>
                 <th className="px-4 py-3 text-left font-medium">Details</th>
                 <th className="px-4 py-3 text-right font-medium">Price</th>
+                <th className="px-4 py-3 text-right font-medium">On Hand</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {products.length === 0 && <EmptyRow colSpan={6} text="No products yet" />}
+              {products.length === 0 && <EmptyRow colSpan={7} text="No products yet" />}
               {products.map((p) => (
                 <tr key={p.id}>
                   <td className="px-4 py-3 font-medium">{p.name}</td>
@@ -97,6 +100,7 @@ export default function ProductsPage() {
                     {!p.attributes?.grade && !p.attributes?.quarry && '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-medium">{p.currentPrice != null ? formatMoney(p.currentPrice / 100) : '—'}</td>
+                  <td className="px-4 py-3 text-right text-gray-500">{p.onHand != null ? `${p.onHand.toLocaleString()} ${p.unit}` : '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'green' : 'gray'} /></td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => toggleActive(p)} className={tableActionCls}>{p.isActive ? 'Deactivate' : 'Reactivate'}</button>

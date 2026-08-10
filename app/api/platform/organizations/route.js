@@ -98,7 +98,7 @@ export async function POST(request) {
           data: { organizationId: org.id, role: 'owner', name: ownerName, username: ownerUsername, passwordHash },
         });
         return { orgId: org.id, ownerId: owner.id, slug: org.slug };
-      });
+      }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
     });
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });

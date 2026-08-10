@@ -3,11 +3,14 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
+import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 
 export const GET = withOrg(async (request) => {
   try {
-    const serviceId = new URL(request.url).searchParams.get('serviceId');
+    const url = new URL(request.url);
+    const serviceId = url.searchParams.get('serviceId');
+    const branchId = url.searchParams.get('branchId'); // optional — on-hand is per-branch
     if (!serviceId) throw new ApiError('serviceId is required', 400);
 
     const products = await prisma.product.findMany({
@@ -15,7 +18,11 @@ export const GET = withOrg(async (request) => {
       include: { priceRules: { where: { validTo: null } } },
       orderBy: { name: 'asc' },
     });
-    const data = products.map((p) => ({ ...p, currentPrice: p.priceRules[0]?.price ?? null, priceRules: undefined }));
+    const onHand = branchId ? await getOnHandByProduct(branchId, products.map((p) => p.id)) : {};
+    const data = products.map((p) => ({
+      ...p, currentPrice: p.priceRules[0]?.price ?? null, priceRules: undefined,
+      onHand: branchId ? (onHand[p.id] || 0) : null,
+    }));
     return NextResponse.json({ success: true, data });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
@@ -51,7 +58,7 @@ export const POST = withOrg(async (request) => {
       const created = await tx.product.create({ data: { serviceId, name, unit, attributes } });
       if (price > 0) await setPrice(tx, created.id, price, session.user.id);
       return created;
-    });
+    }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     return NextResponse.json({ success: true, data: product }, { status: 201 });
   } catch (e) {

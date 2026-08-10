@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
+import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 
 // Returns both the branch's tanks (with dispensers nested) and the branch's service's product
@@ -19,7 +20,10 @@ export const GET = withOrg(async (request) => {
       prisma.product.findMany({ where: { serviceId: branch.serviceId, isActive: true }, orderBy: { name: 'asc' } }),
     ]);
 
-    return NextResponse.json({ success: true, data: { tanks, products } });
+    const onHand = await getOnHandByProduct(branchId, tanks.map((t) => t.productId));
+    const tanksWithStock = tanks.map((t) => ({ ...t, onHand: onHand[t.productId] || 0 }));
+
+    return NextResponse.json({ success: true, data: { tanks: tanksWithStock, products } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

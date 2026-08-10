@@ -89,7 +89,7 @@ export const POST = withOrg(async (request) => {
       }
 
       return created;
-    });
+    }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     return NextResponse.json({ success: true, data: { order, flagged: creditFlag } }, { status: 201 });
   } catch (e) {

@@ -22,10 +22,11 @@ const GROUPS = [
       { href: '/admin/users', label: 'Users' },
       { href: '/admin/billing', label: 'Billing' },
       { href: '/admin/customers', label: 'Customers' },
+      { href: '/admin/materials/suppliers', label: 'Suppliers' },
+      { href: '/admin/deliveries', label: 'Deliveries' },
       { href: '/admin/fuel/tanks', label: 'Tanks & Dispensers' },
       { href: '/admin/fuel/attendants', label: 'Attendants' },
       { href: '/admin/materials/products', label: 'Products' },
-      { href: '/admin/materials/suppliers', label: 'Suppliers' },
     ],
   },
   {

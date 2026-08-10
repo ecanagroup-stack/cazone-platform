@@ -37,7 +37,7 @@ export const POST = withOrg(async (request) => {
       const service = await tx.service.create({ data: { type, name: serviceLabel(type) } });
       const branch = await tx.branch.create({ data: { serviceId: service.id, name: branchName, code: branchCode } });
       return { service, branch };
-    });
+    }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     await logAudit({
       organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,

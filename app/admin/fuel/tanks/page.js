@@ -107,7 +107,9 @@ export default function TanksPage() {
                 <p className="font-semibold text-sm">
                   {tank.label} <span className="text-xs text-gray-400 font-normal">— {tank.product.name}, {tank.capacity.toLocaleString()} L capacity</span>
                 </p>
-                <p className="text-xs text-gray-500">{tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'}</p>
+                <p className="text-xs text-gray-500">
+                  {tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'} · <span className="font-medium text-gray-700">{tank.onHand.toLocaleString()} L on hand</span>
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <StatusPill status={tank.isActive ? 'Active' : 'Inactive'} color={tank.isActive ? 'green' : 'gray'} />

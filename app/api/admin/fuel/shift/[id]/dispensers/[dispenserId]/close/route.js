@@ -65,7 +65,7 @@ export const POST = withOrg(async (request, { params }) => {
       await tx.meterReading.update({ where: { id: reading.id }, data: { orderId: created.id } });
 
       return created;
-    });
+    }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     return NextResponse.json({ success: true, data: { litres, order } });
   } catch (e) {
