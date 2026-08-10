@@ -111,6 +111,28 @@ export function FormButtons({ onCancel, submitLabel = 'Save', submitting }) {
   );
 }
 
+// In-page tab bar — closely-related sub-features live inside a page as tabs rather than each
+// earning their own sidebar entry (e.g. Fuel Setup's Tanks & Dispensers / Attendants, Deliveries'
+// Deliveries / Suppliers).
+export function Tabs({ tabs, active, onChange }) {
+  return (
+    <div className="flex gap-1 border-b mb-6">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          onClick={() => onChange(t.key)}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            active === t.key ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Field({ label, children, required }) {
   return (
     <div>

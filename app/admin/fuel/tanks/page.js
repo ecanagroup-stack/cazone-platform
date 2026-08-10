@@ -1,18 +1,54 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, tableActionCls, StatusPill } from '@/components/ui';
+import {
+  Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
+  inputCls, btnPrimaryCls, tableActionCls, theadCls, tableScrollCls, StatusPill,
+} from '@/components/ui';
 import { formatDate } from '@/lib/format';
+
+const TABS = [
+  { key: 'tanks', label: 'Tanks & Dispensers' },
+  { key: 'attendants', label: 'Attendants' },
+];
+
+// "Fuel Setup" — tanks/dispensers/dip and attendants are both branch-level fuel settings, nothing
+// operational happens on either tab, so they share one Manage sidebar slot instead of two.
+export default function FuelSetupPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const branchId = searchParams.get('branch') || '';
+  const activeTab = searchParams.get('tab') === 'attendants' ? 'attendants' : 'tanks';
+
+  const setTab = (key) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === 'tanks') params.delete('tab'); else params.set('tab', key);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  return (
+    <div>
+      <PageHeader title="Fuel Setup" subtitle="Tanks, dispensers and attendants for this branch" />
+      <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
+      {!branchId ? (
+        <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see and manage its fuel setup." /></Card>
+      ) : activeTab === 'tanks' ? (
+        <TanksTab branchId={branchId} />
+      ) : (
+        <AttendantsTab branchId={branchId} />
+      )}
+    </div>
+  );
+}
 
 const blankTank = { label: '', capacity: '', productId: '', newProductName: '' };
 const blankDispenser = { label: '' };
 
-export default function TanksPage() {
-  const searchParams = useSearchParams();
-  const branchId = searchParams.get('branch') || '';
-
+function TanksTab({ branchId }) {
   const [data, setData] = useState(null); // { tanks, products }
   const [showTankModal, setShowTankModal] = useState(false);
   const [tankForm, setTankForm] = useState(blankTank);
@@ -25,7 +61,6 @@ export default function TanksPage() {
   const [dipResult, setDipResult] = useState(null);
 
   const load = useCallback(async () => {
-    if (!branchId) { setData(null); return; }
     const r = await fetch(`/api/admin/fuel/tanks?branchId=${branchId}`);
     const d = await r.json();
     if (d.success) setData(d.data);
@@ -104,26 +139,15 @@ export default function TanksPage() {
 
   const closeDipModal = () => { setDipFor(null); setMeasured(''); setDipResult(null); };
 
-  if (!branchId) {
-    return (
-      <div>
-        <PageHeader title="Tanks & Dispensers" subtitle="Set up per branch" />
-        <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see and manage its tanks and dispensers." /></Card>
-      </div>
-    );
-  }
-
   if (!data) return <Loader />;
 
   const { tanks, products } = data;
 
   return (
     <div>
-      <PageHeader
-        title="Tanks & Dispensers"
-        subtitle="This branch's fuel storage and pumps"
-        action={<button onClick={() => { setTankForm(blankTank); setShowTankModal(true); }} className={btnPrimaryCls}>Add Tank</button>}
-      />
+      <div className="flex justify-end mb-4">
+        <button onClick={() => { setTankForm(blankTank); setShowTankModal(true); }} className={btnPrimaryCls}>Add Tank</button>
+      </div>
 
       <div className="space-y-6">
         {tanks.length === 0 && <Card className="p-6 text-center text-sm text-gray-500">No tanks yet — add one to get started.</Card>}
@@ -233,6 +257,122 @@ export default function TanksPage() {
             <FormButtons onCancel={closeDipModal} submitting={submitting} submitLabel="Record Dip" />
           </form>
         )}
+      </Modal>
+    </div>
+  );
+}
+
+const blankAttendant = { staffNumber: '', name: '', phone: '', position: '', employmentType: 'full_time' };
+
+function AttendantsTab({ branchId }) {
+  const [attendants, setAttendants] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(blankAttendant);
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/fuel/attendants?branchId=${branchId}`);
+    const d = await r.json();
+    if (d.success) setAttendants(d.data);
+    else toast.error(d.error || 'Failed to load');
+  }, [branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch('/api/admin/fuel/attendants', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchId, ...form }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(`${form.name} added`); setShowModal(false); setForm(blankAttendant); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleActive = async (a) => {
+    const goingActive = !a.isActive;
+    if (!goingActive && !confirm(`Deactivate ${a.name}? Their history stays, they just can't be assigned to a pump.`)) return;
+    const r = await fetch(`/api/admin/fuel/attendants/${a.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: goingActive }),
+    });
+    const d = await r.json();
+    if (d.success) load(); else toast.error(d.error);
+  };
+
+  if (!attendants) return <Loader />;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-sm text-gray-500">Pump attendants at this branch — not login accounts, just staff records for assignment.</p>
+        <button onClick={() => { setForm(blankAttendant); setShowModal(true); }} className={btnPrimaryCls}>Add Attendant</button>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Staff #</th>
+                <th className="px-4 py-3 text-left font-medium">Name</th>
+                <th className="px-4 py-3 text-left font-medium">Position</th>
+                <th className="px-4 py-3 text-left font-medium">Phone</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {attendants.length === 0 && <EmptyRow colSpan={6} text="No attendants yet" />}
+              {attendants.map((a) => (
+                <tr key={a.id}>
+                  <td className="px-4 py-3 font-mono text-xs">{a.staffNumber}</td>
+                  <td className="px-4 py-3 font-medium">{a.name}</td>
+                  <td className="px-4 py-3 text-gray-500">{a.position || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{a.phone || '—'}</td>
+                  <td className="px-4 py-3"><StatusPill status={a.isActive ? 'Active' : 'Inactive'} color={a.isActive ? 'green' : 'gray'} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => toggleActive(a)} className={tableActionCls}>{a.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Attendant">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Staff number" required>
+              <input type="text" value={form.staffNumber} onChange={(e) => setForm({ ...form, staffNumber: e.target.value })} className={inputCls} required autoFocus />
+            </Field>
+            <Field label="Name" required>
+              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} required />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Phone">
+              <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Position">
+              <input type="text" value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} className={inputCls} placeholder="e.g., Pump Attendant" />
+            </Field>
+          </div>
+          <Field label="Employment type">
+            <select value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value })} className={inputCls}>
+              <option value="full_time">Full-time</option>
+              <option value="part_time">Part-time</option>
+              <option value="casual">Casual</option>
+            </select>
+          </Field>
+          <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Attendant" />
+        </form>
       </Modal>
     </div>
   );

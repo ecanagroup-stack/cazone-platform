@@ -1,20 +1,51 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, theadCls, tableScrollCls } from '@/components/ui';
+import {
+  Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
+  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill,
+} from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
-const blankForm = { supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '' };
+const TABS = [
+  { key: 'deliveries', label: 'Deliveries' },
+  { key: 'suppliers', label: 'Suppliers' },
+];
 
+// Suppliers only exist to be picked when recording a delivery, so it rides along as a tab here
+// instead of its own sidebar entry — the full list/edit view is a click away, and the delivery
+// form's own inline "+ New supplier" still covers the fast path.
 export default function DeliveriesPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
+  const activeTab = searchParams.get('tab') === 'suppliers' ? 'suppliers' : 'deliveries';
 
+  const setTab = (key) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === 'deliveries') params.delete('tab'); else params.set('tab', key);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  return (
+    <div>
+      <PageHeader title="Deliveries" subtitle="Stock received, and who it comes from" />
+      <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
+      {activeTab === 'deliveries' ? <DeliveriesTab branchId={branchId} /> : <SuppliersTab />}
+    </div>
+  );
+}
+
+const blankDelivery = { supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '' };
+
+function DeliveriesTab({ branchId }) {
   const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand }
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState(blankForm);
+  const [form, setForm] = useState(blankDelivery);
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -36,7 +67,7 @@ export default function DeliveriesPage() {
         body: JSON.stringify({ branchId, ...form, costPerUnit: Math.round(Number(form.costPerUnit || 0) * 100) }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Delivery recorded'); setShowModal(false); setForm(blankForm); load(); }
+      if (d.success) { toast.success('Delivery recorded'); setShowModal(false); setForm(blankDelivery); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -44,12 +75,7 @@ export default function DeliveriesPage() {
   };
 
   if (!branchId) {
-    return (
-      <div>
-        <PageHeader title="Deliveries" subtitle="Stock received per branch" />
-        <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to record and view its deliveries." /></Card>
-      </div>
-    );
+    return <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to record and view its deliveries." /></Card>;
   }
 
   if (!data) return <Loader />;
@@ -58,11 +84,9 @@ export default function DeliveriesPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Deliveries"
-        subtitle="Stock received at this branch"
-        action={<button onClick={() => { setForm(blankForm); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>}
-      />
+      <div className="flex justify-end mb-4">
+        <button onClick={() => { setForm(blankDelivery); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>
+      </div>
 
       {products.length > 0 && (
         <Card className="p-4 mb-6">
@@ -144,6 +168,109 @@ export default function DeliveriesPage() {
             </Field>
           </div>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Record Delivery" />
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+const blankSupplier = { name: '', type: 'depot', phone: '', address: '' };
+
+function SuppliersTab() {
+  const [suppliers, setSuppliers] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(blankSupplier);
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = async () => {
+    const r = await fetch('/api/admin/materials/suppliers');
+    const d = await r.json();
+    if (d.success) setSuppliers(d.data);
+    else toast.error(d.error || 'Failed to load');
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch('/api/admin/materials/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(`${form.name} added`); setShowModal(false); setForm(blankSupplier); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleActive = async (s) => {
+    const r = await fetch(`/api/admin/materials/suppliers/${s.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !s.isActive }),
+    });
+    const d = await r.json();
+    if (d.success) load(); else toast.error(d.error);
+  };
+
+  if (!suppliers) return <Loader />;
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={() => { setForm(blankSupplier); setShowModal(true); }} className={btnPrimaryCls}>Add Supplier</button>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Name</th>
+                <th className="px-4 py-3 text-left font-medium">Type</th>
+                <th className="px-4 py-3 text-left font-medium">Phone</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {suppliers.length === 0 && <EmptyRow colSpan={5} text="No suppliers yet" />}
+              {suppliers.map((s) => (
+                <tr key={s.id}>
+                  <td className="px-4 py-3 font-medium">{s.name}</td>
+                  <td className="px-4 py-3 text-gray-500 capitalize">{s.type || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{s.phone || '—'}</td>
+                  <td className="px-4 py-3"><StatusPill status={s.isActive ? 'Active' : 'Inactive'} color={s.isActive ? 'green' : 'gray'} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => toggleActive(s)} className={tableActionCls}>{s.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Supplier">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Name" required>
+            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} required autoFocus />
+          </Field>
+          <Field label="Type">
+            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className={inputCls}>
+              <option value="depot">Depot</option>
+              <option value="quarry">Quarry</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+          <Field label="Phone">
+            <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Address">
+            <input type="text" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={inputCls} />
+          </Field>
+          <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Supplier" />
         </form>
       </Modal>
     </div>
