@@ -21,7 +21,17 @@ export const GET = withOrg(async (request) => {
     ]);
 
     const onHand = await getOnHandByProduct(branchId, tanks.map((t) => t.productId));
-    const tanksWithStock = tanks.map((t) => ({ ...t, onHand: onHand[t.productId] || 0 }));
+    // Reconciliation is keyed by (branchId, productId), same as the ledger — one lookup per
+    // distinct product covers every tank of that product.
+    const lastReconByProduct = {};
+    for (const productId of new Set(tanks.map((t) => t.productId))) {
+      lastReconByProduct[productId] = await prisma.reconciliation.findFirst({
+        where: { branchId, productId }, orderBy: { periodEnd: 'desc' },
+      });
+    }
+    const tanksWithStock = tanks.map((t) => ({
+      ...t, onHand: onHand[t.productId] || 0, lastReconciliation: lastReconByProduct[t.productId] || null,
+    }));
 
     return NextResponse.json({ success: true, data: { tanks: tanksWithStock, products } });
   } catch (e) {

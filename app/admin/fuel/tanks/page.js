@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, tableActionCls, StatusPill } from '@/components/ui';
+import { formatDate } from '@/lib/format';
 
 const blankTank = { label: '', capacity: '', productId: '', newProductName: '' };
 const blankDispenser = { label: '' };
@@ -18,6 +19,10 @@ export default function TanksPage() {
   const [addDispenserFor, setAddDispenserFor] = useState(null); // tank object
   const [dispenserForm, setDispenserForm] = useState(blankDispenser);
   const [submitting, setSubmitting] = useState(false);
+
+  const [dipFor, setDipFor] = useState(null); // tank object
+  const [measured, setMeasured] = useState('');
+  const [dipResult, setDipResult] = useState(null);
 
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
@@ -77,6 +82,28 @@ export default function TanksPage() {
     if (d.success) load(); else toast.error(d.error);
   };
 
+  const handleRecordDip = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/tanks/${dipFor.id}/reconcile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ measured: Number(measured) }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setDipResult(d.data);
+        toast[d.data.status === 'exception' ? 'error' : 'success'](
+          d.data.status === 'exception' ? `Variance of ${d.data.variance.toFixed(1)}L flagged for review` : 'Within tolerance'
+        );
+        load();
+      } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const closeDipModal = () => { setDipFor(null); setMeasured(''); setDipResult(null); };
+
   if (!branchId) {
     return (
       <div>
@@ -108,11 +135,18 @@ export default function TanksPage() {
                   {tank.label} <span className="text-xs text-gray-400 font-normal">— {tank.product.name}, {tank.capacity.toLocaleString()} L capacity</span>
                 </p>
                 <p className="text-xs text-gray-500">
-                  {tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'} · <span className="font-medium text-gray-700">{tank.onHand.toLocaleString()} L on hand</span>
+                  {tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'} · <span className="font-medium text-gray-700">{tank.onHand.toLocaleString()} L on hand (book)</span>
                 </p>
+                {tank.lastReconciliation && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Last dip {formatDate(tank.lastReconciliation.periodEnd)}: {tank.lastReconciliation.measured.toLocaleString()} L
+                    {tank.lastReconciliation.status === 'exception' && <span className="text-amber-700 font-medium"> — variance flagged</span>}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <StatusPill status={tank.isActive ? 'Active' : 'Inactive'} color={tank.isActive ? 'green' : 'gray'} />
+                <button onClick={() => { setDipFor(tank); setMeasured(''); setDipResult(null); }} className={tableActionCls}>Record Dip</button>
                 <button onClick={() => toggleTank(tank)} className={tableActionCls}>{tank.isActive ? 'Deactivate' : 'Reactivate'}</button>
                 <button onClick={() => { setAddDispenserFor(tank); setDispenserForm(blankDispenser); }} className={tableActionCls}>+ Add Dispenser</button>
               </div>
@@ -172,6 +206,33 @@ export default function TanksPage() {
           </Field>
           <FormButtons onCancel={() => setAddDispenserFor(null)} submitting={submitting} submitLabel="Add Dispenser" />
         </form>
+      </Modal>
+
+      <Modal open={!!dipFor} onClose={closeDipModal} title={`Record Dip — ${dipFor?.label || ''}`}>
+        {dipResult ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-xs text-gray-500">Book stock</p><p className="font-medium">{dipResult.book.toLocaleString()} L</p></div>
+              <div><p className="text-xs text-gray-500">Measured</p><p className="font-medium">{dipResult.measured.toLocaleString()} L</p></div>
+              <div><p className="text-xs text-gray-500">Variance</p><p className={`font-medium ${dipResult.status === 'exception' ? 'text-amber-700' : ''}`}>{dipResult.variance > 0 ? '+' : ''}{dipResult.variance.toFixed(1)} L ({dipResult.variancePct.toFixed(2)}%)</p></div>
+              <div><p className="text-xs text-gray-500">Status</p><p className="font-medium capitalize">{dipResult.status.replace('_', ' ')}</p></div>
+            </div>
+            {dipResult.status === 'exception' && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                This is outside the {dipResult.tolerance}% tolerance and has been added to Anything Wrong for a manager to acknowledge.
+              </p>
+            )}
+            <button onClick={closeDipModal} className={`w-full ${btnPrimaryCls}`}>Done</button>
+          </div>
+        ) : (
+          <form onSubmit={handleRecordDip} className="space-y-4">
+            <p className="text-sm text-gray-500">Enter the physical dip reading in litres — compared against book stock since the last dip.</p>
+            <Field label="Measured (litres)" required>
+              <input type="number" step="0.01" min="0" value={measured} onChange={(e) => setMeasured(e.target.value)} className={inputCls} required autoFocus />
+            </Field>
+            <FormButtons onCancel={closeDipModal} submitting={submitting} submitLabel="Record Dip" />
+          </form>
+        )}
       </Modal>
     </div>
   );

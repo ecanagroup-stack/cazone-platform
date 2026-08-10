@@ -31,7 +31,10 @@ const GROUPS = [
   },
   {
     label: 'Know',
-    items: [{ href: '/admin', label: 'Today' }],
+    items: [
+      { href: '/admin', label: 'Today' },
+      { href: '/admin/exceptions', label: 'Anything Wrong' },
+    ],
   },
 ];
 
