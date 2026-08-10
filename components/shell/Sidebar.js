@@ -21,6 +21,7 @@ const GROUPS = [
       { href: '/admin/services', label: 'Services & Branches' },
       { href: '/admin/users', label: 'Users' },
       { href: '/admin/billing', label: 'Billing' },
+      { href: '/admin/customers', label: 'Customers' },
       { href: '/admin/fuel/tanks', label: 'Tanks & Dispensers' },
       { href: '/admin/fuel/attendants', label: 'Attendants' },
       { href: '/admin/materials/products', label: 'Products' },

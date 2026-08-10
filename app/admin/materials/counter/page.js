@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, Card, EmptyState, PageHeader, inputCls, btnPrimaryCls } from '@/components/ui';
+import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 export default function CounterPage() {
@@ -21,6 +21,10 @@ export default function CounterPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null); // { shortfall, error }
+
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '' });
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
 
   const loadProducts = useCallback(async () => {
     if (!serviceId) { setProducts(null); return; }
@@ -57,6 +61,24 @@ export default function CounterPage() {
   const removeLine = (productId) => setCart((c) => c.filter((l) => l.productId !== productId));
 
   const total = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+
+  const handleCreateCustomer = async (e) => {
+    e.preventDefault();
+    setCreatingCustomer(true);
+    try {
+      const r = await fetch('/api/admin/customers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newCustomerForm),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success(`${d.data.name} added`);
+        setCustomer(d.data); setShowNewCustomer(false); setNewCustomerForm({ name: '', phone: '' });
+        setCustomerQuery(''); setCustomerResults([]);
+      } else toast.error(d.error);
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
 
   const submitOrder = async (overrideCredit = false) => {
     setSubmitting(true);
@@ -141,7 +163,7 @@ export default function CounterPage() {
                   type="text" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)}
                   placeholder="Search customer, or leave blank for walk-in" className={inputCls}
                 />
-                {customerResults.length > 0 && (
+                {(customerResults.length > 0 || customerQuery.trim().length >= 2) && (
                   <div className="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                     {customerResults.map((c) => (
                       <button
@@ -151,6 +173,14 @@ export default function CounterPage() {
                         {c.name}{c.phone ? ` — ${c.phone}` : ''}
                       </button>
                     ))}
+                    {customerQuery.trim().length >= 2 && (
+                      <button
+                        onClick={() => { setNewCustomerForm({ name: customerQuery, phone: '' }); setShowNewCustomer(true); }}
+                        className="block w-full text-left px-3 py-2 text-sm text-brand-600 hover:bg-brand-50 border-t"
+                      >
+                        + New customer "{customerQuery}"
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -211,6 +241,19 @@ export default function CounterPage() {
           </button>
         </Card>
       </div>
+
+      <Modal open={showNewCustomer} onClose={() => setShowNewCustomer(false)} title="New Customer">
+        <form onSubmit={handleCreateCustomer} className="space-y-4">
+          <p className="text-sm text-gray-500">Starts with no credit limit — set one from the Customers page if this account needs to buy on credit.</p>
+          <Field label="Name" required>
+            <input type="text" value={newCustomerForm.name} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })} className={inputCls} required autoFocus />
+          </Field>
+          <Field label="Phone">
+            <input type="text" value={newCustomerForm.phone} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })} className={inputCls} />
+          </Field>
+          <FormButtons onCancel={() => setShowNewCustomer(false)} submitting={creatingCustomer} submitLabel="Add Customer" />
+        </form>
+      </Modal>
     </div>
   );
 }
