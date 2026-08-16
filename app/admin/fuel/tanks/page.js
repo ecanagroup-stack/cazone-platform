@@ -13,17 +13,19 @@ const TABS = [
   { key: 'tanks', label: 'Tanks & Dispensers' },
   { key: 'attendants', label: 'Attendants' },
   { key: 'terminals', label: 'POS Terminals' },
+  { key: 'config', label: 'Station Config' },
 ];
 
-// "Fuel Setup" — tanks/dispensers/dip, attendants, and POS terminals are all branch-level fuel
-// settings, nothing operational happens on any tab, so they share one Manage sidebar slot.
+// "Fuel Setup" — tanks/dispensers/dip, attendants, POS terminals and branch-level config are all
+// branch-level fuel settings, nothing operational happens on any tab, so they share one Manage
+// sidebar slot.
 export default function FuelSetupPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
   const tabParam = searchParams.get('tab');
-  const activeTab = tabParam === 'attendants' ? 'attendants' : tabParam === 'terminals' ? 'terminals' : 'tanks';
+  const activeTab = ['attendants', 'terminals', 'config'].includes(tabParam) ? tabParam : 'tanks';
 
   const setTab = (key) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -34,7 +36,7 @@ export default function FuelSetupPage() {
 
   return (
     <div>
-      <PageHeader title="Fuel Setup" subtitle="Tanks, dispensers, attendants and POS terminals for this branch" />
+      <PageHeader title="Fuel Setup" subtitle="Tanks, dispensers, attendants, POS terminals and station config for this branch" />
       <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
       {!branchId ? (
         <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see and manage its fuel setup." /></Card>
@@ -42,8 +44,10 @@ export default function FuelSetupPage() {
         <TanksTab branchId={branchId} />
       ) : activeTab === 'attendants' ? (
         <AttendantsTab branchId={branchId} />
-      ) : (
+      ) : activeTab === 'terminals' ? (
         <TerminalsTab branchId={branchId} />
+      ) : (
+        <ConfigTab branchId={branchId} />
       )}
     </div>
   );
@@ -500,5 +504,61 @@ function TerminalsTab({ branchId }) {
         </form>
       </Modal>
     </div>
+  );
+}
+
+const DEFAULT_TOLERANCE_PCT = 0.5;
+
+// F1 — the one branch-level setting petrol-station-app's Stations page had (per-station reconciliation
+// tolerance) that this app deferred to a flat 0.5% default (see the tank-dip and delivery-offload
+// routes). Everything else that page did — creating/renaming a branch, assigning tanks/pumps/products —
+// already has its own proper home here (Services & Branches, Tanks & Dispensers above), so this tab
+// stays deliberately small rather than re-building a whole "station" concept that doesn't fit cazone's
+// branch model.
+function ConfigTab({ branchId }) {
+  const [branch, setBranch] = useState(null);
+  const [tolerance, setTolerance] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/branches/${branchId}`);
+    const d = await r.json();
+    if (d.success) { setBranch(d.data); setTolerance(String(d.data.config?.reconciliationTolerancePct ?? DEFAULT_TOLERANCE_PCT)); }
+    else toast.error(d.error || 'Failed to load');
+  }, [branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/branches/${branchId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: { reconciliationTolerancePct: Number(tolerance) } }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Station config saved'); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!branch) return <Loader />;
+
+  return (
+    <Card className="p-4 max-w-md">
+      <h3 className="font-semibold text-sm mb-1">Reconciliation Tolerance</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        How far a tank dip or tanker offload can vary from the book figure before it's flagged for review, as a percentage. Applies to both tank dips (Tanks &amp; Dispensers) and delivery offload checks (Deliveries) at this branch.
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Tolerance (%)" required>
+          <NumberInput value={tolerance} onChange={(e) => setTolerance(e.target.value)} required />
+        </Field>
+        <button type="submit" disabled={submitting} className={btnPrimaryCls}>{submitting ? 'Saving...' : 'Save'}</button>
+      </form>
+    </Card>
   );
 }

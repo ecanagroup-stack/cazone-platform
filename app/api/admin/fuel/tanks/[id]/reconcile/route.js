@@ -5,9 +5,9 @@ import { can } from '@/lib/permissions';
 import { computePeriod, evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
 
-// Fuel typically runs well under 1% variance (core-algorithms skill §5) — no per-product tolerance
-// settings screen exists yet, so this is a flat default, same deferral as the shift cash-up's 1%.
-const FUEL_TOLERANCE_PCT = 0.5;
+// Fuel typically runs well under 1% variance (core-algorithms skill §5) — this default applies
+// whenever a branch hasn't set its own tolerance via Fuel Setup > Station Config (F1).
+const DEFAULT_FUEL_TOLERANCE_PCT = 0.5;
 
 // A tank dip — the fuel-specific "measured" input into the shared bulk-reconciliation abstraction.
 // Reconciliation itself is keyed by (branchId, productId), same as the stock ledger, not by the
@@ -24,8 +24,9 @@ export const POST = withOrg(async (request, { params }) => {
     const measured = Number(body.measured);
     if (!Number.isFinite(measured) || measured < 0) throw new ApiError('Measured litres must be a non-negative number', 400);
 
-    const tank = await prisma.tank.findUnique({ where: { id: tankId } });
+    const tank = await prisma.tank.findUnique({ where: { id: tankId }, include: { branch: { select: { config: true } } } });
     if (!tank) throw new ApiError('Tank not found', 404);
+    const tolerancePct = Number(tank.branch.config?.reconciliationTolerancePct) || DEFAULT_FUEL_TOLERANCE_PCT;
 
     const lastRecon = await prisma.reconciliation.findFirst({
       where: { branchId: tank.branchId, productId: tank.productId },
@@ -35,13 +36,13 @@ export const POST = withOrg(async (request, { params }) => {
     const periodEnd = new Date();
 
     const { opening, receipts, sales, book } = await computePeriod(tank.branchId, tank.productId, periodStart, periodEnd);
-    const { variance, variancePct, status } = evaluateVariance(book, measured, receipts, FUEL_TOLERANCE_PCT);
+    const { variance, variancePct, status } = evaluateVariance(book, measured, receipts, tolerancePct);
 
     const reconciliation = await prisma.$transaction(async (tx) => {
       const created = await tx.reconciliation.create({
         data: {
           branchId: tank.branchId, productId: tank.productId, periodStart, periodEnd,
-          opening, receipts, sales, book, measured, variance, variancePct, tolerance: FUEL_TOLERANCE_PCT,
+          opening, receipts, sales, book, measured, variance, variancePct, tolerance: tolerancePct,
           status,
         },
       });
@@ -51,7 +52,7 @@ export const POST = withOrg(async (request, { params }) => {
           data: {
             branchId: tank.branchId, targetType: 'Reconciliation', targetId: created.id,
             severity: 'concern', classification: 'concern',
-            reason: `Tank dip variance of ${variance.toFixed(1)}L (${variancePct.toFixed(2)}%) on ${tank.label}, outside ${FUEL_TOLERANCE_PCT}% tolerance`,
+            reason: `Tank dip variance of ${variance.toFixed(1)}L (${variancePct.toFixed(2)}%) on ${tank.label}, outside ${tolerancePct}% tolerance`,
             raisedBy: session.user.id,
           },
         });

@@ -7,9 +7,9 @@ import { autoArriveDueAllocations } from '@/lib/allocation';
 import { evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
 
-// Fuel tanker offloads run well under 1% variance (core-algorithms skill §5) — same flat default
-// already used for the shift cash-up and the manual tank dip, no per-product tolerance screen yet.
-const OFFLOAD_TOLERANCE_PCT = 0.5;
+// Fuel tanker offloads run well under 1% variance (core-algorithms skill §5) — same default the
+// manual tank dip uses, overridable per branch via Fuel Setup > Station Config (F1).
+const DEFAULT_OFFLOAD_TOLERANCE_PCT = 0.5;
 
 // Returns the branch's delivery history plus everything the "Record Delivery" form needs
 // (suppliers, this branch's service's products, current on-hand per product) in one call — same
@@ -119,7 +119,9 @@ export const POST = withOrg(async (request) => {
 
       let flagged = false;
       if (useDip) {
-        const { status } = evaluateVariance(declaredLoad, quantity, declaredLoad, OFFLOAD_TOLERANCE_PCT);
+        const branch = await tx.branch.findUnique({ where: { id: branchId }, select: { config: true } });
+        const tolerancePct = Number(branch?.config?.reconciliationTolerancePct) || DEFAULT_OFFLOAD_TOLERANCE_PCT;
+        const { status } = evaluateVariance(declaredLoad, quantity, declaredLoad, tolerancePct);
         if (status === 'exception') {
           flagged = true;
           await tx.flag.create({
