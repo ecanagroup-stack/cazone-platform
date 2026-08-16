@@ -31,6 +31,11 @@ export default function ShiftPage() {
   const [showEndModal, setShowEndModal] = useState(false);
   const [endForm, setEndForm] = useState({ countedCash: '', countedFloat: '', note: '' });
 
+  const [reassignFor, setReassignFor] = useState(null); // dispenserId
+  const [reassignForm, setReassignForm] = useState({ attendantId: '', reason: '' });
+  const [showReassignLog, setShowReassignLog] = useState(false);
+  const [reassignLog, setReassignLog] = useState(null);
+
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
     const r = await fetch(`/api/admin/fuel/shift?branchId=${branchId}`);
@@ -160,6 +165,31 @@ export default function ShiftPage() {
     }
   };
 
+  const handleReassign = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${reassignFor}/reassign`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reassignForm),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success('Pump reassigned');
+        setReassignFor(null); setReassignForm({ attendantId: '', reason: '' }); load();
+      } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openReassignLog = async () => {
+    setShowReassignLog(true);
+    const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/reassignments`);
+    const d = await r.json();
+    if (d.success) setReassignLog(d.data);
+    else toast.error(d.error);
+  };
+
   if (!branchId) {
     return (
       <div>
@@ -179,7 +209,12 @@ export default function ShiftPage() {
         <PageHeader
           title="Pumps"
           subtitle={`${data.shift.shiftLabel ? `${data.shift.shiftLabel} — ` : ''}Open since ${new Date(data.shift.openedAt).toLocaleTimeString()}${data.shift.totalShiftsPlanned ? ` (shift ${data.shift.shiftOrder} of ${data.shift.totalShiftsPlanned} today)` : ''}`}
-          action={allClosed && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
+          action={
+            <div className="flex items-center gap-4">
+              <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
+              {allClosed && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
+            </div>
+          }
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -212,6 +247,12 @@ export default function ShiftPage() {
                       className="text-sm font-medium text-gray-600 hover:text-gray-900"
                     >
                       Credit fill
+                    </button>
+                    <button
+                      onClick={() => { setReassignFor(p.dispenserId); setReassignForm({ attendantId: '', reason: '' }); }}
+                      className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                    >
+                      Reassign
                     </button>
                   </div>
                 )}
@@ -300,6 +341,42 @@ export default function ShiftPage() {
             </Field>
             <FormButtons onCancel={() => setShowEndModal(false)} submitting={submitting} submitLabel="Close Shift" />
           </form>
+        </Modal>
+
+        <Modal open={!!reassignFor} onClose={() => setReassignFor(null)} title="Reassign Pump">
+          <form onSubmit={handleReassign} className="space-y-4">
+            <p className="text-sm text-gray-500">Ends the current attendant's assignment on this pump and hands it to someone else — kept as a permanent log, not an edit.</p>
+            <Field label="New attendant" required>
+              <select value={reassignForm.attendantId} onChange={(e) => setReassignForm({ ...reassignForm, attendantId: e.target.value })} className={inputCls} required autoFocus>
+                <option value="">Select...</option>
+                {(data.attendants || []).filter((a) => a.id !== data.pumps.find((p) => p.dispenserId === reassignFor)?.attendantId).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Reason" required>
+              <textarea value={reassignForm.reason} onChange={(e) => setReassignForm({ ...reassignForm, reason: e.target.value })} className={inputCls} rows={2} required placeholder="Why is this pump changing hands?" />
+            </Field>
+            <FormButtons onCancel={() => setReassignFor(null)} submitting={submitting} submitLabel="Reassign" />
+          </form>
+        </Modal>
+
+        <Modal open={showReassignLog} onClose={() => setShowReassignLog(false)} title="Reassignment Log">
+          {!reassignLog ? (
+            <Loader />
+          ) : reassignLog.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-6">No reassignments this shift.</p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {reassignLog.map((r) => (
+                <div key={r.id} className="border-b pb-3">
+                  <p className="text-sm font-medium">{r.dispenser.label} — {r.attendant.name}</p>
+                  <p className="text-xs text-gray-500">Ended {r.endedAt ? new Date(r.endedAt).toLocaleTimeString() : ''}</p>
+                  <p className="text-sm text-gray-700 mt-1">{r.reassignReason}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </Modal>
       </div>
     );

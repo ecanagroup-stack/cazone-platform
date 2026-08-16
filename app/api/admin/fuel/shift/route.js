@@ -19,22 +19,24 @@ export const GET = withOrg(async (request) => {
     });
 
     if (openShift) {
-      const [assignments, meterReadings] = await Promise.all([
+      const [assignments, meterReadings, attendants] = await Promise.all([
         prisma.attendantAssignment.findMany({
           where: { shiftId: openShift.id, endedAt: null },
           include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
         }),
         prisma.meterReading.findMany({ where: { shiftId: openShift.id } }),
+        prisma.attendant.findMany({ where: { branchId, isActive: true }, orderBy: { name: 'asc' } }),
       ]);
       const readingByDispenser = Object.fromEntries(meterReadings.map((r) => [r.dispenserId, r]));
       const pumps = assignments.map((a) => ({
         dispenserId: a.dispenserId,
         dispenserLabel: a.dispenser.label,
         productName: a.dispenser.tank?.product?.name || null,
+        attendantId: a.attendantId,
         attendantName: a.attendant.name,
         reading: readingByDispenser[a.dispenserId] || null,
       }));
-      return NextResponse.json({ success: true, data: { shift: openShift, pumps } });
+      return NextResponse.json({ success: true, data: { shift: openShift, pumps, attendants } });
     }
 
     const [dispensers, attendants] = await Promise.all([

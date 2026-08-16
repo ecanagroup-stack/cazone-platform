@@ -982,6 +982,10 @@ model AttendantAssignment {
   assignedBy String?
   assignedAt DateTime  @default(now())
   endedAt    DateTime?
+  // Set on the row that got ended by a mid-shift reassignment (not a normal end-of-shift close) —
+  // a required, permanent record of why, matching petrol-station-app's PumpReassignment log.
+  endedBy         String?
+  reassignReason  String?
 
   @@index([organizationId])
   @@index([shiftId, dispenserId])
