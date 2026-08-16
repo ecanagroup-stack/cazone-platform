@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/apiError';
 export const GET = withOrg(async () => {
   try {
     const service = await prisma.service.findFirst({ where: { type: 'shop', isActive: true } });
-    if (!service) throw new ApiError('This organization has no Materials service enabled', 404);
+    if (!service) throw new ApiError('This organization has no Construction Material service enabled', 404);
 
     const [branches, products] = await Promise.all([
       prisma.branch.findMany({ where: { serviceId: service.id, isActive: true }, orderBy: { name: 'asc' } }),

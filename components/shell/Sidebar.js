@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders,
@@ -49,6 +49,17 @@ const GROUPS = [
 
 export default function Sidebar({ enabledTypes = [] }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Every page under /admin reads its working service/branch from the URL (ServiceBranchSwitcher) —
+  // a sidebar link that dropped those params would force a re-pick on every single navigation. Only
+  // service/branch carry forward; anything else a page put in the URL (e.g. a tab) shouldn't leak
+  // into an unrelated destination.
+  const carry = new URLSearchParams();
+  if (searchParams.get('service')) carry.set('service', searchParams.get('service'));
+  if (searchParams.get('branch')) carry.set('branch', searchParams.get('branch'));
+  const qs = carry.toString();
+  const withParams = (href) => (qs ? `${href}?${qs}` : href);
+
   const groups = GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => !item.pack || enabledTypes.includes(item.pack)),
@@ -65,7 +76,7 @@ export default function Sidebar({ enabledTypes = [] }) {
               return (
                 <li key={item.href}>
                   <Link
-                    href={item.href}
+                    href={withParams(item.href)}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
                       active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`}
