@@ -15,4 +15,4 @@ jobs:
         run: |
           git clone --mirror https://github.com/mail2chuka/cazone-platform.git
           cd cazone-platform.git
-          git push --mirror https://x-access-token:${MIRROR_TOKEN}@github.com/ecanagroup-stack/cazone-tech.git
+          git push --mirror https://x-access-token:${MIRROR_TOKEN}@github.com/ecanagroup-stack/cazone-platform.git
