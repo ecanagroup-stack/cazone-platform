@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
@@ -6,14 +7,28 @@ import { Card, EmptyState, btnPrimaryCls } from '@/components/ui';
 
 // Org-wide by default — "the organization's admin can see any and all his business" — with an
 // honest empty state rather than fabricated numbers, since no pack has any sales/variance data yet.
-export default async function TodayPage() {
+// `/admin` is also every login's landing route (app/login/page.js), so this is where a saved
+// service/branch preference (User.lastServiceId/lastBranchId, written by ServiceBranchSwitcher)
+// gets restored — a multi-service/multi-branch org shouldn't have to re-pick on every login.
+export default async function TodayPage({ searchParams }) {
+  const params = await searchParams;
   const session = await getOrgSession();
   const orgId = requireOrg(session);
 
-  const [services, staffCount] = await Promise.all([
+  const [services, staffCount, me] = await Promise.all([
     prisma.service.findMany({ include: { branches: true }, orderBy: { createdAt: 'asc' } }),
     prisma.user.count({ where: { role: { not: 'customer' } } }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { lastServiceId: true, lastBranchId: true } }),
   ]);
+
+  if (!params?.service && !params?.branch && me?.lastServiceId) {
+    const service = services.find((s) => s.id === me.lastServiceId && s.isActive);
+    if (service) {
+      const branch = me.lastBranchId ? service.branches.find((b) => b.id === me.lastBranchId && b.isActive) : null;
+      const qs = new URLSearchParams({ service: service.id, ...(branch ? { branch: branch.id } : {}) });
+      redirect(`/admin?${qs.toString()}`);
+    }
+  }
 
   const branchCount = services.reduce((sum, s) => sum + s.branches.length, 0);
 

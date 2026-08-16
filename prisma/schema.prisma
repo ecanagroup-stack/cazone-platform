@@ -230,6 +230,13 @@ model User {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  // The service/branch this staff login last had selected in the switcher (ServiceBranchSwitcher) —
+  // loose references, not FKs (matches this schema's `createdBy String?` convention), since a
+  // service/branch being deactivated later shouldn't require cleaning up a stale preference. Restored
+  // on next login so a multi-service/multi-branch org doesn't have to re-pick every time.
+  lastServiceId String?
+  lastBranchId  String?
+
   branchAccess UserBranchAccess[]
   customer     Customer?
 

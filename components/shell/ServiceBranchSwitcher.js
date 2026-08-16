@@ -27,6 +27,12 @@ export default function ServiceBranchSwitcher({ services }) {
     if (key === 'service') params.delete('branch');
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+
+    // Fire-and-forget — restored on next login (app/admin/layout.js) so a multi-service/multi-branch
+    // org doesn't have to re-pick every time. A service change clears the saved branch too, since a
+    // branch id from the old service would be meaningless once restored under a different one.
+    const body = key === 'service' ? { serviceId: value, branchId: null } : { branchId: value };
+    fetch('/api/admin/me/workspace', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
   };
 
   // Auto-select the only service/branch a single-option org has, so no page ever shows a "pick a
