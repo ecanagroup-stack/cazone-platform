@@ -29,6 +29,7 @@ export default function ReportsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
+  const serviceId = searchParams.get('service') || '';
   const activeTab = ['stock', 'cash'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'sales';
 
   const [from, setFrom] = useState(daysAgoIso(30));
@@ -45,8 +46,8 @@ export default function ReportsPage() {
     <div>
       <PageHeader title="Reports" subtitle="Sales, stock and cash over a date range" />
 
-      {!branchId ? (
-        <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see its reports." /></Card>
+      {!branchId && !serviceId ? (
+        <Card><EmptyState title="Pick a service" subtitle="Choose a service from the switcher at the top of the page to see its reports — leave the branch as 'All branches' to roll everything up." /></Card>
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -58,28 +59,31 @@ export default function ReportsPage() {
               <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
               <input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} className={inputCls} />
             </div>
+            {!branchId && <p className="text-xs text-gray-500 pb-2">Showing all branches for this service.</p>}
           </div>
 
           <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
 
-          {activeTab === 'sales' && <SalesSummary branchId={branchId} from={from} to={to} />}
-          {activeTab === 'stock' && <StockSummary branchId={branchId} from={from} to={to} />}
-          {activeTab === 'cash' && <CashSummary branchId={branchId} from={from} to={to} />}
+          {activeTab === 'sales' && <SalesSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
+          {activeTab === 'stock' && <StockSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
+          {activeTab === 'cash' && <CashSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
         </>
       )}
     </div>
   );
 }
 
-function SalesSummary({ branchId, from, to }) {
+function SalesSummary({ branchId, serviceId, from, to }) {
   const [rows, setRows] = useState(null);
+  const [allBranches, setAllBranches] = useState(false);
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/reports/sales?branchId=${branchId}&from=${from}&to=${to}`);
+    const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
+    const r = await fetch(`/api/admin/reports/sales?${scope}&from=${from}&to=${to}`);
     const d = await r.json();
-    if (d.success) setRows(d.data);
+    if (d.success) { setRows(d.data); setAllBranches(d.allBranches); }
     else toast.error(d.error || 'Failed to load');
-  }, [branchId, from, to]);
+  }, [branchId, serviceId, from, to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -97,6 +101,7 @@ function SalesSummary({ branchId, from, to }) {
           csvRows={rows}
           csvColumns={[
             { key: 'date', label: 'Date' },
+            ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'paymentMethod', label: 'Payment Method' },
             { key: 'channel', label: 'Channel' },
             { key: 'count', label: 'Orders' },
@@ -110,6 +115,7 @@ function SalesSummary({ branchId, from, to }) {
             <thead className={theadCls}>
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Date</th>
+                {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                 <th className="px-4 py-3 text-left font-medium">Payment Method</th>
                 <th className="px-4 py-3 text-left font-medium">Channel</th>
                 <th className="px-4 py-3 text-right font-medium">Orders</th>
@@ -117,10 +123,11 @@ function SalesSummary({ branchId, from, to }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.length === 0 && <EmptyRow colSpan={5} text="No sales in this range" />}
+              {rows.length === 0 && <EmptyRow colSpan={allBranches ? 6 : 5} text="No sales in this range" />}
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td className="px-4 py-3 text-gray-500">{formatDate(r.date)}</td>
+                  {allBranches && <td className="px-4 py-3">{r.branch}</td>}
                   <td className="px-4 py-3 capitalize">{r.paymentMethod}</td>
                   <td className="px-4 py-3 capitalize text-gray-500">{r.channel}</td>
                   <td className="px-4 py-3 text-right">{r.count}</td>
@@ -135,15 +142,17 @@ function SalesSummary({ branchId, from, to }) {
   );
 }
 
-function StockSummary({ branchId, from, to }) {
+function StockSummary({ branchId, serviceId, from, to }) {
   const [data, setData] = useState(null);
+  const [allBranches, setAllBranches] = useState(false);
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/reports/stock?branchId=${branchId}&from=${from}&to=${to}`);
+    const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
+    const r = await fetch(`/api/admin/reports/stock?${scope}&from=${from}&to=${to}`);
     const d = await r.json();
-    if (d.success) setData(d.data);
+    if (d.success) { setData(d.data); setAllBranches(d.allBranches); }
     else toast.error(d.error || 'Failed to load');
-  }, [branchId, from, to]);
+  }, [branchId, serviceId, from, to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -157,6 +166,7 @@ function StockSummary({ branchId, from, to }) {
           csvFilename="stock-summary"
           csvRows={data.rows}
           csvColumns={[
+            ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'product', label: 'Product' },
             { key: 'reason', label: 'Reason' },
             { key: 'qty', label: 'Quantity' },
@@ -168,15 +178,17 @@ function StockSummary({ branchId, from, to }) {
           <table className="w-full text-sm">
             <thead className={theadCls}>
               <tr>
+                {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                 <th className="px-4 py-3 text-left font-medium">Product</th>
                 <th className="px-4 py-3 text-left font-medium">Reason</th>
                 <th className="px-4 py-3 text-right font-medium">Quantity</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {data.rows.length === 0 && <EmptyRow colSpan={3} text="No stock movement in this range" />}
+              {data.rows.length === 0 && <EmptyRow colSpan={allBranches ? 4 : 3} text="No stock movement in this range" />}
               {data.rows.map((r, i) => (
                 <tr key={i}>
+                  {allBranches && <td className="px-4 py-3">{r.branch}</td>}
                   <td className="px-4 py-3 font-medium">{r.product}</td>
                   <td className="px-4 py-3 capitalize text-gray-500">{r.reason}</td>
                   <td className={`px-4 py-3 text-right ${r.qty < 0 ? 'text-red-600' : ''}`}>{r.qty.toLocaleString()} {r.unit}</td>
@@ -194,6 +206,7 @@ function StockSummary({ branchId, from, to }) {
             <table className="w-full text-sm">
               <thead className={theadCls}>
                 <tr>
+                  {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                   <th className="px-4 py-3 text-left font-medium">Product</th>
                   <th className="px-4 py-3 text-left font-medium">Period End</th>
                   <th className="px-4 py-3 text-right font-medium">Book</th>
@@ -205,6 +218,7 @@ function StockSummary({ branchId, from, to }) {
               <tbody className="divide-y">
                 {data.variance.map((v, i) => (
                   <tr key={i}>
+                    {allBranches && <td className="px-4 py-3">{v.branch}</td>}
                     <td className="px-4 py-3 font-medium">{v.product}</td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(v.periodEnd)}</td>
                     <td className="px-4 py-3 text-right">{v.book.toLocaleString()}</td>
@@ -222,15 +236,17 @@ function StockSummary({ branchId, from, to }) {
   );
 }
 
-function CashSummary({ branchId, from, to }) {
+function CashSummary({ branchId, serviceId, from, to }) {
   const [data, setData] = useState(null);
+  const [allBranches, setAllBranches] = useState(false);
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/reports/cash?branchId=${branchId}&from=${from}&to=${to}`);
+    const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
+    const r = await fetch(`/api/admin/reports/cash?${scope}&from=${from}&to=${to}`);
     const d = await r.json();
-    if (d.success) setData(d.data);
+    if (d.success) { setData(d.data); setAllBranches(d.allBranches); }
     else toast.error(d.error || 'Failed to load');
-  }, [branchId, from, to]);
+  }, [branchId, serviceId, from, to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -245,6 +261,7 @@ function CashSummary({ branchId, from, to }) {
           csvFilename="cash-summary-shifts"
           csvRows={data.shifts}
           csvColumns={[
+            ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'closedAt', label: 'Closed', value: (r) => formatDate(r.closedAt) },
             { key: 'openingFloat', label: 'Opening Float', value: (r) => (r.openingFloat / 100).toFixed(2) },
             { key: 'expectedCash', label: 'Expected', value: (r) => (r.expectedCash != null ? (r.expectedCash / 100).toFixed(2) : '') },
@@ -258,6 +275,7 @@ function CashSummary({ branchId, from, to }) {
           <table className="w-full text-sm">
             <thead className={theadCls}>
               <tr>
+                {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                 <th className="px-4 py-3 text-left font-medium">Closed</th>
                 <th className="px-4 py-3 text-right font-medium">Opening Float</th>
                 <th className="px-4 py-3 text-right font-medium">Expected</th>
@@ -266,9 +284,10 @@ function CashSummary({ branchId, from, to }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {data.shifts.length === 0 && <EmptyRow colSpan={5} text="No closed shifts in this range" />}
+              {data.shifts.length === 0 && <EmptyRow colSpan={allBranches ? 6 : 5} text="No closed shifts in this range" />}
               {data.shifts.map((s) => (
                 <tr key={s.id}>
+                  {allBranches && <td className="px-4 py-3">{s.branch}</td>}
                   <td className="px-4 py-3 text-gray-500">{formatDate(s.closedAt)}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(s.openingFloat / 100)}</td>
                   <td className="px-4 py-3 text-right">{s.expectedCash != null ? formatMoney(s.expectedCash / 100) : '—'}</td>
@@ -288,6 +307,7 @@ function CashSummary({ branchId, from, to }) {
           csvFilename="cash-summary-deposits"
           csvRows={data.deposits}
           csvColumns={[
+            ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
             { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
             { key: 'bankName', label: 'Bank' },
@@ -300,6 +320,7 @@ function CashSummary({ branchId, from, to }) {
           <table className="w-full text-sm">
             <thead className={theadCls}>
               <tr>
+                {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                 <th className="px-4 py-3 text-left font-medium">Date</th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
                 <th className="px-4 py-3 text-left font-medium">Bank</th>
@@ -307,9 +328,10 @@ function CashSummary({ branchId, from, to }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {data.deposits.length === 0 && <EmptyRow colSpan={4} text="No deposits in this range" />}
+              {data.deposits.length === 0 && <EmptyRow colSpan={allBranches ? 5 : 4} text="No deposits in this range" />}
               {data.deposits.map((d) => (
                 <tr key={d.id}>
+                  {allBranches && <td className="px-4 py-3">{d.branch}</td>}
                   <td className="px-4 py-3 text-gray-500">{formatDate(d.createdAt)}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(d.amount / 100)}</td>
                   <td className="px-4 py-3">{d.bankName}</td>
