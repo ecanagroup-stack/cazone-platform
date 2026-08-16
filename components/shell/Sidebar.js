@@ -4,14 +4,15 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
-  FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders,
+  FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap,
 } from 'react-icons/fi';
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
-// counter itself — one entry per pack, not a list of pages. Manage gets at most two items per pack,
-// and — per explicit feedback — every item in it must earn a genuinely distinct category; closely
-// related sub-features (Attendants under fuel, Suppliers under materials/deliveries) live inside
-// their parent page as tabs instead of spending a slot. `pack` tags an item to a ServiceCatalog key
+// counter itself — one entry per pack, not a list of pages. Manage's "at most two items per pack"
+// budget is lifted for Construction Material specifically — ecana_shop-app's own nav has ~11 items
+// across Setup/Operations for cement+aggregate+shop combined, and faithfully porting its dedicated
+// pages (Cement Brands, Aggregate, Quarries, ...) means matching that depth, not force-fitting a
+// budget that only ever fit a shallower approximation. `pack` tags an item to a ServiceCatalog key
 // (lib/services.js) — items with no `pack` are core/shared and always show; pack items are filtered
 // by the org's actually-enabled services (see enabledTypes prop) rather than shown unconditionally.
 const GROUPS = [
@@ -29,7 +30,10 @@ const GROUPS = [
       { href: '/admin/customers', label: 'Customers', icon: FiUsers },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
-      { href: '/admin/materials/products', label: 'Products', icon: FiBox, pack: 'shop' },
+      { href: '/admin/materials/cement-brands', label: 'Cement Brands', icon: FiBox, pack: 'shop' },
+      { href: '/admin/materials/stonedust', label: 'Aggregate', icon: FiLayers, pack: 'shop' },
+      { href: '/admin/materials/quarries', label: 'Quarries', icon: FiMap, pack: 'shop' },
+      { href: '/admin/materials/products', label: 'Shop Products', icon: FiBox, pack: 'shop' },
       { href: '/admin/retail/products', label: 'Retail Products', icon: FiBox, pack: 'general_store' },
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },

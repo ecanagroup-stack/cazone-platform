@@ -14,6 +14,8 @@ export const PATCH = withOrg(async (request, { params }) => {
     const update = {};
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim();
+    if (typeof body.phone === 'string') update.phone = body.phone.trim() || null;
+    if (typeof body.address === 'string') update.address = body.address.trim() || null;
     const updated = await prisma.supplier.update({ where: { id }, data: update });
     return NextResponse.json({ success: true, data: updated });
   } catch (e) {

@@ -39,23 +39,13 @@ export const POST = withOrg(async (request) => {
     const serviceId = body.serviceId;
     const name = (body.name || '').trim();
     const unit = (body.unit || '').trim();
-    const category = body.category; // cement | stonedust | shop — informs which attributes fields the client showed
     const price = Math.round(Number(body.price));
 
     if (!serviceId || !name || !unit) throw new ApiError('Service, name and unit are required', 400);
     if (!Number.isFinite(price) || price < 0) throw new ApiError('Invalid price', 400);
 
-    const attributes = {};
-    if (category === 'cement') {
-      if (body.grade) attributes.grade = body.grade;
-      if (body.bagSize) attributes.bagSize = body.bagSize;
-    } else if (category === 'stonedust') {
-      if (body.quarry) attributes.quarry = body.quarry;
-      if (body.size) attributes.size = body.size;
-    }
-
     const product = await prisma.$transaction(async (tx) => {
-      const created = await tx.product.create({ data: { serviceId, name, unit, attributes } });
+      const created = await tx.product.create({ data: { serviceId, name, unit } });
       if (price > 0) await setPrice(tx, created.id, price, { id: session.user.id, role: session.user.role });
       return created;
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default

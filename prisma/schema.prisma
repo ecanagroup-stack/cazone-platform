@@ -394,6 +394,15 @@ model Product {
   name String
   unit String // litre | bag | tonne | each ...
 
+  // Cement brands only (ecana_shop-app's CementBrand.abbreviation) — a short code (e.g. "DAN") used
+  // in ATC numbers (DAN-001), so it's a real column rather than buried in `attributes`.
+  abbreviation String?
+  // Stonedust/aggregate products only (ecana_shop-app's StoneDustProduct.quarry) — which quarry
+  // Supplier (type: 'quarry') this size/price applies to. Real FK, not a free-text attribute, since
+  // it's joined/filtered on (the quarry detail page lists its own products by this).
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
   // Regulated products (e.g. fuel PMS pricing) cannot be discounted — see PriceRule resolution order.
   priceRegulated   Boolean @default(false)
   conversionFactor Float?
@@ -837,6 +846,7 @@ model Supplier {
   createdAt DateTime @default(now())
 
   deliveries Delivery[]
+  products   Product[]
 
   @@index([organizationId])
 }

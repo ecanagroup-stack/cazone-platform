@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
-const blankForm = { name: '', unit: 'bag', category: 'shop', price: '', grade: '', bagSize: '', quarry: '', size: '' };
+const blankForm = { name: '', unit: 'bag', price: '' };
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
@@ -76,7 +76,7 @@ export default function ProductsPage() {
   if (!serviceId) {
     return (
       <div>
-        <PageHeader title="Products" subtitle="Catalog per service" />
+        <PageHeader title="Shop Products" subtitle="Catalog per service" />
         <Card><EmptyState title="Pick a service" subtitle="Choose the materials/shop service from the switcher at the top of the page to manage its products." /></Card>
       </div>
     );
@@ -87,8 +87,8 @@ export default function ProductsPage() {
   return (
     <div>
       <PageHeader
-        title="Products"
-        subtitle="Cement, stone dust and shop items"
+        title="Shop Products"
+        subtitle="Plain shop items — cement brands and aggregate live on their own pages under Manage"
         action={<button onClick={() => { setForm(blankForm); setShowModal(true); }} className={btnPrimaryCls}>Add Product</button>}
       />
 
@@ -99,7 +99,6 @@ export default function ProductsPage() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Name</th>
                 <th className="px-4 py-3 text-left font-medium">Unit</th>
-                <th className="px-4 py-3 text-left font-medium">Details</th>
                 <th className="px-4 py-3 text-right font-medium">Price</th>
                 <th className="px-4 py-3 text-right font-medium">On Hand</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
@@ -107,18 +106,11 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {products.length === 0 && <EmptyRow colSpan={7} text="No products yet" />}
+              {products.length === 0 && <EmptyRow colSpan={6} text="No products yet" />}
               {products.map((p) => (
                 <tr key={p.id}>
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-gray-500">{p.unit}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    {p.attributes?.grade && `Grade ${p.attributes.grade}, `}
-                    {p.attributes?.bagSize && `${p.attributes.bagSize}`}
-                    {p.attributes?.quarry && `${p.attributes.quarry}, `}
-                    {p.attributes?.size && `${p.attributes.size}`}
-                    {!p.attributes?.grade && !p.attributes?.quarry && '—'}
-                  </td>
                   <td className="px-4 py-3 text-right font-medium">{p.currentPrice != null ? formatMoney(p.currentPrice / 100) : '—'}</td>
                   <td className="px-4 py-3 text-right text-gray-500">{p.onHand != null ? `${p.onHand.toLocaleString()} ${p.unit}` : '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'green' : 'gray'} /></td>
@@ -147,33 +139,6 @@ export default function ProductsPage() {
               </select>
             </Field>
           </div>
-          <Field label="Category">
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={inputCls}>
-              <option value="shop">Shop item</option>
-              <option value="cement">Cement</option>
-              <option value="stonedust">Stone dust</option>
-            </select>
-          </Field>
-          {form.category === 'cement' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Grade">
-                <input type="text" value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} className={inputCls} placeholder="e.g., 42.5" />
-              </Field>
-              <Field label="Bag size">
-                <input type="text" value={form.bagSize} onChange={(e) => setForm({ ...form, bagSize: e.target.value })} className={inputCls} placeholder="e.g., 50kg" />
-              </Field>
-            </div>
-          )}
-          {form.category === 'stonedust' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Quarry">
-                <input type="text" value={form.quarry} onChange={(e) => setForm({ ...form, quarry: e.target.value })} className={inputCls} />
-              </Field>
-              <Field label="Size">
-                <input type="text" value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} className={inputCls} placeholder="e.g., 3/4 inch" />
-              </Field>
-            </div>
-          )}
           <Field label="Price" required>
             <NumberInput value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
           </Field>

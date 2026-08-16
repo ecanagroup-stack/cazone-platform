@@ -4,8 +4,9 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 
-export const GET = withOrg(async () => {
-  const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' } });
+export const GET = withOrg(async (request) => {
+  const type = new URL(request.url).searchParams.get('type');
+  const suppliers = await prisma.supplier.findMany({ where: type ? { type } : undefined, orderBy: { name: 'asc' } });
   return NextResponse.json({ success: true, data: suppliers });
 });
 
