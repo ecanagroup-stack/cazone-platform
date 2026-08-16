@@ -38,6 +38,10 @@ export default function ShiftPage() {
   const [showEndModal, setShowEndModal] = useState(false);
   const [endForm, setEndForm] = useState({ countedCash: '', countedFloat: '', note: '' });
 
+  const [dipFor, setDipFor] = useState(null); // tank object
+  const [dipMeasured, setDipMeasured] = useState('');
+  const [dipSubmitting, setDipSubmitting] = useState(false);
+
   const [reassignFor, setReassignFor] = useState(null); // dispenserId
   const [reassignForm, setReassignForm] = useState({ attendantId: '', reason: '' });
   const [showReassignLog, setShowReassignLog] = useState(false);
@@ -79,6 +83,12 @@ export default function ShiftPage() {
     const assignments = Object.entries(selected).map(([dispenserId, v]) => ({ dispenserId, attendantId: v.attendantId, opening: v.opening }));
     if (assignments.length === 0) return toast.error('Select at least one dispenser to open');
     if (assignments.some((a) => !a.attendantId || a.opening === '')) return toast.error('Every selected dispenser needs an attendant and an opening reading');
+
+    const zeroStockDispensers = data.dispensers.filter((d) => selected[d.id] && d.tank && (data.onHandByProduct?.[d.tank.productId] || 0) <= 0);
+    if (zeroStockDispensers.length > 0) {
+      const names = zeroStockDispensers.map((d) => d.label).join(', ');
+      if (!confirm(`${names} currently ${zeroStockDispensers.length === 1 ? 'has' : 'have'} 0 L in stock. Begin the shift anyway?`)) return;
+    }
 
     setBeginning(true);
     try {
@@ -230,6 +240,25 @@ export default function ShiftPage() {
     }
   };
 
+  const submitDip = async (e) => {
+    e.preventDefault();
+    setDipSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/tanks/${dipFor.id}/reconcile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ measured: Number(dipMeasured) }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast[d.data.status === 'exception' ? 'error' : 'success'](
+          d.data.status === 'exception' ? `Variance of ${d.data.variance.toFixed(1)}L flagged for review` : 'Closing stock recorded'
+        );
+        setDipFor(null); setDipMeasured(''); load();
+      } else toast.error(d.error);
+    } finally {
+      setDipSubmitting(false);
+    }
+  };
+
   const handleApprove = async (decision) => {
     if (decision === 'query' && !approveNote.trim()) return toast.error('A note is required when querying a submission');
     setSubmitting(true);
@@ -261,7 +290,26 @@ export default function ShiftPage() {
   // --- Shift open: pump grid ---
   if (data.shift) {
     const allApproved = data.pumps.every((p) => p.reading?.reviewStatus === 'approved');
+    const tanks = data.tanks || [];
+    const allTanksDipped = tanks.every((t) => t.dippedThisShift);
+    const canEndShift = allApproved && allTanksDipped;
     const approvingPump = data.pumps.find((p) => p.dispenserId === approveFor);
+
+    // Day Summary (ecana's End Day summary) — sales by product from the same pump readings already
+    // on screen, no separate report call needed.
+    const salesByProduct = {};
+    let totalExpected = 0;
+    for (const p of data.pumps) {
+      if (p.reading?.closing == null) continue;
+      const litres = p.reading.litres ?? (p.reading.closing - p.reading.opening - p.reading.rtt);
+      const key = p.productName || 'Unknown';
+      const row = salesByProduct[key] || { litres: 0, amount: 0 };
+      row.litres += litres;
+      row.amount += p.reading.expectedAmount || 0;
+      salesByProduct[key] = row;
+      totalExpected += p.reading.expectedAmount || 0;
+    }
+
     return (
       <div>
         <PageHeader
@@ -270,10 +318,44 @@ export default function ShiftPage() {
           action={
             <div className="flex items-center gap-4">
               <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
-              {allApproved && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
+              {allApproved && <button onClick={() => setShowEndModal(true)} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
             </div>
           }
         />
+
+        {allApproved && tanks.length > 0 && (
+          <Card className="p-4 mb-4">
+            <h3 className="font-semibold text-sm mb-3">Day Summary</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              {Object.entries(salesByProduct).map(([name, s]) => (
+                <div key={name} className="bg-gray-50 rounded p-3">
+                  <p className="text-xs text-gray-500">{name}</p>
+                  <p className="text-sm font-bold">{s.litres.toLocaleString()} L</p>
+                  <p className="text-xs text-gray-600">₦{(s.amount / 100).toLocaleString()}</p>
+                </div>
+              ))}
+              <div className="bg-gray-50 rounded p-3">
+                <p className="text-xs text-gray-500">Expected Revenue</p>
+                <p className="text-sm font-bold">₦{(totalExpected / 100).toLocaleString()}</p>
+              </div>
+            </div>
+
+            <h3 className="font-semibold text-sm mb-2">Closing Tank Stock</h3>
+            <p className="text-xs text-gray-500 mb-3">Every tank needs a dip before this shift can end.</p>
+            <div className="space-y-2">
+              {tanks.map((t) => (
+                <div key={t.id} className={`flex items-center justify-between rounded p-2 ${t.dippedThisShift ? 'bg-green-50' : 'bg-amber-50 border border-amber-200'}`}>
+                  <p className="text-sm font-medium">{t.label} <span className="text-xs text-gray-500 font-normal">— {t.product?.name}</span></p>
+                  {t.dippedThisShift ? (
+                    <StatusPill status="Recorded" color="green" />
+                  ) : (
+                    <button onClick={() => { setDipFor(t); setDipMeasured(''); }} className="text-sm font-medium text-amber-700 hover:text-amber-900">Record Dip</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data.pumps.map((p) => {
@@ -516,6 +598,16 @@ export default function ShiftPage() {
           </form>
         </Modal>
 
+        <Modal open={!!dipFor} onClose={() => setDipFor(null)} title={`Record Dip — ${dipFor?.label || ''}`}>
+          <form onSubmit={submitDip} className="space-y-4">
+            <p className="text-sm text-gray-500">Enter the physical dip reading in litres for this tank's closing stock.</p>
+            <Field label="Measured (litres)" required>
+              <NumberInput value={dipMeasured} onChange={(e) => setDipMeasured(e.target.value)} required autoFocus />
+            </Field>
+            <FormButtons onCancel={() => setDipFor(null)} submitting={dipSubmitting} submitLabel="Record Dip" />
+          </form>
+        </Modal>
+
         <Modal open={showReassignLog} onClose={() => setShowReassignLog(false)} title="Reassignment Log">
           {!reassignLog ? (
             <Loader />
@@ -584,11 +676,14 @@ export default function ShiftPage() {
             <div className="divide-y">
               {data.dispensers.map((d) => {
                 const on = !!selected[d.id];
+                const onHand = d.tank?.productId != null ? (data.onHandByProduct?.[d.tank.productId] || 0) : null;
+                const zeroStock = d.tank && onHand <= 0;
                 return (
                   <div key={d.id} className="px-4 py-3">
                     <label className="flex items-center gap-2 text-sm font-medium mb-2">
                       <input type="checkbox" checked={on} onChange={() => toggleDispenser(d.id)} />
                       {d.label} <span className="text-xs text-gray-400 font-normal">— {d.tank?.product?.name || 'no product'}</span>
+                      {zeroStock && <StatusPill status="0 L in stock" color="amber" />}
                     </label>
                     {on && (
                       <div className="grid grid-cols-2 gap-3 pl-6">
