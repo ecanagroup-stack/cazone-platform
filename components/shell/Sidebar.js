@@ -52,6 +52,7 @@ const GROUPS = [
       { href: '/admin', label: 'Today', icon: FiHome },
       { href: '/admin/exceptions', label: 'Anything Wrong', icon: FiAlertTriangle },
       { href: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
+      { href: '/admin/fuel/attendant-performance', label: 'Attendant Performance', icon: FiBarChart2, pack: 'fuel_station' },
     ],
   },
 ];
