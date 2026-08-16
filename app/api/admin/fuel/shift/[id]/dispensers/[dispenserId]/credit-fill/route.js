@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { createSaleOrder } from '@/lib/sale';
-import { verifyActionPin } from '@/lib/actionPin';
+import { verifyOtp } from '@/lib/otp';
 import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
@@ -26,7 +26,7 @@ export const POST = withOrg(async (request, { params }) => {
     const overrideCredit = !!body.overrideCredit;
     if (!customerId) throw new ApiError('A customer is required for a credit fill', 400);
     if (!Number.isFinite(litres) || litres <= 0) throw new ApiError('Litres must be a positive number', 400);
-    if (overrideCredit) await verifyActionPin(session.user.id, body.pin);
+    if (overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
     if (!shift) throw new ApiError('Shift not found', 404);

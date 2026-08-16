@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { verifyActionPin } from '@/lib/actionPin';
+import { verifyOtp } from '@/lib/otp';
 import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
@@ -19,7 +19,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     const body = await request.json();
     const decision = body.status; // 'approved' | 'rejected'
     if (!['approved', 'rejected'].includes(decision)) throw new ApiError('Invalid decision', 400);
-    await verifyActionPin(session.user.id, body.pin);
+    await verifyOtp({ userId: session.user.id, purpose: 'price_approval', code: body.otp });
 
     const updated = await prisma.$transaction(async (tx) => {
       const history = await tx.priceHistory.findUnique({ where: { id } });

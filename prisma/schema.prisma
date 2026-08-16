@@ -68,6 +68,13 @@ model Organization {
   accountNumber String?
   accountName   String?
 
+  // Where one-time verification codes are sent for gated actions (credit-limit overrides, price
+  // approvals — see lib/otp.js). Falls back to `email` above if unset. otpPhone is captured for a
+  // future SMS channel — nothing sends to it yet, same "inert until wired up" precedent as the
+  // Paystack fields below.
+  otpEmail String?
+  otpPhone String?
+
   // Billing — Paystack fields are inert placeholders until that phase lands, same as the precedent
   // set in ecana_shop-app's Organization model. subscriptionEndsAt is the current PAID period end,
   // distinct from trialEndsAt; both are set manually by super_admin for now.
@@ -95,6 +102,7 @@ model Organization {
   priceRules      PriceRule[]
   priceHistory    PriceHistory[]
   notifications   Notification[]
+  otpCodes        OtpCode[]
   priceGroups     PriceGroup[]
   orders          Order[]
   stockMoves      StockMove[]
@@ -428,6 +436,26 @@ model PriceRule {
 
   @@index([organizationId])
   @@index([productId])
+}
+
+// One-time email codes gating the highest-stakes actions (credit-limit overrides, price approvals —
+// see lib/otp.js) — replaces the earlier User.actionPinHash approach with a code sent fresh each
+// time to the organization's OTP email, rather than a pre-set secret. Hashed like a password;
+// single-use (consumedAt) and short-lived (expiresAt).
+model OtpCode {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId    String
+  purpose   String // credit_override | price_approval
+  codeHash  String
+  expiresAt DateTime
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, userId, purpose])
 }
 
 // Best-effort in-app notification — see lib/notify.js. Never blocks the action that triggered it.

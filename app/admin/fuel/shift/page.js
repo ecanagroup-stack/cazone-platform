@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField } from '@/components/ui';
 
 export default function ShiftPage() {
   const searchParams = useSearchParams();
@@ -106,12 +106,12 @@ export default function ShiftPage() {
     setCreditCustomerQuery(''); setCreditCustomerResults([]); setCreditWarning(null); setOverridePin('');
   };
 
-  const submitCreditFill = async (overrideCredit = false, pin = '') => {
+  const submitCreditFill = async (overrideCredit = false, otp = '') => {
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${creditFillFor}/credit-fill`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: creditCustomer.id, litres: Number(creditLitres), overrideCredit, pin }),
+        body: JSON.stringify({ customerId: creditCustomer.id, litres: Number(creditLitres), overrideCredit, otp }),
       });
       const d = await r.json();
       if (d.success) {
@@ -269,11 +269,9 @@ export default function ShiftPage() {
               <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
                 <p className="font-medium mb-1">Credit limit exceeded</p>
                 <p className="mb-2">{creditWarning.error}</p>
-                <input
-                  type="password" inputMode="numeric" placeholder="Action PIN" value={overridePin}
-                  onChange={(e) => setOverridePin(e.target.value)}
-                  className="w-full mb-2 px-2 py-1 border rounded text-xs"
-                />
+                <div className="mb-2">
+                  <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
+                </div>
                 <button type="button" onClick={() => submitCreditFill(true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
                   Proceed anyway (this will be flagged for the owner)
                 </button>

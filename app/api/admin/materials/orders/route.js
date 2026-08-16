@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { createSaleOrder } from '@/lib/sale';
-import { verifyActionPin } from '@/lib/actionPin';
+import { verifyOtp } from '@/lib/otp';
 import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
@@ -15,7 +15,7 @@ export const POST = withOrg(async (request) => {
   }
   try {
     const body = await request.json();
-    if (body.overrideCredit) await verifyActionPin(session.user.id, body.pin);
+    if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
     const result = await createSaleOrder({
       session,
       branchId: body.branchId,

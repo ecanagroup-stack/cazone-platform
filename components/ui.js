@@ -206,3 +206,41 @@ export function ReportToolbar({ title, csvRows, csvColumns, csvFilename, allowEm
     </div>
   );
 }
+
+// The verification-code step for the highest-stakes actions (credit-limit overrides, price
+// approvals — lib/otp.js). Sends a fresh code to the organization's OTP email each time, rather
+// than a pre-set PIN. `purpose` must match one lib/otp.js recognizes; `value`/`onChange` hold the
+// code the caller sends back to the confirming API call as `otp`.
+export function OtpField({ purpose, value, onChange }) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const sendCode = async () => {
+    setSending(true);
+    try {
+      const r = await fetch('/api/admin/otp/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ purpose }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Code sent'); setSent(true); }
+      else toast.error(d.error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {sent && (
+        <input
+          type="text" inputMode="numeric" maxLength={6} placeholder="6-digit code"
+          value={value} onChange={(e) => onChange(e.target.value)}
+          className="w-full px-2 py-1 border rounded text-xs"
+        />
+      )}
+      <button type="button" onClick={sendCode} disabled={sending} className="text-xs font-medium text-brand-600 hover:text-brand-700 underline disabled:opacity-50">
+        {sending ? 'Sending...' : sent ? 'Resend code' : 'Send verification code to admin email'}
+      </button>
+    </div>
+  );
+}

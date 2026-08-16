@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 
 const SEVERITY_COLOR = { info: 'blue', concern: 'amber', issue: 'red' };
@@ -143,11 +143,11 @@ function PendingOrdersTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const confirm = async (orderId, overrideCredit = false, pin = '') => {
+  const confirm = async (orderId, overrideCredit = false, otp = '') => {
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/materials/pending-orders/${orderId}/confirm`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideCredit, pin }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideCredit, otp }),
       });
       const d = await r.json();
       if (d.success) {
@@ -216,11 +216,9 @@ function PendingOrdersTab() {
                 <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
                   <p className="font-medium mb-1">Credit limit exceeded</p>
                   <p className="mb-2">{creditWarning.error}</p>
-                  <input
-                    type="password" inputMode="numeric" placeholder="Action PIN" value={overridePin}
-                    onChange={(e) => setOverridePin(e.target.value)}
-                    className="w-full mb-2 px-2 py-1 border rounded text-xs"
-                  />
+                  <div className="mb-2">
+                    <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
+                  </div>
                   <button onClick={() => confirm(o.id, true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
                     Confirm anyway (this will be flagged for the owner)
                   </button>
@@ -262,7 +260,7 @@ function PricingTab() {
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/pricing/${decisionFor.row.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: decisionFor.status, pin }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: decisionFor.status, otp: pin }),
       });
       const d = await r.json();
       if (d.success) {
@@ -315,9 +313,8 @@ function PricingTab() {
 
       <Modal open={!!decisionFor} onClose={() => setDecisionFor(null)} title={decisionFor?.status === 'approved' ? 'Approve Price Change' : 'Reject Price Change'}>
         <form onSubmit={decide} className="space-y-4">
-          <p className="text-sm text-gray-500">Enter your action PIN to confirm.</p>
-          <Field label="Action PIN" required>
-            <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} className={inputCls} required autoFocus />
+          <Field label="Verification code" required>
+            <OtpField purpose="price_approval" value={pin} onChange={setPin} />
           </Field>
           <FormButtons onCancel={() => setDecisionFor(null)} submitting={submitting} submitLabel={decisionFor?.status === 'approved' ? 'Approve' : 'Reject'} />
         </form>

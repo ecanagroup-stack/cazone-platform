@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls } from '@/components/ui';
+import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls, OtpField } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 export default function CounterPage() {
@@ -93,7 +93,7 @@ export default function CounterPage() {
     }
   };
 
-  const submitOrder = async (overrideCredit = false, pin = '') => {
+  const submitOrder = async (overrideCredit = false, otp = '') => {
     setSubmitting(true);
     try {
       const r = await fetch('/api/admin/materials/orders', {
@@ -101,7 +101,7 @@ export default function CounterPage() {
         body: JSON.stringify({
           branchId, customerId: customer?.id || null, paymentMethod,
           lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, allocationId: l.allocationId || undefined })),
-          overrideCredit, pin,
+          overrideCredit, otp,
         }),
       });
       const d = await r.json();
@@ -256,11 +256,9 @@ export default function CounterPage() {
             <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
               <p className="font-medium mb-1">Credit limit exceeded</p>
               <p className="mb-2">{creditWarning.error}</p>
-              <input
-                type="password" inputMode="numeric" placeholder="Action PIN" value={overridePin}
-                onChange={(e) => setOverridePin(e.target.value)}
-                className="w-full mb-2 px-2 py-1 border rounded text-xs"
-              />
+              <div className="mb-2">
+                <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
+              </div>
               <button
                 onClick={() => submitOrder(true, overridePin)}
                 disabled={submitting || !overridePin}

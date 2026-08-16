@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { confirmPendingOrder } from '@/lib/sale';
-import { verifyActionPin } from '@/lib/actionPin';
+import { verifyOtp } from '@/lib/otp';
 import { notify } from '@/lib/notify';
 
 export const POST = withOrg(async (request, { params }) => {
@@ -13,7 +13,7 @@ export const POST = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    if (body.overrideCredit) await verifyActionPin(session.user.id, body.pin);
+    if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
     const result = await confirmPendingOrder({ session, orderId: id, overrideCredit: !!body.overrideCredit });
 
     if (result.needsApproval) {
