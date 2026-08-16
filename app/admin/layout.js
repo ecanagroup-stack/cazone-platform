@@ -6,6 +6,12 @@ import TopBar from '@/components/shell/TopBar';
 import Sidebar from '@/components/shell/Sidebar';
 import LapsedBanner from '@/components/shell/LapsedBanner';
 
+// Every page under here reads the session and the org's live data — never statically prerenderable.
+// Without this, Next can attempt a build-time static pass on a page that happens not to touch any
+// other dynamic API (e.g. a page with no searchParams usage), which then fails when it hits
+// getServerSession() with no real request context (surfaces as a cryptic `new URL('')` crash).
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({ children }) {
   const session = await getOrgSession();
   if (!session) redirect('/login');

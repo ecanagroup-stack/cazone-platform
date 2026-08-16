@@ -6,6 +6,9 @@ import SignOutButton from '@/components/SignOutButton';
 
 // Cross-tenant super-admin console — deliberately its own minimal chrome, not the tenant Sell/
 // Manage/Know shell (this isn't a business dashboard, it's the platform operator's own console).
+// Never statically prerenderable — see app/admin/layout.js's dynamic export for why.
+export const dynamic = 'force-dynamic';
+
 export default async function PlatformLayout({ children }) {
   const session = await getOrgSession();
   if (!session || session.user.role !== 'super_admin') redirect('/login');

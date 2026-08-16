@@ -6,6 +6,9 @@ import SignOutButton from '@/components/SignOutButton';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
 // customer session only ever sees their own account, never the org's operational screens.
+// Never statically prerenderable — see app/admin/layout.js's dynamic export for why.
+export const dynamic = 'force-dynamic';
+
 export default async function PortalLayout({ children }) {
   const session = await getOrgSession();
   if (!session || session.user.role !== 'customer') redirect('/login');
