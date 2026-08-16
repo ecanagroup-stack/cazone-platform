@@ -12,16 +12,18 @@ import { formatDate } from '@/lib/format';
 const TABS = [
   { key: 'tanks', label: 'Tanks & Dispensers' },
   { key: 'attendants', label: 'Attendants' },
+  { key: 'terminals', label: 'POS Terminals' },
 ];
 
-// "Fuel Setup" — tanks/dispensers/dip and attendants are both branch-level fuel settings, nothing
-// operational happens on either tab, so they share one Manage sidebar slot instead of two.
+// "Fuel Setup" — tanks/dispensers/dip, attendants, and POS terminals are all branch-level fuel
+// settings, nothing operational happens on any tab, so they share one Manage sidebar slot.
 export default function FuelSetupPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
-  const activeTab = searchParams.get('tab') === 'attendants' ? 'attendants' : 'tanks';
+  const tabParam = searchParams.get('tab');
+  const activeTab = tabParam === 'attendants' ? 'attendants' : tabParam === 'terminals' ? 'terminals' : 'tanks';
 
   const setTab = (key) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -32,14 +34,16 @@ export default function FuelSetupPage() {
 
   return (
     <div>
-      <PageHeader title="Fuel Setup" subtitle="Tanks, dispensers and attendants for this branch" />
+      <PageHeader title="Fuel Setup" subtitle="Tanks, dispensers, attendants and POS terminals for this branch" />
       <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
       {!branchId ? (
         <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see and manage its fuel setup." /></Card>
       ) : activeTab === 'tanks' ? (
         <TanksTab branchId={branchId} />
-      ) : (
+      ) : activeTab === 'attendants' ? (
         <AttendantsTab branchId={branchId} />
+      ) : (
+        <TerminalsTab branchId={branchId} />
       )}
     </div>
   );
@@ -395,6 +399,104 @@ function AttendantsTab({ branchId }) {
             </div>
           </div>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Attendant" />
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+const blankTerminal = { label: '', terminalId: '', provider: '' };
+
+function TerminalsTab({ branchId }) {
+  const [terminals, setTerminals] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(blankTerminal);
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/fuel/pos-terminals?branchId=${branchId}`);
+    const d = await r.json();
+    if (d.success) setTerminals(d.data);
+    else toast.error(d.error || 'Failed to load');
+  }, [branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch('/api/admin/fuel/pos-terminals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchId, ...form }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(`${form.label} added`); setShowModal(false); setForm(blankTerminal); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleActive = async (t) => {
+    const r = await fetch(`/api/admin/fuel/pos-terminals/${t.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !t.isActive }),
+    });
+    const d = await r.json();
+    if (d.success) load(); else toast.error(d.error);
+  };
+
+  if (!terminals) return <Loader />;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-sm text-gray-500">Card/transfer terminals cashiers can record POS payments against.</p>
+        <button onClick={() => { setForm(blankTerminal); setShowModal(true); }} className={btnPrimaryCls}>Add Terminal</button>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Label</th>
+                <th className="px-4 py-3 text-left font-medium">Terminal ID</th>
+                <th className="px-4 py-3 text-left font-medium">Provider</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {terminals.length === 0 && <EmptyRow colSpan={5} text="No POS terminals yet" />}
+              {terminals.map((t) => (
+                <tr key={t.id}>
+                  <td className="px-4 py-3 font-medium">{t.label}</td>
+                  <td className="px-4 py-3 text-gray-500">{t.terminalId || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{t.provider || '—'}</td>
+                  <td className="px-4 py-3"><StatusPill status={t.isActive ? 'Active' : 'Inactive'} color={t.isActive ? 'green' : 'gray'} /></td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => toggleActive(t)} className={tableActionCls}>{t.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add POS Terminal">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Label" required>
+            <input type="text" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className={inputCls} required autoFocus placeholder="e.g., Moniepoint 1" />
+          </Field>
+          <Field label="Terminal ID">
+            <input type="text" value={form.terminalId} onChange={(e) => setForm({ ...form, terminalId: e.target.value })} className={inputCls} placeholder="Optional" />
+          </Field>
+          <Field label="Provider">
+            <input type="text" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} className={inputCls} placeholder="e.g., Moniepoint, Paystack" />
+          </Field>
+          <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Terminal" />
         </form>
       </Modal>
     </div>

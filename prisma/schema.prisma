@@ -130,6 +130,8 @@ model Organization {
   meterReadings        MeterReading[]
   attendants           Attendant[]
   attendantAssignments AttendantAssignment[]
+  posTerminals         PosTerminal[]
+  posPayments          PosPayment[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -190,6 +192,7 @@ model Branch {
   meterReadings        MeterReading[]
   attendants           Attendant[]
   attendantAssignments AttendantAssignment[]
+  posTerminals         PosTerminal[]
 
   @@unique([organizationId, code])
   @@index([serviceId])
@@ -910,14 +913,73 @@ model MeterReading {
   creditLitres Float @default(0)
 
   discrepancyFlag Boolean  @default(false)
+  // Manager's note when querying a submission (reviewStatus: 'queried') — reused for that purpose
+  // now; was unused before D5.
   discrepancyNote String?
-  reviewStatus    String   @default("pending") // pending | reviewed
+  // pending -> approved | queried, the 3-tier review chain (D5): a supervisor submits (closing/rtt
+  // recorded, litres/expectedAmount computed), a cashier separately records the payment, and only a
+  // manager's approval creates the Order/StockMove — see .../approve/route.js. 'queried' sends it
+  // back for correction; recordedBy/paymentRecordedBy can resubmit while queried.
+  reviewStatus    String   @default("pending")
+  reviewedBy      String?
+  reviewedAt      DateTime?
   recordedBy      String?
   createdAt       DateTime @default(now())
+
+  // Computed at submit time (litres = closing - opening - rtt - creditLitres; expectedAmount =
+  // litres * the price in effect then) so a manager reviewing later compares against what was true
+  // at submission, not whatever the price happens to be now.
+  litres         Float?
+  expectedAmount Int?
+
+  // Cashier's separate entry — cash plus itemized POS lines (posPayments below).
+  cashCollected     Int?
+  paymentRecordedBy String?
+  paymentRecordedAt DateTime?
+
+  posPayments PosPayment[]
 
   @@unique([shiftId, dispenserId])
   @@index([organizationId])
   @@index([branchId])
+}
+
+// A branch's registered card terminals — a payment can split its POS portion across several
+// (PosPayment), matching petrol-station-app's POSTerminal.
+model PosTerminal {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  label      String
+  terminalId String? // provider's own ID for the terminal, if they have one
+  provider   String? // e.g. paystack | interswitch | other
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  posPayments PosPayment[]
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+// One line of a cashier's POS collection for a pump — a payment can span multiple terminals/banks.
+model PosPayment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  meterReadingId String
+  meterReading   MeterReading @relation(fields: [meterReadingId], references: [id], onDelete: Cascade)
+  terminalId     String
+  terminal       PosTerminal  @relation(fields: [terminalId], references: [id])
+
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([meterReadingId])
 }
 
 // Non-login HR record — most pump attendants don't get a User account, just a staff record for

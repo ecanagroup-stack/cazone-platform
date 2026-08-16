@@ -2,12 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField, NumberInput } from '@/components/ui';
 
 export default function ShiftPage() {
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
+  const { data: authSession } = useSession();
+  const role = authSession?.user?.role;
+  const canSubmit = ['supervisor', 'manager', 'owner'].includes(role);
+  const canRecordPayment = ['cashier', 'manager', 'owner'].includes(role);
+  const canApprove = ['manager', 'owner'].includes(role);
 
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState({}); // { [dispenserId]: { attendantId, opening } }
@@ -35,6 +41,12 @@ export default function ShiftPage() {
   const [reassignForm, setReassignForm] = useState({ attendantId: '', reason: '' });
   const [showReassignLog, setShowReassignLog] = useState(false);
   const [reassignLog, setReassignLog] = useState(null);
+
+  const [paymentFor, setPaymentFor] = useState(null); // dispenserId
+  const [paymentForm, setPaymentForm] = useState({ cashCollected: '', posEntries: [] }); // posEntries: [{terminalId, amount}]
+
+  const [approveFor, setApproveFor] = useState(null); // dispenserId
+  const [approveNote, setApproveNote] = useState('');
 
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
@@ -190,6 +202,50 @@ export default function ShiftPage() {
     else toast.error(d.error);
   };
 
+  const openPaymentModal = (p) => {
+    setPaymentFor(p.dispenserId);
+    setPaymentForm({
+      cashCollected: p.reading?.cashCollected != null ? (p.reading.cashCollected / 100).toString() : '',
+      posEntries: (p.reading?.posPayments || []).map((pp) => ({ terminalId: pp.terminalId, amount: (pp.amount / 100).toString() })),
+    });
+  };
+
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${paymentFor}/payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cashCollected: Math.round(Number(paymentForm.cashCollected || 0) * 100),
+          posEntries: paymentForm.posEntries.filter((p) => p.terminalId && p.amount !== '').map((p) => ({ terminalId: p.terminalId, amount: Math.round(Number(p.amount) * 100) })),
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Payment recorded'); setPaymentFor(null); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleApprove = async (decision) => {
+    if (decision === 'query' && !approveNote.trim()) return toast.error('A note is required when querying a submission');
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${approveFor}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision, note: approveNote }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success(decision === 'approve' ? 'Reading approved' : 'Sent back with a note');
+        setApproveFor(null); setApproveNote(''); load();
+      } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!branchId) {
     return (
       <div>
@@ -203,7 +259,8 @@ export default function ShiftPage() {
 
   // --- Shift open: pump grid ---
   if (data.shift) {
-    const allClosed = data.pumps.every((p) => p.reading?.closing != null);
+    const allApproved = data.pumps.every((p) => p.reading?.reviewStatus === 'approved');
+    const approvingPump = data.pumps.find((p) => p.dispenserId === approveFor);
     return (
       <div>
         <PageHeader
@@ -212,56 +269,86 @@ export default function ShiftPage() {
           action={
             <div className="flex items-center gap-4">
               <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
-              {allClosed && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
+              {allApproved && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
             </div>
           }
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data.pumps.map((p) => {
-            const closed = p.reading?.closing != null;
-            const litres = closed ? p.reading.closing - p.reading.opening - p.reading.rtt : null;
+            const submitted = p.reading?.closing != null;
+            const status = p.reading?.reviewStatus || 'pending';
+            const litres = submitted ? p.reading.litres ?? (p.reading.closing - p.reading.opening - p.reading.rtt) : null;
+            const paid = p.reading?.paymentRecordedAt != null;
+            const statusLabel = !submitted ? 'Running' : status === 'approved' ? 'Approved' : status === 'queried' ? 'Queried' : 'Pending Review';
+            const statusColor = !submitted ? 'green' : status === 'approved' ? 'gray' : status === 'queried' ? 'amber' : 'blue';
             return (
               <Card key={p.dispenserId} className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-semibold text-sm">{p.dispenserLabel}</p>
-                  <StatusPill status={closed ? 'Closed' : 'Running'} color={closed ? 'gray' : 'green'} />
+                  <StatusPill status={statusLabel} color={statusColor} />
                 </div>
                 <p className="text-xs text-gray-500">{p.productName} — {p.attendantName}</p>
                 <p className="text-xs text-gray-500 mt-1">Opening: {p.reading?.opening?.toLocaleString()}</p>
                 {p.reading?.creditLitres > 0 && (
                   <p className="text-xs text-gray-500">Credit fills so far: {p.reading.creditLitres.toLocaleString()} L</p>
                 )}
-                {closed ? (
-                  <p className="text-sm font-medium mt-2">{litres.toLocaleString()} L sold</p>
-                ) : (
-                  <div className="flex items-center gap-3 mt-3">
+                {submitted && (
+                  <p className="text-sm font-medium mt-2">
+                    {litres.toLocaleString()} L — {(p.reading.expectedAmount / 100).toLocaleString(undefined, { style: 'currency', currency: 'NGN' })}
+                  </p>
+                )}
+                {submitted && (
+                  <p className="text-xs text-gray-500">
+                    {paid ? `Payment recorded: ₦${(p.reading.cashCollected / 100).toLocaleString()} cash${p.reading.posPayments?.length ? ` + ${p.reading.posPayments.length} POS entr${p.reading.posPayments.length === 1 ? 'y' : 'ies'}` : ''}` : 'Payment not yet recorded'}
+                  </p>
+                )}
+                {status === 'queried' && p.reading?.discrepancyNote && (
+                  <p className="text-xs text-amber-700 mt-1">Manager's note: {p.reading.discrepancyNote}</p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-3 mt-3">
+                  {(!submitted || status === 'queried') && canSubmit && (
                     <button
                       onClick={() => { setClosingFor(p.dispenserId); setClosingForm({ closing: '', rtt: '0' }); }}
                       className="text-sm font-medium text-brand-600 hover:text-brand-700"
                     >
-                      Record closing reading
+                      {status === 'queried' ? 'Resubmit reading' : 'Record closing reading'}
                     </button>
-                    <button
-                      onClick={() => setCreditFillFor(p.dispenserId)}
-                      className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                    >
-                      Credit fill
+                  )}
+                  {submitted && status !== 'approved' && canRecordPayment && (
+                    <button onClick={() => openPaymentModal(p)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                      {paid ? 'Edit payment' : 'Record payment'}
                     </button>
-                    <button
-                      onClick={() => { setReassignFor(p.dispenserId); setReassignForm({ attendantId: '', reason: '' }); }}
-                      className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                    >
-                      Reassign
+                  )}
+                  {submitted && status !== 'approved' && canApprove && (
+                    <button onClick={() => { setApproveFor(p.dispenserId); setApproveNote(''); }} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                      Review
                     </button>
-                  </div>
-                )}
+                  )}
+                  {!submitted && (
+                    <>
+                      <button
+                        onClick={() => setCreditFillFor(p.dispenserId)}
+                        className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                      >
+                        Credit fill
+                      </button>
+                      <button
+                        onClick={() => { setReassignFor(p.dispenserId); setReassignForm({ attendantId: '', reason: '' }); }}
+                        className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                      >
+                        Reassign
+                      </button>
+                    </>
+                  )}
+                </div>
               </Card>
             );
           })}
         </div>
 
-        {!allClosed && <p className="text-xs text-gray-500 mt-4">End Shift unlocks once every pump has a closing reading.</p>}
+        {!allApproved && <p className="text-xs text-gray-500 mt-4">End Shift unlocks once every pump's reading has been submitted, paid, and approved by a manager.</p>}
 
         <Modal open={!!closingFor} onClose={() => setClosingFor(null)} title="Record Closing Reading">
           <form onSubmit={handleCloseDispenser} className="space-y-4">
@@ -273,6 +360,68 @@ export default function ShiftPage() {
             </Field>
             <FormButtons onCancel={() => setClosingFor(null)} submitting={submitting} submitLabel="Save Reading" />
           </form>
+        </Modal>
+
+        <Modal open={!!paymentFor} onClose={() => setPaymentFor(null)} title="Record Payment">
+          <form onSubmit={handleRecordPayment} className="space-y-4">
+            <p className="text-sm text-gray-500">Cash collected plus any card/transfer entries against a registered POS terminal.</p>
+            <Field label="Cash collected" required>
+              <NumberInput value={paymentForm.cashCollected} onChange={(e) => setPaymentForm({ ...paymentForm, cashCollected: e.target.value })} required autoFocus />
+            </Field>
+            <Field label="POS entries">
+              <div className="space-y-2">
+                {paymentForm.posEntries.map((entry, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      value={entry.terminalId}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, posEntries: paymentForm.posEntries.map((p, idx) => idx === i ? { ...p, terminalId: e.target.value } : p) })}
+                      className={inputCls}
+                    >
+                      <option value="">Select terminal...</option>
+                      {(data.posTerminals || []).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                    <NumberInput
+                      value={entry.amount}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, posEntries: paymentForm.posEntries.map((p, idx) => idx === i ? { ...p, amount: e.target.value } : p) })}
+                      placeholder="Amount"
+                    />
+                    <button type="button" onClick={() => setPaymentForm({ ...paymentForm, posEntries: paymentForm.posEntries.filter((_, idx) => idx !== i) })} className="text-xs text-red-600">Remove</button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPaymentForm({ ...paymentForm, posEntries: [...paymentForm.posEntries, { terminalId: '', amount: '' }] })}
+                  className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                >
+                  + Add POS entry
+                </button>
+              </div>
+            </Field>
+            <FormButtons onCancel={() => setPaymentFor(null)} submitting={submitting} submitLabel="Save Payment" />
+          </form>
+        </Modal>
+
+        <Modal open={!!approveFor} onClose={() => { setApproveFor(null); setApproveNote(''); }} title="Review Pump Reading">
+          {approvingPump && (
+            <div className="space-y-4">
+              <div className="text-sm space-y-1">
+                <p><span className="text-gray-500">Litres sold:</span> {approvingPump.reading.litres?.toLocaleString()} L</p>
+                <p><span className="text-gray-500">Expected amount:</span> ₦{(approvingPump.reading.expectedAmount / 100).toLocaleString()}</p>
+                <p><span className="text-gray-500">Cash collected:</span> {approvingPump.reading.cashCollected != null ? `₦${(approvingPump.reading.cashCollected / 100).toLocaleString()}` : 'Not recorded'}</p>
+                {(approvingPump.reading.posPayments || []).map((pp) => (
+                  <p key={pp.id}><span className="text-gray-500">POS ({pp.terminal.label}):</span> ₦{(pp.amount / 100).toLocaleString()}</p>
+                ))}
+              </div>
+              <Field label="Note (required if querying)">
+                <textarea value={approveNote} onChange={(e) => setApproveNote(e.target.value)} className={inputCls} rows={2} placeholder="Explain the discrepancy for the supervisor/cashier" />
+              </Field>
+              <div className="flex items-center gap-3">
+                <button type="button" disabled={submitting} onClick={() => handleApprove('approve')} className={btnPrimaryCls}>Approve</button>
+                <button type="button" disabled={submitting} onClick={() => handleApprove('query')} className="text-sm font-medium text-amber-700 hover:text-amber-900">Send back with note</button>
+                <button type="button" onClick={() => { setApproveFor(null); setApproveNote(''); }} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+              </div>
+            </div>
+          )}
         </Modal>
 
         <Modal open={!!creditFillFor} onClose={closeCreditFillModal} title="Credit Fill">
