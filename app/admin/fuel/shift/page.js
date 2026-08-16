@@ -116,7 +116,7 @@ export default function ShiftPage() {
   useEffect(() => {
     if (creditCustomerQuery.trim().length < 2) { setCreditCustomerResults([]); return; }
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(creditCustomerQuery)}`);
+      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(creditCustomerQuery)}&branchId=${branchId}`);
       const d = await r.json();
       if (d.success) setCreditCustomerResults(d.data);
     }, 250);

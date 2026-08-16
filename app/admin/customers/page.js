@@ -1,36 +1,64 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
-const blankForm = { name: '', phone: '', email: '', businessName: '', creditLimit: '' };
+const blankForm = { name: '', phone: '', email: '', businessName: '', creditLimit: '', branchIds: [] };
 
+// Customers are branch/business-bound (see prisma/schema.prisma's CustomerAccess) — registering one
+// here always tags at least the branch currently selected in the switcher; the checklist below that
+// lets a manager who can see more than one branch deliberately extend access to others too, rather
+// than sharing everywhere by default.
 export default function CustomersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentBranchId = searchParams.get('branch') || '';
+
   const [customers, setCustomers] = useState(null);
+  const [services, setServices] = useState([]);
+  const [accessibleBranchIds, setAccessibleBranchIds] = useState(null); // null = unrestricted
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
 
-  const load = async () => {
-    const r = await fetch('/api/admin/customers');
-    const d = await r.json();
-    if (d.success) setCustomers(d.data);
-    else toast.error(d.error || 'Failed to load');
+  const load = useCallback(async () => {
+    const qs = currentBranchId ? `?branchId=${currentBranchId}` : '';
+    const [cr, sr, mr] = await Promise.all([fetch(`/api/admin/customers${qs}`), fetch('/api/admin/services'), fetch('/api/admin/me')]);
+    const [cd, sd, md] = await Promise.all([cr.json(), sr.json(), mr.json()]);
+    if (cd.success) setCustomers(cd.data); else toast.error(cd.error || 'Failed to load');
+    if (sd.success) setServices(sd.data);
+    if (md.success) setAccessibleBranchIds(md.data.accessibleBranchIds);
+  }, [currentBranchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const allBranches = services.flatMap((s) => s.branches.map((b) => ({ ...b, serviceName: s.name })))
+    .filter((b) => accessibleBranchIds === null || accessibleBranchIds.includes(b.id));
+
+  const openCreate = () => {
+    setForm({ ...blankForm, branchIds: currentBranchId ? [currentBranchId] : [] });
+    setShowModal(true);
   };
 
-  useEffect(() => { load(); }, []);
+  const toggleBranch = (branchId) => {
+    setForm((f) => ({
+      ...f,
+      branchIds: f.branchIds.includes(branchId) ? f.branchIds.filter((id) => id !== branchId) : [...f.branchIds, branchId],
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.branchIds.length === 0) return toast.error('Pick at least one business/branch to register this customer at');
     setSubmitting(true);
     try {
+      const [branchId, ...branchIds] = form.branchIds;
       const r = await fetch('/api/admin/customers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, creditLimit: Math.round(Number(form.creditLimit || 0) * 100) }),
+        body: JSON.stringify({ ...form, branchId, branchIds, creditLimit: Math.round(Number(form.creditLimit || 0) * 100) }),
       });
       const d = await r.json();
       if (d.success) { toast.success(`${form.name} added`); setShowModal(false); setForm(blankForm); load(); }
@@ -46,8 +74,8 @@ export default function CustomersPage() {
     <div>
       <PageHeader
         title="Customers"
-        subtitle="Accounts that can buy on credit, across any branch or service"
-        action={<button onClick={() => { setForm(blankForm); setShowModal(true); }} className={btnPrimaryCls}>Add Customer</button>}
+        subtitle={currentBranchId ? 'Accounts registered at the current branch' : 'Every customer across the organization'}
+        action={<button onClick={openCreate} className={btnPrimaryCls}>Add Customer</button>}
       />
 
       <Card className="overflow-hidden">
@@ -71,6 +99,7 @@ export default function CustomersPage() {
             <thead className={theadCls}>
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Name</th>
+                <th className="px-4 py-3 text-left font-medium">Businesses</th>
                 <th className="px-4 py-3 text-left font-medium">Phone</th>
                 <th className="px-4 py-3 text-right font-medium">Balance</th>
                 <th className="px-4 py-3 text-right font-medium">Credit Limit</th>
@@ -78,10 +107,11 @@ export default function CustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {customers.length === 0 && <EmptyRow colSpan={5} text="No customers yet" />}
+              {customers.length === 0 && <EmptyRow colSpan={6} text="No customers yet" />}
               {customers.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/admin/customers/${c.id}`)}>
                   <td className="px-4 py-3 font-medium">{c.name}{c.businessName && <span className="text-xs text-gray-400 font-normal"> — {c.businessName}</span>}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{(c.access || []).map((a) => a.branch.name).join(', ') || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{c.phone || '—'}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatMoney(c.balance / 100)}</td>
                   <td className="px-4 py-3 text-right text-gray-500">{formatMoney(c.creditLimit / 100)}</td>
@@ -115,6 +145,18 @@ export default function CustomersPage() {
           </div>
           <Field label="Credit limit">
             <NumberInput value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} placeholder="0 for cash-only" />
+          </Field>
+          <Field label="Register at" required>
+            <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto border rounded p-2">
+              {allBranches.length === 0 && <p className="text-xs text-gray-500">No branches yet</p>}
+              {allBranches.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.branchIds.includes(b.id)} onChange={() => toggleBranch(b.id)} />
+                  {b.name} <span className="text-xs text-gray-400">({b.serviceName})</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Checking more than one shares this customer's data and sellability across those businesses.</p>
           </Field>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Customer" />
         </form>

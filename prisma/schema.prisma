@@ -186,7 +186,8 @@ model Branch {
 
   createdAt DateTime @default(now())
 
-  userAccess UserBranchAccess[]
+  userAccess     UserBranchAccess[]
+  customerAccess CustomerAccess[]
 
   orders          Order[]
   stockMoves      StockMove[]
@@ -316,9 +317,28 @@ model Customer {
   adjustments CustomerAdjustment[]
   payments    Payment[]
   priceRules  PriceRule[]
+  access      CustomerAccess[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
+}
+
+// Which branch(es) a customer is registered/sellable at — branch-bound by default (one row, created
+// alongside the customer at whichever branch registered them), business-bound transitively (a branch
+// belongs to exactly one Service). Deliberately branch-grain, not just service-grain, so an org with
+// two branches of the same business can still keep a customer scoped to just one of them. A second
+// (or third) row is how staff explicitly share a customer's data/sellability across the org's
+// different businesses — never automatic (see lib/branchAccess.js for who's allowed to add one).
+model CustomerAccess {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, branchId])
+  @@index([branchId])
 }
 
 // A manual balance move not tied to a specific Order — surcharge or refund.

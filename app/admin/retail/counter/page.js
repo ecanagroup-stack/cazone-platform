@@ -47,7 +47,7 @@ export default function RetailCounterPage() {
   useEffect(() => {
     if (customerQuery.trim().length < 2) { setCustomerResults([]); return; }
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(customerQuery)}`);
+      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(customerQuery)}&branchId=${branchId}`);
       const d = await r.json();
       if (d.success) setCustomerResults(d.data);
     }, 250);
@@ -75,7 +75,7 @@ export default function RetailCounterPage() {
     setCreatingCustomer(true);
     try {
       const r = await fetch('/api/admin/customers', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newCustomerForm),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newCustomerForm, branchId }),
       });
       const d = await r.json();
       if (d.success) {

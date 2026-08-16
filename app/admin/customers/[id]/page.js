@@ -20,14 +20,46 @@ export default function CustomerDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [portalCreds, setPortalCreds] = useState(null); // { loginId, password, reset } shown once
 
+  const [allBranches, setAllBranches] = useState([]);
+  const [accessibleBranchIds, setAccessibleBranchIds] = useState(null);
+  const [addBranchId, setAddBranchId] = useState('');
+  const [savingAccess, setSavingAccess] = useState(false);
+
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/customers/${id}`);
-    const d = await r.json();
+    const [r, sr, mr] = await Promise.all([
+      fetch(`/api/admin/customers/${id}`), fetch('/api/admin/services'), fetch('/api/admin/me'),
+    ]);
+    const [d, sd, md] = await Promise.all([r.json(), sr.json(), mr.json()]);
     if (d.success) { setData(d.data); setEditForm({ creditLimit: (d.data.customer.creditLimit / 100).toString(), onHold: d.data.customer.onHold }); }
     else toast.error(d.error || 'Failed to load');
+    if (sd.success) setAllBranches(sd.data.flatMap((s) => s.branches.map((b) => ({ ...b, serviceName: s.name }))));
+    if (md.success) setAccessibleBranchIds(md.data.accessibleBranchIds);
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleAddAccess = async (e) => {
+    e.preventDefault();
+    if (!addBranchId) return;
+    setSavingAccess(true);
+    try {
+      const r = await fetch(`/api/admin/customers/${id}/access`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchId: addBranchId }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Access added'); setAddBranchId(''); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSavingAccess(false);
+    }
+  };
+
+  const handleRemoveAccess = async (branchId) => {
+    if (!confirm('Remove this customer\'s access to this branch?')) return;
+    const r = await fetch(`/api/admin/customers/${id}/access?branchId=${branchId}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) { toast.success('Access removed'); load(); } else toast.error(d.error);
+  };
 
   const handlePayment = async (e) => {
     e.preventDefault();
@@ -136,6 +168,33 @@ export default function CustomerDetailPage() {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card className="p-5 mb-6">
+        <h3 className="font-semibold text-sm mb-4">Businesses</h3>
+        <p className="text-xs text-gray-500 mb-3">Which branches this customer is registered/sellable at. Adding one shares their data and balance across it too.</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {(customer.access || []).map((a) => (
+            <span key={a.id} className="flex items-center gap-1.5 text-xs bg-gray-100 rounded-full px-3 py-1">
+              {a.branch.name} <span className="text-gray-400">({a.branch.service.name})</span>
+              <button onClick={() => handleRemoveAccess(a.branchId)} className="text-gray-400 hover:text-red-600 ml-1">&times;</button>
+            </span>
+          ))}
+        </div>
+        {(() => {
+          const currentIds = (customer.access || []).map((a) => a.branchId);
+          const options = allBranches.filter((b) => !currentIds.includes(b.id) && (accessibleBranchIds === null || accessibleBranchIds.includes(b.id)));
+          if (options.length === 0) return null;
+          return (
+            <form onSubmit={handleAddAccess} className="flex items-center gap-2">
+              <select value={addBranchId} onChange={(e) => setAddBranchId(e.target.value)} className={inputCls + ' max-w-xs'}>
+                <option value="">Add access to...</option>
+                {options.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.serviceName})</option>)}
+              </select>
+              <button type="submit" disabled={!addBranchId || savingAccess} className="px-3 py-2 border rounded text-sm font-medium hover:bg-gray-50 disabled:opacity-50">Add</button>
+            </form>
+          );
+        })()}
       </Card>
 
       <Card className="overflow-hidden">

@@ -9,7 +9,10 @@ import { buildCustomerStatement } from '@/lib/statement';
 export const GET = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
-    const customer = await prisma.customer.findUnique({ where: { id }, include: { user: { select: { isActive: true } } } });
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: { user: { select: { isActive: true } }, access: { include: { branch: { include: { service: true } } } } },
+    });
     if (!customer) throw new ApiError('Customer not found', 404);
 
     const { ledger, buckets } = await buildCustomerStatement(id);
