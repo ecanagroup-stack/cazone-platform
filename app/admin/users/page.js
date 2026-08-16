@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
 
@@ -16,11 +17,15 @@ const ROLE_DESCRIPTIONS = [
 const blankInvite = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 
 export default function UsersPage() {
+  const { data: session } = useSession();
   const [users, setUsers] = useState(null);
   const [services, setServices] = useState([]);
   const [showInvite, setShowInvite] = useState(false);
   const [form, setForm] = useState(blankInvite);
   const [submitting, setSubmitting] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [pin, setPin] = useState('');
+  const [settingPin, setSettingPin] = useState(false);
 
   const load = async () => {
     const [ur, sr] = await Promise.all([fetch('/api/admin/users'), fetch('/api/admin/services')]);
@@ -62,6 +67,21 @@ export default function UsersPage() {
     const d = await r.json();
     if (d.success) load();
     else toast.error(d.error);
+  };
+
+  const handleSetPin = async (e) => {
+    e.preventDefault();
+    setSettingPin(true);
+    try {
+      const r = await fetch('/api/admin/users/me/action-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Action PIN set'); setShowPin(false); setPin(''); }
+      else toast.error(d.error);
+    } finally {
+      setSettingPin(false);
+    }
   };
 
   if (!users) return <Loader />;
@@ -113,7 +133,10 @@ export default function UsersPage() {
                     {u.role === 'owner' ? 'All branches' : (u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : 'None assigned')}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} /></td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-3">
+                    {u.id === session?.user?.id && (
+                      <button onClick={() => { setPin(''); setShowPin(true); }} className={tableActionCls}>Set My PIN</button>
+                    )}
                     {u.role !== 'owner' && (
                       <button onClick={() => toggleActive(u)} className={tableActionCls}>
                         {u.isActive ? 'Deactivate' : 'Reactivate'}
@@ -159,6 +182,16 @@ export default function UsersPage() {
             </Field>
           )}
           <FormButtons onCancel={() => setShowInvite(false)} submitting={submitting} submitLabel="Invite User" />
+        </form>
+      </Modal>
+
+      <Modal open={showPin} onClose={() => setShowPin(false)} title="Set My Action PIN">
+        <form onSubmit={handleSetPin} className="space-y-4">
+          <p className="text-sm text-gray-500">A short PIN, separate from your login password, that you'll be asked for on the highest-stakes actions (credit overrides, price approvals).</p>
+          <Field label="PIN (4-6 digits)" required>
+            <input type="password" inputMode="numeric" pattern="\d{4,6}" value={pin} onChange={(e) => setPin(e.target.value)} className={inputCls} required autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setShowPin(false)} submitting={settingPin} submitLabel="Set PIN" />
         </form>
       </Modal>
     </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Logo } from '@/components/ui';
 import ServiceBranchSwitcher from './ServiceBranchSwitcher';
+import NotificationBell from './NotificationBell';
 
 // Business name, then service/branch switcher, then user menu — nothing else goes in the top bar
 // (platform-ui skill, section 1). The business-name switcher itself is plain text here: no user
@@ -21,6 +22,8 @@ export default function TopBar({ org, services, user }) {
       <div className="flex-1 min-w-0">
         <ServiceBranchSwitcher services={services} />
       </div>
+
+      <NotificationBell />
 
       <div className="relative shrink-0">
         <button type="button" onClick={() => setMenuOpen((o) => !o)} className="flex items-center gap-2 text-sm">

@@ -6,13 +6,12 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls } from '@/components/ui';
 import { formatDate } from '@/lib/format';
-import { SERVICE_TYPES, serviceLabel } from '@/lib/services';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
 
 const blankForm = {
-  orgName: '', phone: '', email: '', currency: 'NGN', serviceType: SERVICE_TYPES[0].id, branchName: '',
+  orgName: '', phone: '', email: '', currency: 'NGN', serviceType: '', branchName: '',
   ownerName: '', ownerUsername: '', ownerPassword: '',
 };
 
@@ -23,6 +22,8 @@ export default function PlatformOrganizationsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
+  const [catalog, setCatalog] = useState([]);
+  const catalogLabel = (key) => catalog.find((s) => s.key === key)?.name || key;
 
   const load = async () => {
     setLoading(true);
@@ -33,7 +34,15 @@ export default function PlatformOrganizationsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch('/api/catalog').then((r) => r.json()).then((d) => {
+      if (d.success) {
+        setCatalog(d.data);
+        if (d.data.length > 0) setForm((f) => ({ ...f, serviceType: d.data[0].key }));
+      }
+    });
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -90,7 +99,7 @@ export default function PlatformOrganizationsPage() {
                       <Link href={`/platform/organizations/${o.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{o.name}</Link>
                       <p className="text-xs text-gray-500">{o.slug}</p>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">{o.serviceTypes.map((t) => serviceLabel(t)).join(', ') || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{o.serviceTypes.map((t) => catalogLabel(t)).join(', ') || '—'}</td>
                     <td className="px-4 py-3">
                       {!o.isActive
                         ? <StatusPill status="Suspended" color="red" />
@@ -129,7 +138,7 @@ export default function PlatformOrganizationsPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Starting service" required>
               <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} className={inputCls}>
-                {SERVICE_TYPES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {catalog.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
               </select>
             </Field>
             <Field label="Currency" required>

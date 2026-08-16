@@ -1,16 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Logo, Field, inputCls, FormButtons } from '@/components/ui';
-import { SERVICE_TYPES } from '@/lib/services';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
 
 const blankForm = {
-  orgName: '', currency: 'NGN', serviceType: SERVICE_TYPES[0].id, branchName: '',
+  orgName: '', currency: 'NGN', serviceType: '', branchName: '',
   ownerName: '', ownerUsername: '', ownerPassword: '',
 };
 
@@ -18,6 +17,18 @@ export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
+  const [catalog, setCatalog] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/catalog')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setCatalog(d.data);
+          if (d.data.length > 0) setForm((f) => ({ ...f, serviceType: d.data[0].key }));
+        }
+      });
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,8 +80,8 @@ export default function SignupPage() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Starting service" required>
-              <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} className={inputCls}>
-                {SERVICE_TYPES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} className={inputCls} disabled={!catalog}>
+                {(catalog || []).map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
               </select>
             </Field>
             <Field label="Currency" required>

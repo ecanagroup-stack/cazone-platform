@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
+import { setPrice } from '@/lib/pricing';
+import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Transaction: applies any price changes (closing the old effective-dated PriceRule, opening a new
@@ -31,14 +33,12 @@ export const POST = withOrg(async (request) => {
     if (existing) throw new ApiError('A shift is already open for this branch', 400);
 
     const shift = await prisma.$transaction(async (tx) => {
+      let anyPricePending = false;
       for (const p of prices) {
         const newPrice = Math.round(Number(p.price));
         if (!Number.isFinite(newPrice) || newPrice <= 0) continue;
-        const current = await tx.priceRule.findFirst({ where: { productId: p.productId, validTo: null }, orderBy: { validFrom: 'desc' } });
-        if (!current || current.price !== newPrice) {
-          if (current) await tx.priceRule.update({ where: { id: current.id }, data: { validTo: new Date() } });
-          await tx.priceRule.create({ data: { productId: p.productId, price: newPrice, createdBy: session.user.id } });
-        }
+        const result = await setPrice(tx, p.productId, newPrice, { id: session.user.id, role: session.user.role });
+        if (result.pending) anyPricePending = true;
       }
 
       const createdShift = await tx.shift.create({ data: { branchId, openedBy: session.user.id, openingFloat } });
@@ -52,10 +52,17 @@ export const POST = withOrg(async (request) => {
         });
       }
 
-      return createdShift;
+      return { shift: createdShift, anyPricePending };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
-    return NextResponse.json({ success: true, data: shift }, { status: 201 });
+    if (shift.anyPricePending) {
+      await notify({ recipientRole: 'owner', type: 'price_proposed', title: 'Price change needs approval', message: 'A fuel price change from Begin Shift needs your approval', relatedType: 'Shift', relatedId: shift.shift.id });
+    }
+
+    return NextResponse.json({
+      success: true, data: shift.shift,
+      ...(shift.anyPricePending && { message: 'Shift started — one or more price changes need owner approval and are not yet in effect' }),
+    }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

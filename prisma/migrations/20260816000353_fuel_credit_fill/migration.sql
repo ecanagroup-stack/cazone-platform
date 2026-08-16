@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "MeterReading" ADD COLUMN "creditLitres" DOUBLE PRECISION NOT NULL DEFAULT 0;

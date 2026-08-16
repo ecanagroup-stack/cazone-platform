@@ -26,7 +26,7 @@ export const POST = withOrg(async (request) => {
     const body = await request.json();
     const type = body.type;
     const branchName = (body.branchName || '').trim();
-    if (!isValidServiceType(type)) throw new ApiError('Invalid service type', 400);
+    if (!(await isValidServiceType(type))) throw new ApiError('Invalid service type', 400);
     if (!branchName) throw new ApiError('Name the first branch for this service', 400);
 
     const existing = await prisma.service.findFirst({ where: { type } });
@@ -34,7 +34,7 @@ export const POST = withOrg(async (request) => {
 
     const branchCode = slugify(branchName) || 'main';
     const result = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.create({ data: { type, name: serviceLabel(type) } });
+      const service = await tx.service.create({ data: { type, name: await serviceLabel(type) } });
       const branch = await tx.branch.create({ data: { serviceId: service.id, name: branchName, code: branchCode } });
       return { service, branch };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default

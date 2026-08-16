@@ -40,13 +40,23 @@ export default function DeliveriesPage() {
   );
 }
 
-const blankDelivery = { supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '' };
+const blankDelivery = { mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '' };
+const ALLOCATION_STATUS_COLOR = { pending: 'gray', assigned: 'blue', loaded: 'amber', arrived: 'green', closed: 'gray' };
+const ALLOCATION_STATUS_LABEL = { pending: 'Pending', assigned: 'Assigned', loaded: 'Loaded', arrived: 'Arrived', closed: 'Closed (sold out)' };
+const LOADING_HOURS_AGO = [
+  { value: 0, label: 'Just now' }, { value: 1, label: '1 hour ago' }, { value: 2, label: '2 hours ago' },
+  { value: 3, label: '3 hours ago' }, { value: 4, label: '4 hours ago' }, { value: 5, label: '5 hours ago' },
+];
 
 function DeliveriesTab({ branchId }) {
   const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand }
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankDelivery);
   const [submitting, setSubmitting] = useState(false);
+  const [assignFor, setAssignFor] = useState(null); // delivery
+  const [assignForm, setAssignForm] = useState({ vehiclePlate: '', driverName: '', driverPhone: '' });
+  const [loadingFor, setLoadingFor] = useState(null); // delivery
+  const [hoursAgo, setHoursAgo] = useState(0);
 
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
@@ -67,7 +77,49 @@ function DeliveriesTab({ branchId }) {
         body: JSON.stringify({ branchId, ...form, costPerUnit: Math.round(Number(form.costPerUnit || 0) * 100) }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Delivery recorded'); setShowModal(false); setForm(blankDelivery); load(); }
+      if (d.success) { toast.success(form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded'); setShowModal(false); setForm(blankDelivery); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAssign = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/deliveries/${assignFor.id}/assign`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(assignForm),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Vehicle assigned'); setAssignFor(null); setAssignForm({ vehiclePlate: '', driverName: '', driverPhone: '' }); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLoading = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/deliveries/${loadingFor.id}/loading`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hoursAgo }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Marked loaded'); setLoadingFor(null); setHoursAgo(0); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleArrive = async (delivery) => {
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/deliveries/${delivery.id}/arrive`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) { toast.success('Marked arrived'); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -113,20 +165,42 @@ function DeliveriesTab({ branchId }) {
                 <th className="px-4 py-3 text-right font-medium">Quantity</th>
                 <th className="px-4 py-3 text-right font-medium">Cost</th>
                 <th className="px-4 py-3 text-left font-medium">Vehicle</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {deliveries.length === 0 && <EmptyRow colSpan={6} text="No deliveries recorded yet" />}
-              {deliveries.map((d) => (
-                <tr key={d.id}>
-                  <td className="px-4 py-3 text-gray-500">{formatDate(d.createdAt)}</td>
-                  <td className="px-4 py-3 font-medium">{d.supplier?.name || '—'}</td>
-                  <td className="px-4 py-3">{d.product.name}</td>
-                  <td className="px-4 py-3 text-right">{d.quantity.toLocaleString()} {d.product.unit}</td>
-                  <td className="px-4 py-3 text-right">{formatMoney(d.totalCost / 100)}</td>
-                  <td className="px-4 py-3 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
-                </tr>
-              ))}
+              {deliveries.length === 0 && <EmptyRow colSpan={8} text="No deliveries recorded yet" />}
+              {deliveries.map((d) => {
+                const isAllocation = d.qtyRemaining != null;
+                return (
+                  <tr key={d.id}>
+                    <td className="px-4 py-3 text-gray-500">{formatDate(d.createdAt)}</td>
+                    <td className="px-4 py-3 font-medium">{d.supplier?.name || '—'}</td>
+                    <td className="px-4 py-3">{d.product.name}</td>
+                    <td className="px-4 py-3 text-right">
+                      {d.quantity.toLocaleString()} {d.product.unit}
+                      {isAllocation && <span className="block text-xs text-gray-400">{d.qtyRemaining.toLocaleString()} left</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">{formatMoney(d.totalCost / 100)}</td>
+                    <td className="px-4 py-3 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
+                    <td className="px-4 py-3">
+                      {isAllocation ? <StatusPill status={ALLOCATION_STATUS_LABEL[d.status]} color={ALLOCATION_STATUS_COLOR[d.status]} /> : <StatusPill status="Received" color="green" />}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isAllocation && d.status === 'pending' && (
+                        <button onClick={() => { setAssignFor(d); setAssignForm({ vehiclePlate: '', driverName: '', driverPhone: '' }); }} className={tableActionCls}>Assign vehicle</button>
+                      )}
+                      {isAllocation && d.status === 'assigned' && (
+                        <button onClick={() => { setLoadingFor(d); setHoursAgo(0); }} className={tableActionCls}>Mark loaded</button>
+                      )}
+                      {isAllocation && d.status === 'loaded' && (
+                        <button onClick={() => handleArrive(d)} disabled={submitting} className={tableActionCls}>Mark arrived</button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -134,6 +208,12 @@ function DeliveriesTab({ branchId }) {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Delivery">
         <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="When is this on hand?" required>
+            <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} className={inputCls}>
+              <option value="received">Received now — goes straight into stock</option>
+              <option value="allocation">Paid for, not collected yet — track as an allocation</option>
+            </select>
+          </Field>
           <Field label="Supplier" required>
             {suppliers.length > 0 ? (
               <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value, newSupplierName: '' })} className={inputCls}>
@@ -150,9 +230,11 @@ function DeliveriesTab({ branchId }) {
               />
             )}
           </Field>
-          <Field label="Vehicle plate number">
-            <input type="text" value={form.vehiclePlate} onChange={(e) => setForm({ ...form, vehiclePlate: e.target.value })} className={inputCls} placeholder="Optional" />
-          </Field>
+          {form.mode === 'received' && (
+            <Field label="Vehicle plate number">
+              <input type="text" value={form.vehiclePlate} onChange={(e) => setForm({ ...form, vehiclePlate: e.target.value })} className={inputCls} placeholder="Optional" />
+            </Field>
+          )}
           <Field label="Product" required>
             <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} className={inputCls} required>
               <option value="">Select...</option>
@@ -160,14 +242,42 @@ function DeliveriesTab({ branchId }) {
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantity" required>
+            <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
               <input type="number" step="0.01" min="0.01" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} required />
             </Field>
             <Field label="Cost per unit" required>
               <input type="number" step="0.01" min="0" value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} className={inputCls} required />
             </Field>
           </div>
-          <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Record Delivery" />
+          <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel={form.mode === 'allocation' ? 'Start Allocation' : 'Record Delivery'} />
+        </form>
+      </Modal>
+
+      <Modal open={!!assignFor} onClose={() => setAssignFor(null)} title="Assign Vehicle">
+        <form onSubmit={handleAssign} className="space-y-4">
+          <p className="text-sm text-gray-500">Which vehicle is going to collect this allocation?</p>
+          <Field label="Vehicle plate number" required>
+            <input type="text" value={assignForm.vehiclePlate} onChange={(e) => setAssignForm({ ...assignForm, vehiclePlate: e.target.value })} className={inputCls} required autoFocus />
+          </Field>
+          <Field label="Driver name">
+            <input type="text" value={assignForm.driverName} onChange={(e) => setAssignForm({ ...assignForm, driverName: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Driver phone">
+            <input type="text" value={assignForm.driverPhone} onChange={(e) => setAssignForm({ ...assignForm, driverPhone: e.target.value })} className={inputCls} />
+          </Field>
+          <FormButtons onCancel={() => setAssignFor(null)} submitting={submitting} submitLabel="Assign" />
+        </form>
+      </Modal>
+
+      <Modal open={!!loadingFor} onClose={() => setLoadingFor(null)} title="Mark Loaded">
+        <form onSubmit={handleLoading} className="space-y-4">
+          <p className="text-sm text-gray-500">When was it loaded? It'll be presumed arrived automatically 6 hours after loading if no one marks it arrived sooner.</p>
+          <Field label="Loaded" required>
+            <select value={hoursAgo} onChange={(e) => setHoursAgo(Number(e.target.value))} className={inputCls}>
+              {LOADING_HOURS_AGO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+          <FormButtons onCancel={() => setLoadingFor(null)} submitting={submitting} submitLabel="Mark Loaded" />
         </form>
       </Modal>
     </div>

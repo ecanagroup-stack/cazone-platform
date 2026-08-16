@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, btnPrimaryCls, tableActionCls, StatusPill } from '@/components/ui';
-import { SERVICE_TYPES, serviceLabel } from '@/lib/services';
 
 export default function ServicesPage() {
   const [services, setServices] = useState(null);
-  const [enableModal, setEnableModal] = useState(null); // { type, label }
+  const [catalog, setCatalog] = useState([]);
+  const [enableModal, setEnableModal] = useState(null); // catalog entry { key, name }
   const [branchName, setBranchName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [addBranchFor, setAddBranchFor] = useState(null); // service object
@@ -20,7 +20,10 @@ export default function ServicesPage() {
     else toast.error(d.error || 'Failed to load');
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch('/api/catalog').then((r) => r.json()).then((d) => { if (d.success) setCatalog(d.data); });
+  }, []);
 
   const handleEnable = async (e) => {
     e.preventDefault();
@@ -28,10 +31,10 @@ export default function ServicesPage() {
     try {
       const r = await fetch('/api/admin/services', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: enableModal.type, branchName }),
+        body: JSON.stringify({ type: enableModal.key, branchName }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(`${enableModal.label} enabled`); setEnableModal(null); setBranchName(''); load(); }
+      if (d.success) { toast.success(`${enableModal.name} enabled`); setEnableModal(null); setBranchName(''); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -66,7 +69,7 @@ export default function ServicesPage() {
   if (!services) return <Loader />;
 
   const enabledTypes = services.map((s) => s.type);
-  const available = SERVICE_TYPES.filter((s) => !enabledTypes.includes(s.id));
+  const available = catalog.filter((s) => !enabledTypes.includes(s.key));
 
   return (
     <div>
@@ -80,7 +83,7 @@ export default function ServicesPage() {
           <Card key={s.id} className="overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div>
-                <p className="font-semibold text-sm">{s.name || serviceLabel(s.type)}</p>
+                <p className="font-semibold text-sm">{s.name || s.type}</p>
                 <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'}</p>
               </div>
               <button
@@ -118,18 +121,18 @@ export default function ServicesPage() {
           <div className="flex flex-wrap gap-3">
             {available.map((s) => (
               <button
-                key={s.id}
+                key={s.key}
                 onClick={() => { setEnableModal(s); setBranchName(''); }}
                 className="px-4 py-3 border rounded-lg text-sm font-medium hover:border-brand-500 hover:bg-brand-50 text-left"
               >
-                {s.label}
+                {s.name}
               </button>
             ))}
           </div>
         </Card>
       )}
 
-      <Modal open={!!enableModal} onClose={() => setEnableModal(null)} title={`Enable ${enableModal?.label || ''}`}>
+      <Modal open={!!enableModal} onClose={() => setEnableModal(null)} title={`Enable ${enableModal?.name || ''}`}>
         <form onSubmit={handleEnable} className="space-y-4">
           <p className="text-sm text-gray-500">Name the first branch for this service — you can add more any time.</p>
           <Field label="Branch name" required>
@@ -139,7 +142,7 @@ export default function ServicesPage() {
         </form>
       </Modal>
 
-      <Modal open={!!addBranchFor} onClose={() => setAddBranchFor(null)} title={`Add branch to ${addBranchFor ? (addBranchFor.name || serviceLabel(addBranchFor.type)) : ''}`}>
+      <Modal open={!!addBranchFor} onClose={() => setAddBranchFor(null)} title={`Add branch to ${addBranchFor ? (addBranchFor.name || addBranchFor.type) : ''}`}>
         <form onSubmit={handleAddBranch} className="space-y-4">
           <Field label="Branch name" required>
             <input type="text" value={newBranch.name} onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })} className={inputCls} required autoFocus />

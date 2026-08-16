@@ -4,52 +4,17 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-// Ageing buckets computed live from Order.createdAt (no due-date concept yet — see plan). Only
-// credit orders with an outstanding balance count; cash/pos/transfer sales never age.
-function ageBucket(daysOld) {
-  if (daysOld <= 30) return 'current';
-  if (daysOld <= 60) return 'd1_30';
-  if (daysOld <= 90) return 'd31_60';
-  if (daysOld <= 120) return 'd61_90';
-  return 'd90_plus';
-}
+import { buildCustomerStatement } from '@/lib/statement';
 
 export const GET = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
-    const customer = await prisma.customer.findUnique({ where: { id } });
+    const customer = await prisma.customer.findUnique({ where: { id }, include: { user: { select: { isActive: true } } } });
     if (!customer) throw new ApiError('Customer not found', 404);
 
-    const [orders, payments, adjustments] = await Promise.all([
-      prisma.order.findMany({ where: { customerId: id }, include: { lines: true, allocations: true }, orderBy: { createdAt: 'asc' } }),
-      prisma.payment.findMany({ where: { customerId: id }, include: { allocations: true }, orderBy: { createdAt: 'asc' } }),
-      prisma.customerAdjustment.findMany({ where: { customerId: id }, orderBy: { createdAt: 'asc' } }),
-    ]);
+    const { ledger, buckets } = await buildCustomerStatement(id);
 
-    const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
-    const now = Date.now();
-    for (const order of orders) {
-      if (order.paymentMethod !== 'credit' || order.status !== 'active') continue;
-      const allocated = order.allocations.reduce((s, a) => s + a.amount, 0);
-      const outstanding = order.grandTotal - allocated;
-      if (outstanding <= 0) continue;
-      const daysOld = Math.floor((now - new Date(order.createdAt).getTime()) / DAY_MS);
-      buckets[ageBucket(daysOld)] += outstanding;
-    }
-
-    const ledger = [
-      ...orders.map((o) => ({ type: 'order', id: o.id, date: o.createdAt, label: o.orderNumber, amount: o.grandTotal, method: o.paymentMethod })),
-      ...payments.map((p) => ({ type: 'payment', id: p.id, date: p.createdAt, label: `Payment (${p.method})`, amount: -p.amount, reference: p.reference })),
-      ...adjustments.map((a) => ({ type: 'adjustment', id: a.id, date: a.createdAt, label: `${a.type === 'refund' ? 'Refund' : 'Surcharge'}: ${a.reason || ''}`, amount: a.type === 'refund' ? -a.amount : a.amount })),
-    ].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    let running = 0;
-    for (const entry of ledger) { running += entry.amount; entry.runningBalance = running; }
-
-    return NextResponse.json({ success: true, data: { customer, ledger: ledger.reverse(), buckets } });
+    return NextResponse.json({ success: true, data: { customer, ledger, buckets } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 500 });
   }

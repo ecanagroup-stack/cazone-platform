@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 
-// Small, scoped lookup for the counter's customer picker — not the full customer-management screen
-// (that's a later increment). Returns just enough to show a shortfall check before checkout.
+// Small, scoped customer lookup shared by any pack's sale-recording picker (materials counter, fuel
+// credit fills) — not the full customer-management screen. Core, not pack-specific, same as
+// Customer/Deliveries elsewhere in this repo.
 export const GET = withOrg(async (request) => {
   const q = (new URL(request.url).searchParams.get('q') || '').trim();
   if (q.length < 2) return NextResponse.json({ success: true, data: [] });

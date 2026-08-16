@@ -18,6 +18,8 @@ export default async function PlatformLayout({ children }) {
           <span className="font-semibold">Cazone Platform</span>
         </Link>
         <span className="text-xs bg-white/10 px-2 py-0.5 rounded">super_admin</span>
+        <Link href="/platform/organizations" className="text-sm text-gray-300 hover:text-white">Organizations</Link>
+        <Link href="/platform/services" className="text-sm text-gray-300 hover:text-white">Service Catalog</Link>
         <div className="flex-1" />
         <span className="text-sm text-gray-300">{session.user.name}</span>
         <SignOutButton className="text-sm text-gray-300 hover:text-white" />

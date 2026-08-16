@@ -26,7 +26,7 @@ export async function POST(request) {
     if (!orgName || !serviceType || !branchName || !ownerName || !ownerUsername || !ownerPassword) {
       throw new ApiError('All fields are required', 400);
     }
-    if (!isValidServiceType(serviceType)) throw new ApiError('Choose a valid starting service', 400);
+    if (!(await isValidServiceType(serviceType))) throw new ApiError('Choose a valid starting service', 400);
     if (ownerPassword.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
 
     const slug = slugify(orgName);
@@ -52,7 +52,7 @@ export async function POST(request) {
           data: { name: orgName, slug, currency, subscriptionStatus: 'trialing', trialEndsAt },
         });
         const service = await tx.service.create({
-          data: { organizationId: org.id, type: serviceType, name: serviceLabel(serviceType) },
+          data: { organizationId: org.id, type: serviceType, name: await serviceLabel(serviceType) },
         });
         const branch = await tx.branch.create({
           data: { organizationId: org.id, serviceId: service.id, name: branchName, code: branchCode },

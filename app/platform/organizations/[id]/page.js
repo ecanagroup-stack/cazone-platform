@@ -7,7 +7,6 @@ import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
-import { serviceLabel } from '@/lib/services';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', staff: 'Staff' };
@@ -236,7 +235,7 @@ export default function OrganizationDetailPage() {
           {org.services.length === 0 && <p className="px-4 py-6 text-sm text-gray-500">No services enabled yet.</p>}
           {org.services.map((s) => (
             <div key={s.id} className="px-4 py-3">
-              <p className="text-sm font-medium">{s.name || serviceLabel(s.type)} <span className="text-xs text-gray-400">({s.branches.length} branch{s.branches.length === 1 ? '' : 'es'})</span></p>
+              <p className="text-sm font-medium">{s.name || s.type} <span className="text-xs text-gray-400">({s.branches.length} branch{s.branches.length === 1 ? '' : 'es'})</span></p>
               {s.branches.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">{s.branches.map((b) => b.name).join(', ')}</p>
               )}

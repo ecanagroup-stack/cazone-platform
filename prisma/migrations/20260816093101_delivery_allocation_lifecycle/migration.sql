@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Delivery" ADD COLUMN "qtyRemaining" DOUBLE PRECISION,
+ADD COLUMN "assignedAt" TIMESTAMP(3),
+ADD COLUMN "loadedAt" TIMESTAMP(3),
+ADD COLUMN "arrivalDate" TIMESTAMP(3);

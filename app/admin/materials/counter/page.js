@@ -12,7 +12,8 @@ export default function CounterPage() {
   const branchId = searchParams.get('branch') || '';
 
   const [products, setProducts] = useState(null);
-  const [cart, setCart] = useState([]); // [{ productId, name, unitPrice, qty }]
+  const [allocations, setAllocations] = useState([]); // sellable Delivery rows, this branch
+  const [cart, setCart] = useState([]); // [{ productId, name, unitPrice, qty, allocationId }]
 
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
@@ -21,6 +22,7 @@ export default function CounterPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null); // { shortfall, error }
+  const [overridePin, setOverridePin] = useState('');
 
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '' });
@@ -37,9 +39,16 @@ export default function CounterPage() {
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
   useEffect(() => {
+    if (!branchId) { setAllocations([]); return; }
+    fetch(`/api/admin/materials/allocations?branchId=${branchId}`).then((r) => r.json()).then((d) => {
+      if (d.success) setAllocations(d.data);
+    });
+  }, [branchId]);
+
+  useEffect(() => {
     if (customerQuery.trim().length < 2) { setCustomerResults([]); return; }
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/admin/materials/counter/customers?q=${encodeURIComponent(customerQuery)}`);
+      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(customerQuery)}`);
       const d = await r.json();
       if (d.success) setCustomerResults(d.data);
     }, 250);
@@ -50,12 +59,16 @@ export default function CounterPage() {
     setCart((c) => {
       const existing = c.find((l) => l.productId === product.id);
       if (existing) return c.map((l) => (l.productId === product.id ? { ...l, qty: l.qty + 1 } : l));
-      return [...c, { productId: product.id, name: product.name, unit: product.unit, unitPrice: product.currentPrice, qty: 1 }];
+      return [...c, { productId: product.id, name: product.name, unit: product.unit, unitPrice: product.currentPrice, qty: 1, allocationId: null }];
     });
   };
 
   const updateQty = (productId, qty) => {
     setCart((c) => c.map((l) => (l.productId === productId ? { ...l, qty: Math.max(1, qty) } : l)));
+  };
+
+  const updateAllocation = (productId, allocationId) => {
+    setCart((c) => c.map((l) => (l.productId === productId ? { ...l, allocationId: allocationId || null } : l)));
   };
 
   const removeLine = (productId) => setCart((c) => c.filter((l) => l.productId !== productId));
@@ -80,21 +93,21 @@ export default function CounterPage() {
     }
   };
 
-  const submitOrder = async (overrideCredit = false) => {
+  const submitOrder = async (overrideCredit = false, pin = '') => {
     setSubmitting(true);
     try {
       const r = await fetch('/api/admin/materials/orders', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branchId, customerId: customer?.id || null, paymentMethod,
-          lines: cart.map((l) => ({ productId: l.productId, qty: l.qty })),
-          overrideCredit,
+          lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, allocationId: l.allocationId || undefined })),
+          overrideCredit, pin,
         }),
       });
       const d = await r.json();
       if (d.success) {
         toast.success(d.data.flagged ? `Sale ${d.data.order.orderNumber} recorded — flagged for credit override` : `Sale ${d.data.order.orderNumber} recorded`);
-        setCart([]); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash'); setCreditWarning(null);
+        setCart([]); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash'); setCreditWarning(null); setOverridePin('');
       } else if (d.needsApproval) {
         setCreditWarning(d);
       } else {
@@ -189,22 +202,39 @@ export default function CounterPage() {
 
           <div className="divide-y mb-3 max-h-64 overflow-y-auto">
             {cart.length === 0 && <p className="text-sm text-gray-400 py-4 text-center">No items yet — tap a product to add it.</p>}
-            {cart.map((l) => (
-              <div key={l.productId} className="py-2 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{l.name}</p>
-                  <p className="text-xs text-gray-500">{formatMoney(l.unitPrice / 100)} / {l.unit}</p>
+            {cart.map((l) => {
+              const productAllocations = allocations.filter((a) => a.productId === l.productId);
+              return (
+                <div key={l.productId} className="py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{l.name}</p>
+                      <p className="text-xs text-gray-500">{formatMoney(l.unitPrice / 100)} / {l.unit}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number" min="1" value={l.qty}
+                        onChange={(e) => updateQty(l.productId, Number(e.target.value) || 1)}
+                        className="w-14 px-1 py-1 border rounded text-sm text-center"
+                      />
+                      <button onClick={() => removeLine(l.productId)} className="text-xs text-red-600 hover:text-red-700">✕</button>
+                    </div>
+                  </div>
+                  {productAllocations.length > 0 && (
+                    <select
+                      value={l.allocationId || ''}
+                      onChange={(e) => updateAllocation(l.productId, e.target.value)}
+                      className="w-full mt-1 text-xs border rounded px-2 py-1 bg-gray-50"
+                    >
+                      <option value="">On-hand stock</option>
+                      {productAllocations.map((a) => (
+                        <option key={a.id} value={a.id}>From {a.supplier?.name || 'allocation'} ({a.qtyRemaining.toLocaleString()} left)</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <input
-                    type="number" min="1" value={l.qty}
-                    onChange={(e) => updateQty(l.productId, Number(e.target.value) || 1)}
-                    className="w-14 px-1 py-1 border rounded text-sm text-center"
-                  />
-                  <button onClick={() => removeLine(l.productId)} className="text-xs text-red-600 hover:text-red-700">✕</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex justify-between text-sm font-semibold mb-3 pt-2 border-t">
@@ -225,11 +255,16 @@ export default function CounterPage() {
           {creditWarning && (
             <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
               <p className="font-medium mb-1">Credit limit exceeded</p>
-              <p>{creditWarning.error}</p>
+              <p className="mb-2">{creditWarning.error}</p>
+              <input
+                type="password" inputMode="numeric" placeholder="Action PIN" value={overridePin}
+                onChange={(e) => setOverridePin(e.target.value)}
+                className="w-full mb-2 px-2 py-1 border rounded text-xs"
+              />
               <button
-                onClick={() => submitOrder(true)}
-                disabled={submitting}
-                className="mt-2 text-xs font-medium text-amber-900 underline"
+                onClick={() => submitOrder(true, overridePin)}
+                disabled={submitting || !overridePin}
+                className="text-xs font-medium text-amber-900 underline disabled:opacity-50"
               >
                 Proceed anyway (this will be flagged for the owner)
               </button>

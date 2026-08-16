@@ -18,6 +18,7 @@ export default function CustomerDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState({ creditLimit: '', onHold: false });
   const [submitting, setSubmitting] = useState(false);
+  const [portalCreds, setPortalCreds] = useState(null); // { loginId, password, reset } shown once
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/customers/${id}`);
@@ -42,6 +43,30 @@ export default function CustomerDetailPage() {
         toast.success(msg);
         setShowPayment(false); setPaymentForm({ amount: '', method: 'cash', reference: '' }); load();
       } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEnablePortal = async () => {
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/customers/${id}/portal-access`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) { setPortalCreds(d.data); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRevokePortal = async () => {
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/customers/${id}/portal-access`, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.success) { toast.success('Portal login revoked'); load(); }
+      else toast.error(d.error);
     } finally {
       setSubmitting(false);
     }
@@ -80,6 +105,13 @@ export default function CustomerDetailPage() {
         action={
           <div className="flex gap-2">
             <button onClick={() => setShowEdit(true)} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Edit</button>
+            {customer.userId && customer.user?.isActive ? (
+              <button onClick={handleRevokePortal} disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-red-600">Revoke Portal Login</button>
+            ) : (
+              <button onClick={handleEnablePortal} disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">
+                {customer.userId ? 'Reactivate Portal Login' : 'Enable Portal Login'}
+              </button>
+            )}
             <button onClick={() => setShowPayment(true)} className={btnPrimaryCls}>Record Payment</button>
           </div>
         }
@@ -122,7 +154,10 @@ export default function CustomerDetailPage() {
             {ledger.map((entry) => (
               <tr key={`${entry.type}-${entry.id}`}>
                 <td className="px-4 py-2 text-gray-500">{formatDate(entry.date)}</td>
-                <td className="px-4 py-2">{entry.label}</td>
+                <td className="px-4 py-2">
+                  {entry.label}
+                  {entry.channel === 'shop' && <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">General Store</span>}
+                </td>
                 <td className={`px-4 py-2 text-right ${entry.amount < 0 ? 'text-green-700' : ''}`}>{formatMoney(entry.amount / 100)}</td>
                 <td className="px-4 py-2 text-right font-medium">{formatMoney(entry.runningBalance / 100)}</td>
               </tr>
@@ -163,6 +198,21 @@ export default function CustomerDetailPage() {
           </label>
           <FormButtons onCancel={() => setShowEdit(false)} submitting={submitting} submitLabel="Save" />
         </form>
+      </Modal>
+
+      <Modal open={!!portalCreds} onClose={() => setPortalCreds(null)} title="Portal Login">
+        {portalCreds && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              {portalCreds.reset ? 'Password reset — share the new one with the customer.' : 'Share these with the customer — this password is shown only once.'}
+            </p>
+            <div className="bg-gray-50 border rounded p-4 space-y-2 font-mono text-sm">
+              <p><span className="text-gray-500">Login:</span> {portalCreds.loginId}</p>
+              <p><span className="text-gray-500">Password:</span> {portalCreds.password}</p>
+            </div>
+            <button onClick={() => setPortalCreds(null)} className={btnPrimaryCls + ' w-full'}>Done</button>
+          </div>
+        )}
       </Modal>
     </div>
   );

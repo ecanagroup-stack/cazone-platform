@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }) {
       <TopBar org={organization} services={services} user={session.user} />
       <LapsedBanner org={organization} />
       <div className="flex flex-1">
-        <Sidebar />
+        <Sidebar enabledTypes={services.map((s) => s.type)} />
         <main className="flex-1 p-6 max-w-6xl mx-auto w-full">{children}</main>
       </div>
     </div>

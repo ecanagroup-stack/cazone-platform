@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Logo, inputCls } from '@/components/ui';
@@ -15,12 +15,14 @@ export default function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     const res = await signIn('credentials', { ...form, redirect: false });
-    setSubmitting(false);
     if (res?.error) {
+      setSubmitting(false);
       toast.error(res.error);
       return;
     }
-    router.push('/admin');
+    const session = await getSession();
+    setSubmitting(false);
+    router.push(session?.user?.role === 'customer' ? '/portal' : '/admin');
     router.refresh();
   };
 

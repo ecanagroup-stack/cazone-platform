@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { getOnHandByProduct } from '@/lib/stock';
+import { autoArriveDueAllocations } from '@/lib/allocation';
 import { ApiError } from '@/lib/apiError';
 
 // Returns the branch's delivery history plus everything the "Record Delivery" form needs
@@ -12,6 +13,8 @@ export const GET = withOrg(async (request) => {
   try {
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+
+    await autoArriveDueAllocations();
 
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) throw new ApiError('Branch not found', 404);
@@ -47,6 +50,9 @@ export const POST = withOrg(async (request) => {
     const quantity = Number(body.quantity);
     const costPerUnit = Math.round(Number(body.costPerUnit));
     const vehiclePlate = (body.vehiclePlate || '').trim();
+    // 'allocation' = paid-for batch not yet on hand — see lib/allocation.js. A vehicle isn't required
+    // yet in that mode (it's picked at the assign step, once one is actually sent to collect it).
+    const asAllocation = body.mode === 'allocation';
 
     if (!branchId || !productId) throw new ApiError('Branch and product are required', 400);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new ApiError('Quantity must be positive', 400);
@@ -68,18 +74,20 @@ export const POST = withOrg(async (request) => {
 
       const totalCost = Math.round(quantity * costPerUnit);
       const created = await tx.delivery.create({
-        data: {
-          branchId, supplierId, vehicleId, productId, quantity, costPerUnit, totalCost,
-          status: 'received', receivedAt: new Date(), createdBy: session.user.id,
-        },
+        data: asAllocation
+          ? { branchId, supplierId, vehicleId, productId, quantity, costPerUnit, totalCost, status: 'pending', qtyRemaining: quantity, createdBy: session.user.id }
+          : { branchId, supplierId, vehicleId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: new Date(), createdBy: session.user.id },
         include: { supplier: true, vehicle: true, product: true },
       });
 
-      // StockMove.ref already points back at this delivery — that's the traceable link in
-      // practice, so linkedStockMoveId is left unset rather than spending a second write on it.
-      await tx.stockMove.create({
-        data: { branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id },
-      });
+      // An allocation isn't on-hand stock yet — no purchase move until sales draw it down (or it's
+      // separately received later). StockMove.ref already points back at this delivery for the
+      // instant case — that's the traceable link in practice, so linkedStockMoveId is left unset.
+      if (!asAllocation) {
+        await tx.stockMove.create({
+          data: { branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id },
+        });
+      }
 
       return created;
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default

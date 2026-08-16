@@ -22,6 +22,34 @@ enum SubscriptionStatus {
   canceled
 }
 
+enum CatalogStatus {
+  available
+  coming_soon
+  retired
+}
+
+// Platform-wide, not tenant-scoped (no organizationId — every organization sees the same catalog).
+// This is what makes "add a service without a code deploy" real for the subscribe/availability
+// layer: super_admin manages rows here instead of a hardcoded array. `key` is what Service.type
+// already stores today, so it becomes a real FK with no data migration needed. Building the actual
+// pack (schema + screens) for a new vertical is still separate engineering — this only controls
+// whether an org can see/subscribe to it.
+model ServiceCatalog {
+  key         String        @id
+  name        String
+  description String?
+  status      CatalogStatus @default(coming_soon)
+  sortOrder   Int           @default(0)
+  // Inert placeholder until per-service billing lands — same spirit as Organization's unused
+  // Paystack fields. Org-level billing (Organization.monthlyPrice) is still the only thing enforced.
+  basePriceMonthly Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services Service[]
+}
+
 // The tenant. Everything else in the system belongs to exactly one Organization
 // (except User, which is null-organization only for the super_admin platform operator).
 model Organization {
@@ -65,6 +93,8 @@ model Organization {
   payments        Payment[]
   products        Product[]
   priceRules      PriceRule[]
+  priceHistory    PriceHistory[]
+  notifications   Notification[]
   priceGroups     PriceGroup[]
   orders          Order[]
   stockMoves      StockMove[]
@@ -86,15 +116,15 @@ model Organization {
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
-// services they want, eg hotel, shop, warehouse, petrol station etc." `type` is a validated string
-// (see lib/services.js SERVICE_TYPES) rather than a Postgres enum, so adding a new vertical later is
-// a catalog-list edit, not a migration.
+// services they want, eg shop, petrol station etc." `type` references ServiceCatalog.key (a DB row,
+// not a Postgres enum), so adding a new vertical later is a catalog-row edit, not a migration.
 model Service {
   id             String  @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   type     String
+  catalog  ServiceCatalog @relation(fields: [type], references: [key])
   name     String?
   isActive Boolean @default(true)
   config   Json    @default("{}")
@@ -170,6 +200,7 @@ model User {
   createdAt DateTime @default(now())
 
   branchAccess UserBranchAccess[]
+  customer     Customer?
 
   @@index([organizationId])
 }
@@ -229,6 +260,11 @@ model Customer {
 
   priceGroupId String?
   priceGroup   PriceGroup? @relation(fields: [priceGroupId], references: [id])
+
+  // Portal login, staff-provisioned (see app/api/admin/customers/[id]/portal-access). One customer =
+  // one login for v1 — no shared/multi-user accounts yet. Null until staff enables it.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
 
   code         String?
   name         String
@@ -337,6 +373,7 @@ model Product {
   createdAt DateTime @default(now())
 
   priceRules      PriceRule[]
+  priceHistory    PriceHistory[]
   orderLines      OrderLine[]
   stockMoves      StockMove[]
   deliveries      Delivery[]
@@ -393,6 +430,56 @@ model PriceRule {
   @@index([productId])
 }
 
+// Best-effort in-app notification — see lib/notify.js. Never blocks the action that triggered it.
+// `recipientUserId` targets one person (e.g. "your price proposal was approved"); `recipientRole`
+// broadcasts to everyone with that role (v1 only ever targets 'owner' — matches the existing
+// owner-view convention on the Anything Wrong page). Exactly one of the two is set.
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  recipientUserId String?
+  recipientRole   String?
+  title           String
+  message         String
+  type            String // flag_raised | pending_order | deposit_submitted | deposit_decided | price_proposed | price_decided
+  relatedType     String?
+  relatedId       String?
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, recipientUserId, isRead])
+  @@index([organizationId, recipientRole, isRead])
+}
+
+// Logs every price change, and gates non-owner ones behind approval — see lib/pricing.js setPrice().
+// A brand-new product's first price always applies immediately regardless of role (nothing live to
+// protect yet); only a change to an already-priced product needs owner sign-off from non-owners.
+model PriceHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  oldPrice Int?
+  newPrice Int
+  reason   String?
+  status   String  @default("approved") // pending | approved | rejected
+  changedBy   String?
+  approvedBy  String?
+  approvedAt  DateTime?
+  adminNote   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([productId, createdAt])
+}
+
 // The itemized transaction — an invoice (credit sale) and a cash sale are the same shape, only
 // customerId/paymentMethod differ. orderNumber is minted from Counter, gapless, inside the same
 // transaction that creates the row (core-algorithms skill §8). offlineId + the (organizationId,
@@ -407,13 +494,19 @@ model Order {
   customer       Customer?    @relation(fields: [customerId], references: [id])
 
   orderNumber   String
-  status        String   @default("active") // active | void
+  // active | void | pending (self-service portal orders sit pending until staff confirms them —
+  // stock/credit only apply once active, see app/api/admin/materials/pending-orders).
+  status        String   @default("active")
   subtotal      Int
   discount      Int      @default(0)
   grandTotal    Int
   paymentMethod String? // cash | credit | pos | transfer
   offlineId     String?
   createdBy     String?
+  // Which side of the business this sale came from — e.g. 'shop' (General Store retail/self-service)
+  // vs a future 'atc' (wholesale allocation). Null = unspecified/legacy. Lets a shared customer
+  // statement keep the two distinguishable without a separate ledger per channel.
+  channel       String?
   createdAt     DateTime @default(now())
 
   lines       OrderLine[]
@@ -436,6 +529,11 @@ model OrderLine {
   product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   priceRuleId String?
   priceRule   PriceRule? @relation(fields: [priceRuleId], references: [id])
+  // Set when this line is meant to draw from a specific supply allocation (lib/allocation.js)
+  // rather than ordinary on-hand stock — remembered here so a pending order still draws from the
+  // right batch once staff confirm it, not just at the moment it was placed.
+  allocationId String?
+  allocation   Delivery?  @relation(fields: [allocationId], references: [id])
 
   qty       Float
   unitPrice Int
@@ -464,6 +562,9 @@ model StockMove {
   note             String?
   offlineId        String?
   userId           String?
+  // Mirrors Order.channel for stock moves not tied to an Order (e.g. a purchase sourced directly for
+  // the shop) — null = unspecified/legacy.
+  channel          String?
   at               DateTime @default(now())
 
   @@unique([organizationId, offlineId])
@@ -492,10 +593,22 @@ model Delivery {
   costPerUnit       Int
   totalCost         Int
   status            String? // pending | assigned | loaded | arrived | received | closed
+  // Set (to `quantity`) only when this delivery starts life as a not-yet-received allocation — a
+  // batch already paid for but not yet counted as on-hand stock, drawn down directly by sales that
+  // reference it (see lib/sale.js) rather than by first receiving it into the branch's stock ledger.
+  // Null for the ordinary "received now" delivery, which behaves exactly as before. `status` moves
+  // to 'closed' (not 'received') when this hits 0 via sales — 'received' stays reserved for "this
+  // batch physically arrived and was logged as general stock," a distinct event.
+  qtyRemaining      Float?
+  assignedAt        DateTime?
+  loadedAt          DateTime?
+  arrivalDate       DateTime?
   receivedAt        DateTime?
   linkedStockMoveId String?
   createdBy         String?
   createdAt         DateTime @default(now())
+
+  orderLines OrderLine[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -745,6 +858,10 @@ model MeterReading {
   opening Float
   closing Float?
   rtt     Float @default(0) // return-to-tank
+  // Litres already sold to named credit customers mid-shift (see fuel credit-fill action) — the
+  // close-time aggregate cash sale is (closing - opening - rtt - creditLitres), so a credit fill
+  // is never also counted as an anonymous cash sale.
+  creditLitres Float @default(0)
 
   discrepancyFlag Boolean  @default(false)
   discrepancyNote String?

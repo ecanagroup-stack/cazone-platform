@@ -56,7 +56,7 @@ export const POST = withOrg(async (request) => {
 
     const product = await prisma.$transaction(async (tx) => {
       const created = await tx.product.create({ data: { serviceId, name, unit, attributes } });
-      if (price > 0) await setPrice(tx, created.id, price, session.user.id);
+      if (price > 0) await setPrice(tx, created.id, price, { id: session.user.id, role: session.user.role });
       return created;
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 

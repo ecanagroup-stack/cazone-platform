@@ -17,6 +17,8 @@ export default function ProductsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
+  const [priceFor, setPriceFor] = useState(null); // product
+  const [newPrice, setNewPrice] = useState('');
 
   const load = useCallback(async () => {
     if (!serviceId) { setProducts(null); return; }
@@ -51,6 +53,24 @@ export default function ProductsPage() {
     });
     const d = await r.json();
     if (d.success) load(); else toast.error(d.error);
+  };
+
+  const handlePriceChange = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/materials/products/${priceFor.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price: Math.round(Number(newPrice) * 100) }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success(d.pricePending ? d.message : 'Price updated');
+        setPriceFor(null); setNewPrice(''); load();
+      } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!serviceId) {
@@ -102,7 +122,8 @@ export default function ProductsPage() {
                   <td className="px-4 py-3 text-right font-medium">{p.currentPrice != null ? formatMoney(p.currentPrice / 100) : '—'}</td>
                   <td className="px-4 py-3 text-right text-gray-500">{p.onHand != null ? `${p.onHand.toLocaleString()} ${p.unit}` : '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={p.isActive ? 'Active' : 'Inactive'} color={p.isActive ? 'green' : 'gray'} /></td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-3">
+                    <button onClick={() => { setPriceFor(p); setNewPrice(p.currentPrice != null ? (p.currentPrice / 100).toString() : ''); }} className={tableActionCls}>Edit Price</button>
                     <button onClick={() => toggleActive(p)} className={tableActionCls}>{p.isActive ? 'Deactivate' : 'Reactivate'}</button>
                   </td>
                 </tr>
@@ -157,6 +178,16 @@ export default function ProductsPage() {
             <input type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} required />
           </Field>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Product" />
+        </form>
+      </Modal>
+
+      <Modal open={!!priceFor} onClose={() => setPriceFor(null)} title={`Edit Price — ${priceFor?.name || ''}`}>
+        <form onSubmit={handlePriceChange} className="space-y-4">
+          <p className="text-sm text-gray-500">If you're not an owner, this change won't take effect until an owner approves it.</p>
+          <Field label="New price" required>
+            <input type="number" step="0.01" min="0" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className={inputCls} required autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setPriceFor(null)} submitting={submitting} submitLabel="Save" />
         </form>
       </Modal>
     </div>

@@ -29,7 +29,10 @@ export const POST = withOrg(async (request, { params }) => {
     if (reading.closing != null) throw new ApiError('This dispenser has already been closed for this shift', 400);
     if (closing < reading.opening) throw new ApiError('Closing reading cannot be less than the opening reading', 400);
 
-    const litres = closing - reading.opening - rtt;
+    // Litres already sold to named credit customers this shift (see credit-fill route) are excluded
+    // from this aggregate cash sale — they were already invoiced individually.
+    const litres = closing - reading.opening - rtt - reading.creditLitres;
+    if (litres < 0) throw new ApiError('Recorded credit fills exceed the total litres dispensed — check the credit fills for this pump', 400);
 
     const dispenser = await prisma.dispenser.findUnique({ where: { id: dispenserId }, include: { tank: true } });
     if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);

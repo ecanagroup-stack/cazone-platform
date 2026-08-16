@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { serviceLabel } from '@/lib/services';
 
 // Always visible, even for a single-service/single-branch org — teaches the concept before it
 // matters (platform-ui skill, section 2). Switching never changes the route, only its ?service=
@@ -37,7 +36,7 @@ export default function ServiceBranchSwitcher({ services }) {
       >
         <option value="">All services</option>
         {services.map((s) => (
-          <option key={s.id} value={s.id}>{s.name || serviceLabel(s.type)}</option>
+          <option key={s.id} value={s.id}>{s.name || s.type}</option>
         ))}
       </select>
       {activeService && (

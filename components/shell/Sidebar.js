@@ -11,15 +11,15 @@ import {
 // counter itself — one entry per pack, not a list of pages. Manage gets at most two items per pack,
 // and — per explicit feedback — every item in it must earn a genuinely distinct category; closely
 // related sub-features (Attendants under fuel, Suppliers under materials/deliveries) live inside
-// their parent page as tabs instead of spending a slot. Hardcoded per-pack for now (only two packs
-// exist); once a third lands this should switch to reading the org's enabled services instead of a
-// static array.
+// their parent page as tabs instead of spending a slot. `pack` tags an item to a ServiceCatalog key
+// (lib/services.js) — items with no `pack` are core/shared and always show; pack items are filtered
+// by the org's actually-enabled services (see enabledTypes prop) rather than shown unconditionally.
 const GROUPS = [
   {
     label: 'Sell',
     items: [
-      { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet },
-      { href: '/admin/materials/counter', label: 'Counter', icon: FiShoppingCart },
+      { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet, pack: 'fuel_station' },
+      { href: '/admin/materials/counter', label: 'Counter', icon: FiShoppingCart, pack: 'shop' },
     ],
   },
   {
@@ -27,8 +27,8 @@ const GROUPS = [
     items: [
       { href: '/admin/customers', label: 'Customers', icon: FiUsers },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
-      { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings },
-      { href: '/admin/materials/products', label: 'Products', icon: FiBox },
+      { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
+      { href: '/admin/materials/products', label: 'Products', icon: FiBox, pack: 'shop' },
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },
       { href: '/admin/billing', label: 'Billing', icon: FiCreditCard },
@@ -43,11 +43,15 @@ const GROUPS = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ enabledTypes = [] }) {
   const pathname = usePathname();
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.pack || enabledTypes.includes(item.pack)),
+  })).filter((g) => g.items.length > 0);
   return (
     <nav className="w-56 shrink-0 border-r bg-white p-4 hidden md:block">
-      {GROUPS.filter((g) => g.items.length > 0).map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>
           <ul className="space-y-0.5">
