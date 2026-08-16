@@ -15,7 +15,11 @@ export default function TopBar({ org, services, user }) {
   return (
     <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4 shrink-0">
       <div className="flex items-center gap-2 shrink-0">
-        <Logo className="h-7 w-7" />
+        {org?.logoUrlSmall || org?.logoUrl ? (
+          <img src={org.logoUrlSmall || org.logoUrl} alt={org.name} className="h-7 w-7 rounded object-contain" />
+        ) : (
+          <Logo className="h-7 w-7" />
+        )}
         <span className="font-semibold text-gray-900 hidden sm:inline">{org?.name}</span>
       </div>
 

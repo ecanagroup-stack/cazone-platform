@@ -62,6 +62,9 @@ model Organization {
   currency String  @default("NGN")
 
   logoUrl       String?
+  // Resized small variant (matches ecana_shop-app's pattern) — the sidebar/topbar avatar uses this
+  // instead of fetching the full-size logo.
+  logoUrlSmall  String?
   address       String?
   invoiceFooter String?
   bankName      String?

@@ -5,7 +5,6 @@ import { Card, StatusPill } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { CAZONE_BANK_DETAILS } from '@/lib/billing';
 import { isLapsed } from '@/components/shell/LapsedBanner';
-import OtpSettingsCard from '@/components/shell/OtpSettingsCard';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
 
@@ -63,8 +62,6 @@ export default async function BillingPage() {
           <p className="text-xs text-gray-500 mt-4">Include the reference above so we can match your payment. After paying, contact support to confirm — automatic confirmation isn't wired up yet.</p>
         </Card>
       )}
-
-      {session.user.role === 'owner' && <OtpSettingsCard org={org} />}
 
       <Card className="p-5">
         <h3 className="font-semibold text-sm mb-1">Invoice history</h3>

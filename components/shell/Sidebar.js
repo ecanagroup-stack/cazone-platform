@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
-  FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2,
+  FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders,
 } from 'react-icons/fi';
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
@@ -32,6 +32,7 @@ const GROUPS = [
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },
       { href: '/admin/billing', label: 'Billing', icon: FiCreditCard },
+      { href: '/admin/settings', label: 'Settings', icon: FiSliders },
     ],
   },
   {
