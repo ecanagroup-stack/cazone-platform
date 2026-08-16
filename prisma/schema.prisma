@@ -11,6 +11,12 @@ enum Role {
   super_admin
   owner
   manager
+  // Fuel's 3-tier review chain (see lib/permissions.js, D5 of the fuel port): a supervisor submits
+  // pump readings, a cashier separately records the payment collected, a manager approves both
+  // before either counts. Additive to staff, not a replacement — other packs still just use staff.
+  supervisor
+  cashier
+  auditor
   staff
   customer
 }

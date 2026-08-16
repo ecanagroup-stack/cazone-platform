@@ -4,12 +4,15 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput } from '@/components/ui';
 
-const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', staff: 'Staff' };
+const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier', auditor: 'Auditor', staff: 'Staff' };
 
 // Plain-language, not a permission-key matrix — platform-ui skill, section 5.
 const ROLE_DESCRIPTIONS = [
   { role: 'Owner', can: 'Everything — services, branches, billing, and every other user. Set once at signup.' },
-  { role: 'Manager', can: 'Invite users, manage services and branches.' },
+  { role: 'Manager', can: 'Invite users, manage services and branches, and approve fuel readings/payments.' },
+  { role: 'Supervisor', can: 'Fuel only — submits pump readings for a manager to approve.' },
+  { role: 'Cashier', can: 'Fuel only — records payments collected for a manager to approve.' },
+  { role: 'Auditor', can: 'Raises flags on discrepancies; otherwise read-only.' },
   { role: 'Staff', can: 'Day-to-day work on the branches they are assigned to.' },
 ];
 
@@ -153,6 +156,9 @@ export default function UsersPage() {
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls}>
                 <option value="staff">Staff</option>
                 <option value="manager">Manager</option>
+                <option value="supervisor">Supervisor (fuel)</option>
+                <option value="cashier">Cashier (fuel)</option>
+                <option value="auditor">Auditor</option>
               </select>
             </Field>
             <Field label="Password" required>
