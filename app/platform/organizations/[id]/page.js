@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
@@ -279,7 +279,7 @@ export default function OrganizationDetailPage() {
         <form onSubmit={handleResetPassword} className="space-y-4">
           <p className="text-sm text-gray-500">Sets a new password directly — use this when a staff member is locked out and their own org owner can't help.</p>
           <Field label="New password" required>
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputCls} required minLength={8} />
+            <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
           </Field>
           <FormButtons onCancel={() => setResetTarget(null)} submitting={resetting} submitLabel="Reset Password" />
         </form>

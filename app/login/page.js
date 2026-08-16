@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { signIn, getSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Logo, inputCls } from '@/components/ui';
+import { Logo, inputCls, PasswordInput } from '@/components/ui';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -50,12 +50,10 @@ export default function LoginPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Password</label>
-            <input
-              type="password"
+            <PasswordInput
               required
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className={inputCls}
             />
           </div>
           <button type="submit" disabled={submitting} className="w-full px-4 py-2 bg-brand-600 text-white rounded hover:bg-brand-700 disabled:opacity-50">

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Logo, Field, inputCls, FormButtons } from '@/components/ui';
+import { Logo, Field, inputCls, FormButtons, PasswordInput } from '@/components/ui';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
 
@@ -103,7 +103,7 @@ export default function SignupPage() {
                 <input type="text" required value={form.ownerUsername} onChange={(e) => setForm({ ...form, ownerUsername: e.target.value })} className={inputCls} />
               </Field>
               <Field label="Password" required>
-                <input type="password" required minLength={8} value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} className={inputCls} />
+                <PasswordInput required minLength={8} value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} />
               </Field>
             </div>
           </div>

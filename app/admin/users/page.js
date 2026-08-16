@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput } from '@/components/ui';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', staff: 'Staff' };
 
@@ -156,7 +156,7 @@ export default function UsersPage() {
               </select>
             </Field>
             <Field label="Password" required>
-              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputCls} required minLength={8} />
+              <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
             </Field>
           </div>
           {allBranches.length > 0 && (

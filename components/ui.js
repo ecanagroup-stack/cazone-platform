@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FiX, FiPrinter, FiDownload, FiLink, FiMail } from 'react-icons/fi';
+import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { toCsv, downloadCsv } from '@/lib/csv';
 
@@ -27,6 +27,27 @@ export const theadCls = 'bg-brand-600 text-white sticky top-0 z-10';
 export const tableScrollCls = 'overflow-auto max-h-[70vh] print:overflow-visible print:max-h-none';
 
 export const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-brand-500';
+
+// Every password field in the app goes through this — a bare type="password" input with a peek
+// toggle, not a bespoke one per form. tabIndex={-1} keeps the toggle out of the tab order between
+// the field and the next one.
+export function PasswordInput({ className = inputCls, ...props }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input type={visible ? 'text' : 'password'} className={`${className} pr-10`} {...props} />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible((v) => !v)}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+      >
+        {visible ? <FiEyeOff size={16} /> : <FiEye size={16} />}
+      </button>
+    </div>
+  );
+}
 
 export function Loader() {
   return (

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, PasswordInput } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
@@ -161,7 +161,7 @@ export default function PlatformOrganizationsPage() {
               </Field>
             </div>
             <Field label="Password" required>
-              <input type="password" value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} className={inputCls} required minLength={8} />
+              <PasswordInput value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} required minLength={8} />
             </Field>
           </div>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Create Organization" />
