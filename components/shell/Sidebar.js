@@ -22,7 +22,7 @@ const GROUPS = [
     label: 'Sell',
     items: [
       { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet, pack: 'fuel_station' },
-      { href: '/admin/materials/counter', label: 'Counter', icon: FiShoppingCart, pack: 'shop' },
+      { href: '/admin/materials/counter', label: 'Cement Warehouse', icon: FiShoppingCart, pack: 'shop' },
       { href: '/admin/materials/sales/new/cement', label: 'Cement Sale', icon: FiFileText, pack: 'shop' },
       { href: '/admin/materials/sales/new/stonedust', label: 'Aggregate Sale', icon: FiFileText, pack: 'shop' },
       { href: '/admin/retail/counter', label: 'Retail Counter', icon: FiShoppingCart, pack: 'general_store' },
@@ -39,7 +39,6 @@ const GROUPS = [
       { href: '/admin/materials/quarries', label: 'Quarries', icon: FiMap, pack: 'shop' },
       { href: '/admin/materials/trucks', label: 'Trucks', icon: FiTruck, pack: 'shop' },
       { href: '/admin/materials/atcs', label: 'ATCs', icon: FiFileText, pack: 'shop' },
-      { href: '/admin/materials/products', label: 'Shop Products', icon: FiBox, pack: 'shop' },
       { href: '/admin/retail/products', label: 'Retail Products', icon: FiBox, pack: 'general_store' },
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },
