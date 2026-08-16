@@ -16,13 +16,36 @@ export function Logo({ className = 'h-8 w-8' }) {
   );
 }
 
-// An org's actual uploaded mark — never the generic <Logo/> as a stand-in, so "no logo yet" reads as
-// exactly that rather than looking like a real (wrong) brand. Used on the platform's organizations
-// list/detail and anywhere else an org's own logo is shown, not the app's own chrome. `dim` must be
-// a literal Tailwind size pair (e.g. "h-8 w-8") — Tailwind's JIT scanner needs the class text to
-// appear verbatim in source, so this can't be built from a numeric prop at runtime.
+// Module-level so every <OrgLogo> on a page shares one /api/branding fetch instead of each
+// mounting its own (an organizations list can render dozens of these at once).
+let brandingPromise = null;
+function getPlatformBranding() {
+  if (!brandingPromise) {
+    brandingPromise = fetch('/api/branding').then((r) => r.json()).then((d) => (d.success ? d.data : null)).catch(() => null);
+  }
+  return brandingPromise;
+}
+
+// An org's actual uploaded mark — falling back to Cazone GS&M's own logo (not the org's, since it
+// doesn't have one yet) when unset, same as the favicon does (app/admin/layout.js). Only falls back
+// further, to a plain "no logo" placeholder, on the one screen with nothing above it to borrow from:
+// Cazone's own logo upload (components/shell/PlatformSettingsForm.js) before it's ever been set.
+// `dim` must be a literal Tailwind size pair (e.g. "h-8 w-8") — Tailwind's JIT scanner needs the
+// class text to appear verbatim in source, so this can't be built from a numeric prop at runtime.
 export function OrgLogo({ org, dim = 'h-16 w-16', className = '' }) {
-  const src = org?.logoUrlSmall || org?.logoUrl;
+  const ownSrc = org?.logoUrlSmall || org?.logoUrl;
+  const [fallbackSrc, setFallbackSrc] = useState(null);
+
+  useEffect(() => {
+    if (ownSrc) return;
+    let cancelled = false;
+    getPlatformBranding().then((data) => {
+      if (!cancelled) setFallbackSrc(data?.logoUrlSmall || data?.logoUrl || null);
+    });
+    return () => { cancelled = true; };
+  }, [ownSrc]);
+
+  const src = ownSrc || fallbackSrc;
   if (!src) {
     return (
       <div title="No logo uploaded" className={`${dim} rounded border border-dashed bg-gray-50 flex items-center justify-center text-gray-300 shrink-0 ${className}`}>
@@ -30,7 +53,7 @@ export function OrgLogo({ org, dim = 'h-16 w-16', className = '' }) {
       </div>
     );
   }
-  return <img src={src} alt={org.name ? `${org.name} logo` : 'Logo'} className={`${dim} rounded object-contain border bg-white shrink-0 ${className}`} />;
+  return <img src={src} alt={org?.name ? `${org.name} logo` : 'Logo'} className={`${dim} rounded object-contain border bg-white shrink-0 ${className}`} />;
 }
 
 export const btnPrimaryCls = 'px-4 py-2 bg-brand-600 text-white rounded text-sm font-medium hover:bg-brand-700 disabled:opacity-50';
