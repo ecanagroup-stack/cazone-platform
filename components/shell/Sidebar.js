@@ -20,6 +20,7 @@ const GROUPS = [
     items: [
       { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet, pack: 'fuel_station' },
       { href: '/admin/materials/counter', label: 'Counter', icon: FiShoppingCart, pack: 'shop' },
+      { href: '/admin/retail/counter', label: 'Retail Counter', icon: FiShoppingCart, pack: 'general_store' },
     ],
   },
   {
@@ -29,6 +30,7 @@ const GROUPS = [
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
       { href: '/admin/materials/products', label: 'Products', icon: FiBox, pack: 'shop' },
+      { href: '/admin/retail/products', label: 'Retail Products', icon: FiBox, pack: 'general_store' },
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },
       { href: '/admin/billing', label: 'Billing', icon: FiCreditCard },
