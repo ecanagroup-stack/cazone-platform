@@ -25,7 +25,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (typeof body.driverName === 'string' && body.driverName.trim()) update.driverName = body.driverName.trim();
     if (typeof body.driverPhone === 'string') update.driverPhone = body.driverPhone.trim() || null;
     if (body.type) update.type = body.type;
-    if (body.capacityTonnes !== undefined) update.capacity = body.capacityTonnes ? Number(body.capacityTonnes) : null;
+    if (body.capacity !== undefined) update.capacity = body.capacity ? Number(body.capacity) : null;
     if (body.ownership) update.ownership = body.ownership;
 
     const updated = await prisma.vehicle.update({ where: { id }, data: update });

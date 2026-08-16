@@ -7,7 +7,7 @@ import {
   tableActionCls, tableDangerActionCls, theadCls, tableScrollCls, NumberInput,
 } from '@/components/ui';
 
-const blankForm = { plateNumber: '', driverName: '', driverPhone: '', type: 'cement', capacityTonnes: '', ownership: 'own' };
+const blankForm = { plateNumber: '', driverName: '', driverPhone: '', type: 'cement', capacity: '', ownership: 'own' };
 
 // Ported from ecana_shop-app's app/admin/trucks/page.js — a truck must be typed cement-or-aggregate
 // (the two fleets are kept separate, same as the old app) and can't be edited while busy on an ATC.
@@ -33,7 +33,7 @@ export default function TrucksPage() {
     setEditing(t);
     setForm({
       plateNumber: t.plateNumber, driverName: t.driverName, driverPhone: t.driverPhone || '',
-      type: t.type || 'cement', capacityTonnes: t.capacity || '', ownership: t.ownership || 'own',
+      type: t.type || 'cement', capacity: t.capacity || '', ownership: t.ownership || 'own',
     });
     setShowModal(true);
   };
@@ -101,7 +101,7 @@ export default function TrucksPage() {
                         ? <StatusPill status="Aggregate (Tonnes)" color="amber" />
                         : <StatusPill status="Type not set" color="gray" />}
                   </td>
-                  <td className="px-4 py-3 text-right">{t.capacity ? `${t.capacity}t` : '—'}</td>
+                  <td className="px-4 py-3 text-right">{t.capacity ? `${t.capacity.toLocaleString()} ${t.type === 'cement' ? 'bags' : 'tonnes'}` : '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={t.ownership === 'own' ? 'Own' : 'Supplier'} color={t.ownership === 'own' ? 'green' : 'blue'} /></td>
                   <td className="px-4 py-3">
                     {t.busy ? <StatusPill status={t.busyReason} color="amber" /> : <span className="text-gray-400 text-xs">Free</span>}
@@ -137,8 +137,8 @@ export default function TrucksPage() {
               <option value="aggregate">Aggregate (Tonnes)</option>
             </select>
           </Field>
-          <Field label="Capacity (tonnes)">
-            <NumberInput value={form.capacityTonnes} onChange={(e) => setForm({ ...form, capacityTonnes: e.target.value })} />
+          <Field label={`Capacity (${form.type === 'cement' ? 'bags' : 'tonnes'})`}>
+            <NumberInput value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
           </Field>
           <Field label="Ownership">
             <select value={form.ownership} onChange={(e) => setForm({ ...form, ownership: e.target.value })} className={inputCls}>

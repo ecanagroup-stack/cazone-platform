@@ -585,6 +585,9 @@ model Order {
   status        String   @default("active")
   subtotal      Int
   discount      Int      @default(0)
+  // Cement/aggregate sales only (ecana_shop-app's Sale.transportFee) — added on top of subtotal,
+  // not subtracted like discount. Zero everywhere else.
+  transportFee  Int      @default(0)
   grandTotal    Int
   paymentMethod String? // cash | credit | pos | transfer
   offlineId     String?

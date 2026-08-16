@@ -44,7 +44,7 @@ export const POST = withOrg(async (request) => {
     const truck = await prisma.vehicle.create({
       data: {
         plateNumber, driverName, driverPhone: (body.driverPhone || '').trim() || null, type,
-        capacity: body.capacityTonnes ? Number(body.capacityTonnes) : null,
+        capacity: body.capacity ? Number(body.capacity) : null,
         ownership: body.ownership || 'own',
       },
     });

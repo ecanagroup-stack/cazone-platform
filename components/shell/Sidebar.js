@@ -14,13 +14,16 @@ import {
 // pages (Cement Brands, Aggregate, Quarries, ...) means matching that depth, not force-fitting a
 // budget that only ever fit a shallower approximation. `pack` tags an item to a ServiceCatalog key
 // (lib/services.js) — items with no `pack` are core/shared and always show; pack items are filtered
-// by the org's actually-enabled services (see enabledTypes prop) rather than shown unconditionally.
+// by the CURRENTLY SELECTED service's type (see the `services` prop + `?service=`), not by every
+// service the org has ever enabled — an org running both fuel and construction material must not see
+// Cement Brands/ATCs/etc. while it's the fuel branch that's actually selected, and vice versa.
 const GROUPS = [
   {
     label: 'Sell',
     items: [
       { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet, pack: 'fuel_station' },
       { href: '/admin/materials/counter', label: 'Counter', icon: FiShoppingCart, pack: 'shop' },
+      { href: '/admin/materials/sales/new/cement', label: 'Cement Sale', icon: FiFileText, pack: 'shop' },
       { href: '/admin/retail/counter', label: 'Retail Counter', icon: FiShoppingCart, pack: 'general_store' },
     ],
   },
@@ -53,7 +56,7 @@ const GROUPS = [
   },
 ];
 
-export default function Sidebar({ enabledTypes = [] }) {
+export default function Sidebar({ services = [] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // Every page under /admin reads its working service/branch from the URL (ServiceBranchSwitcher) —
@@ -66,9 +69,16 @@ export default function Sidebar({ enabledTypes = [] }) {
   const qs = carry.toString();
   const withParams = (href) => (qs ? `${href}?${qs}` : href);
 
+  // No service selected (a multi-service org on "All services") means no single business is
+  // "current" — pack items stay hidden rather than showing every business at once; a single-service
+  // org's only service auto-selects almost immediately (ServiceBranchSwitcher), so this is only ever
+  // the real state for a deliberate "All services" view.
+  const currentServiceId = searchParams.get('service') || '';
+  const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || null;
+
   const groups = GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.pack || enabledTypes.includes(item.pack)),
+    items: group.items.filter((item) => !item.pack || item.pack === currentServiceType),
   })).filter((g) => g.items.length > 0);
   return (
     <nav className="print:hidden w-56 shrink-0 border-r bg-white p-4 hidden md:block">

@@ -16,6 +16,7 @@ export const GET = withOrg(async (request) => {
     const serviceId = searchParams.get('serviceId');
     const status = searchParams.get('status');
     const brand = searchParams.get('brand');
+    const availableForSale = searchParams.get('availableForSale') === 'true';
     if (!serviceId) throw new ApiError('serviceId is required', 400);
 
     await autoArriveDueAllocations();
@@ -26,6 +27,10 @@ export const GET = withOrg(async (request) => {
         product: { serviceId, abbreviation: { not: null } },
         ...(status ? { status } : {}),
         ...(brand ? { productId: brand } : {}),
+        // 'assigned' means a truck has been sent to collect but hasn't loaded yet — not sellable
+        // until 'loaded' (matches lib/allocation.js's isAllocationSellable, applied as a query filter
+        // here rather than a post-fetch check since the sales picker only ever wants sellable ones).
+        ...(availableForSale ? { status: { in: ['loaded', 'arrived'] }, qtyRemaining: { gt: 0 } } : {}),
       },
       include: { product: true, vehicle: true, orderLines: { include: { order: true } } },
       orderBy: { createdAt: 'desc' },
