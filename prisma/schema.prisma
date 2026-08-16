@@ -668,6 +668,12 @@ model Delivery {
   createdBy         String?
   createdAt         DateTime @default(now())
 
+  // Materials/cement-only: an ATC's own tracking number (paired with the brand's abbreviation for
+  // display, e.g. "DAN-001" — ecana_shop-app's ATC.atcNumber, ported). `notes` is the free-text field
+  // that ride-along ATC form has too; generic enough other allocation types could use it later.
+  atcNumber String?
+  notes     String?
+
   // Fuel-only, optional: a tanker offload verified against a physical tank dip rather than trusted
   // on the waybill alone. When set, `quantity` above IS `actualOffloaded` (closingDip - openingDip)
   // so every existing consumer of Delivery.quantity/totalCost keeps working unchanged — declaredLoad
