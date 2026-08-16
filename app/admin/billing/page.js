@@ -1,21 +1,24 @@
+import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
 import { Card, StatusPill } from '@/components/ui';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { CAZONE_BANK_DETAILS } from '@/lib/billing';
 import { isLapsed } from '@/components/shell/LapsedBanner';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
+const requestStatusColor = { pending: 'amber', quoted: 'blue', approved: 'green', rejected: 'red' };
 
 export default async function BillingPage() {
   const session = await getOrgSession();
   const orgId = requireOrg(session);
 
-  const [org, serviceCount, branchCount] = await Promise.all([
+  const [org, serviceCount, branchCount, openRequests] = await Promise.all([
     prisma.organization.findUnique({ where: { id: orgId } }),
     prisma.service.count(),
     prisma.branch.count(),
+    prisma.provisioningRequest.findMany({ where: { status: { in: ['pending', 'quoted'] } }, include: { service: true }, orderBy: { createdAt: 'desc' } }),
   ]);
 
   const lapsed = isLapsed(org);
@@ -43,6 +46,26 @@ export default async function BillingPage() {
         <Card className="p-4"><p className="text-xs text-gray-500">Services in use</p><p className="text-2xl font-bold mt-1">{serviceCount}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Branches in use</p><p className="text-2xl font-bold mt-1">{branchCount}</p></Card>
       </div>
+
+      {openRequests.length > 0 && (
+        <Card className="p-5 mb-6">
+          <h3 className="font-semibold text-sm mb-1">Requests awaiting a quote or payment</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Requested from <Link href="/admin/services" className="text-brand-600 hover:underline">Services &amp; Branches</Link> — pay a quoted amount the same way as below, then let us know.
+          </p>
+          <div className="space-y-2">
+            {openRequests.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-sm">
+                <span>{r.type === 'service' ? `New business (${r.serviceType})` : `New branch: ${r.branchName} — ${r.service?.name || r.service?.type}`}</span>
+                <div className="flex items-center gap-2">
+                  {r.quotedAmount != null && <span className="text-gray-500">{formatMoney(r.quotedAmount, org.currency)}</span>}
+                  <StatusPill status={r.status} color={requestStatusColor[r.status]} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {lapsed && (
         <Card className="p-4 mb-6 border-amber-300 bg-amber-50">

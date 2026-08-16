@@ -23,6 +23,12 @@ export default function OrganizationDetailPage() {
   const [resetting, setResetting] = useState(false);
   const [extendPlan, setExtendPlan] = useState('monthly');
   const [extending, setExtending] = useState(false);
+  const [requests, setRequests] = useState(null);
+  const [quotingFor, setQuotingFor] = useState(null); // request
+  const [quoteAmount, setQuoteAmount] = useState('');
+  const [decidingFor, setDecidingFor] = useState(null); // { request, action }
+  const [decisionNote, setDecisionNote] = useState('');
+  const [deciding, setDeciding] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -44,7 +50,47 @@ export default function OrganizationDetailPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [id]);
+  const loadRequests = async () => {
+    const r = await fetch(`/api/platform/organizations/${id}/provisioning-requests`);
+    const d = await r.json();
+    if (d.success) setRequests(d.data);
+  };
+
+  useEffect(() => { load(); loadRequests(); }, [id]);
+
+  const submitQuote = async (e) => {
+    e.preventDefault();
+    setDeciding(true);
+    try {
+      const r = await fetch(`/api/platform/organizations/${id}/provisioning-requests/${quotingFor.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'quote', quotedAmount: Number(quoteAmount) }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Quote sent'); setQuotingFor(null); setQuoteAmount(''); loadRequests(); }
+      else toast.error(d.error);
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  const submitDecision = async (e) => {
+    e.preventDefault();
+    setDeciding(true);
+    try {
+      const r = await fetch(`/api/platform/organizations/${id}/provisioning-requests/${decidingFor.request.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: decidingFor.action, decisionNote }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success(decidingFor.action === 'approve' ? 'Approved and provisioned' : 'Rejected');
+        setDecidingFor(null); setDecisionNote(''); loadRequests(); load();
+      } else toast.error(d.error);
+    } finally {
+      setDeciding(false);
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -247,7 +293,43 @@ export default function OrganizationDetailPage() {
             </div>
           ))}
         </div>
-        <p className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">Managed by the organization's own owner from Services &amp; Branches — read-only here.</p>
+        <p className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">Branches within an existing service are managed by the org's own owner — new services/branches only exist once approved below.</p>
+      </Card>
+
+      <Card className="overflow-hidden mb-6">
+        <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">Provisioning Requests</h3></div>
+        {!requests ? (
+          <div className="p-4"><Loader /></div>
+        ) : requests.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-500">No requests yet.</p>
+        ) : (
+          <div className="divide-y">
+            {requests.map((r) => (
+              <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">
+                    {r.type === 'service' ? `New business: ${r.serviceType}` : `New branch: ${r.branchName} — ${r.service?.name || r.service?.type}`}
+                  </p>
+                  {r.note && <p className="text-xs text-gray-500 mt-0.5">{r.note}</p>}
+                  {r.quotedAmount != null && <p className="text-xs text-gray-500 mt-0.5">Quoted {formatMoney(r.quotedAmount, org.currency)}</p>}
+                  {r.decisionNote && <p className="text-xs text-gray-500 mt-0.5">{r.decisionNote}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusPill status={r.status} color={r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'red' : r.status === 'quoted' ? 'blue' : 'amber'} />
+                  {r.status === 'pending' && (
+                    <button onClick={() => { setQuotingFor(r); setQuoteAmount(''); }} className={tableActionCls}>Quote</button>
+                  )}
+                  {['pending', 'quoted'].includes(r.status) && (
+                    <>
+                      <button onClick={() => { setDecidingFor({ request: r, action: 'approve' }); setDecisionNote(''); }} className={tableActionCls}>Approve &amp; Provision</button>
+                      <button onClick={() => { setDecidingFor({ request: r, action: 'reject' }); setDecisionNote(''); }} className="text-sm font-medium text-red-700 hover:text-red-800">Reject</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card className="overflow-hidden">
@@ -287,6 +369,32 @@ export default function OrganizationDetailPage() {
             <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
           </Field>
           <FormButtons onCancel={() => setResetTarget(null)} submitting={resetting} submitLabel="Reset Password" />
+        </form>
+      </Modal>
+
+      <Modal open={!!quotingFor} onClose={() => setQuotingFor(null)} title="Send a Quote">
+        <form onSubmit={submitQuote} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            {quotingFor?.type === 'service' ? `New business: ${quotingFor?.serviceType}` : `New branch: ${quotingFor?.branchName}`}
+          </p>
+          <Field label={`Quoted amount (${org.currency})`} required>
+            <NumberInput value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} required autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setQuotingFor(null)} submitting={deciding} submitLabel="Send Quote" />
+        </form>
+      </Modal>
+
+      <Modal open={!!decidingFor} onClose={() => setDecidingFor(null)} title={decidingFor?.action === 'approve' ? 'Approve & Provision' : 'Reject Request'}>
+        <form onSubmit={submitDecision} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            {decidingFor?.action === 'approve'
+              ? 'This creates the service/branch immediately — only do this once payment is confirmed.'
+              : 'The org will see this request as rejected.'}
+          </p>
+          <Field label="Note (optional)">
+            <input type="text" value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} className={inputCls} />
+          </Field>
+          <FormButtons onCancel={() => setDecidingFor(null)} submitting={deciding} submitLabel={decidingFor?.action === 'approve' ? 'Approve & Provision' : 'Reject'} />
         </form>
       </Modal>
     </div>

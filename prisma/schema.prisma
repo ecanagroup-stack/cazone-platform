@@ -142,6 +142,8 @@ model Organization {
   attendantAssignments AttendantAssignment[]
   posTerminals         PosTerminal[]
   posPayments          PosPayment[]
+
+  provisioningRequests ProvisioningRequest[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -162,8 +164,40 @@ model Service {
 
   branches Branch[]
   products Product[]
+  provisioningRequests ProvisioningRequest[]
 
   @@unique([organizationId, type])
+  @@index([organizationId])
+}
+
+// A request to add a branch (to an existing Service) or a whole new Service (business) — the
+// org picks what it wants at signup with one branch included; wanting more than that is a request,
+// not a self-service action (see app/api/admin/provisioning-requests). cazone quotes a price,
+// fulfillment happens once that's paid the same manual way subscription renewal already works
+// (app/api/platform/organizations/[id]/extend-subscription) — "approve" both marks this decided AND
+// actually creates the Service/Branch in the same step, run unscoped as this org (lib/tenantScope.js's
+// runWithOrg) since the platform operator acting isn't itself tenant-scoped.
+model ProvisioningRequest {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  type        String // 'service' | 'branch'
+  serviceType String? // ServiceCatalog.key — required when type='service'
+  serviceId   String? // which existing Service a new branch belongs to — required when type='branch'
+  service     Service? @relation(fields: [serviceId], references: [id])
+  branchName  String? // proposed name for the branch/first branch, captured up front so approval is one click
+
+  note         String?
+  requestedBy  String?
+  status       String    @default("pending") // pending | quoted | approved | rejected
+  quotedAmount Int?
+  quotedAt     DateTime?
+  decisionNote String?
+  decidedBy    String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
   @@index([organizationId])
 }
 
