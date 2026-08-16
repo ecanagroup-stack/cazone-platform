@@ -56,7 +56,7 @@ export default function SignupPage() {
         router.push('/login');
         return;
       }
-      toast.success('Welcome to Cazone');
+      toast.success('Welcome to Cazone GS&M');
       router.push('/admin');
       router.refresh();
     } catch (err) {
@@ -70,7 +70,7 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
           <PlatformLogo className="h-12 w-12 mb-2" />
-          <h1 className="text-xl font-bold text-gray-900">Create your Cazone account</h1>
+          <h1 className="text-xl font-bold text-gray-900">Create your Cazone GS&amp;M account</h1>
           <p className="text-sm text-gray-500 mt-1 text-center">
             You can add more services and branches once you're in.
           </p>

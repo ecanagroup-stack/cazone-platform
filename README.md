@@ -1,4 +1,4 @@
-# Cazone Platform
+# Cazone GS&M Platform
 
 The multi-tenant SaaS core: organizations, services (fuel station / shop / warehouse / hotel / ...),
 branches per service, users, roles, and billing skeleton. No vertical business logic lives here —

@@ -16,8 +16,8 @@ export async function generateMetadata() {
   const settings = await prisma.platformSettings.findUnique({ where: { id: 'singleton' } });
   const icon = settings?.logoUrlSmall || settings?.logoUrl;
   return {
-    title: 'Cazone',
-    description: 'Cazone — the multi-tenant platform for running a business on the counter and on credit.',
+    title: 'Cazone GS&M',
+    description: 'Cazone GS&M — the multi-tenant platform for running a business on the counter and on credit.',
     icons: icon ? { icon } : undefined,
   };
 }

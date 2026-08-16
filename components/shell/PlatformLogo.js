@@ -17,5 +17,5 @@ export default function PlatformLogo({ className = 'h-8 w-8' }) {
   }, []);
 
   if (!logoUrl) return <Logo className={className} />;
-  return <img src={logoUrl} alt="Cazone" className={`${className} object-contain rounded`} />;
+  return <img src={logoUrl} alt="Cazone GS&M" className={`${className} object-contain rounded`} />;
 }

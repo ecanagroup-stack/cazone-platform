@@ -18,7 +18,7 @@ export default async function PlatformLayout({ children }) {
       <header className="print:hidden h-14 border-b bg-gray-900 text-white flex items-center px-4 gap-4">
         <Link href="/platform/organizations" className="flex items-center gap-2">
           <PlatformLogo className="h-7 w-7" />
-          <span className="font-semibold">Cazone Platform</span>
+          <span className="font-semibold">Cazone GS&amp;M Platform</span>
         </Link>
         <span className="text-xs bg-white/10 px-2 py-0.5 rounded">super_admin</span>
         <Link href="/platform/organizations" className="text-sm text-gray-300 hover:text-white">Organizations</Link>

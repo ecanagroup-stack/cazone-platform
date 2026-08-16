@@ -37,9 +37,9 @@ export default function PlatformSettingsForm({ settings }) {
 
   return (
     <Card className="p-5 mb-6">
-      <h3 className="font-semibold text-sm mb-4">Cazone Logo</h3>
+      <h3 className="font-semibold text-sm mb-4">Cazone GS&amp;M Logo</h3>
       <div className="flex items-center gap-4">
-        <OrgLogo org={{ name: 'Cazone', logoUrl }} dim="h-16 w-16" />
+        <OrgLogo org={{ name: 'Cazone GS&M', logoUrl }} dim="h-16 w-16" />
         <label className="px-3 py-1.5 border rounded text-sm font-medium hover:bg-gray-50 cursor-pointer">
           {uploading ? 'Uploading...' : 'Upload logo'}
           <input type="file" accept={ALLOWED_TYPES.join(',')} onChange={handleLogoUpload} disabled={uploading} className="hidden" />

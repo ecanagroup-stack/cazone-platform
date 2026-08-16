@@ -10,7 +10,7 @@ export default async function PlatformSettingsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">Platform Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">Cazone's own logo — shown on login/signup and the platform console, and used as the favicon for any organization that hasn't uploaded its own.</p>
+        <p className="text-sm text-gray-500 mt-1">Cazone GS&amp;M's own logo — shown on login/signup and the platform console, and used as the favicon for any organization that hasn't uploaded its own.</p>
       </div>
       <PlatformSettingsForm settings={settings} />
     </div>

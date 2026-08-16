@@ -36,7 +36,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           <PlatformLogo className="h-12 w-12 mb-2" />
-          <h1 className="text-xl font-bold text-gray-900">Cazone</h1>
+          <h1 className="text-xl font-bold text-gray-900">Cazone GS&amp;M</h1>
         </div>
         <form onSubmit={handleSubmit} className="bg-white border rounded-lg p-6 space-y-4">
           <div>

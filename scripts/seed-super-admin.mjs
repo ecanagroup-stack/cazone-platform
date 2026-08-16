@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const name = process.env.SEED_SUPER_ADMIN_NAME || 'Cazone Admin';
+  const name = process.env.SEED_SUPER_ADMIN_NAME || 'Cazone GS&M Admin';
   const username = (process.env.SEED_SUPER_ADMIN_USERNAME || 'superadmin').toLowerCase();
   const password = process.env.SEED_SUPER_ADMIN_PASSWORD;
 
