@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
+  FiCheckCircle, FiBookOpen,
 } from 'react-icons/fi';
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
@@ -42,6 +43,7 @@ const GROUPS = [
       { href: '/admin/retail/products', label: 'Retail Products', icon: FiBox, pack: 'general_store' },
       { href: '/admin/services', label: 'Services & Branches', icon: FiMapPin },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck },
+      { href: '/admin/price-approvals', label: 'Price Approvals', icon: FiCheckCircle },
       { href: '/admin/billing', label: 'Billing', icon: FiCreditCard },
       { href: '/admin/settings', label: 'Settings', icon: FiSliders },
     ],
@@ -53,6 +55,7 @@ const GROUPS = [
       { href: '/admin/exceptions', label: 'Anything Wrong', icon: FiAlertTriangle },
       { href: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
       { href: '/admin/fuel/attendant-performance', label: 'Attendant Performance', icon: FiBarChart2, pack: 'fuel_station' },
+      { href: '/admin/fuel/summary-book', label: 'Summary Book', icon: FiBookOpen, pack: 'fuel_station' },
     ],
   },
 ];
