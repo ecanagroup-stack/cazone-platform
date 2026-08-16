@@ -14,6 +14,7 @@ const TABS = [
   { key: 'stock', label: 'Stock Summary' },
   { key: 'cash', label: 'Cash Summary' },
 ];
+const MATERIALS_TAB = { key: 'materials', label: 'Materials' };
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -30,7 +31,13 @@ export default function ReportsPage() {
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
   const serviceId = searchParams.get('service') || '';
-  const activeTab = ['stock', 'cash'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'sales';
+
+  const [services, setServices] = useState(null);
+  useEffect(() => { fetch('/api/admin/services').then((r) => r.json()).then((d) => { if (d.success) setServices(d.data); }); }, []);
+  const currentServiceType = services?.find((s) => s.id === serviceId)?.type || null;
+  const tabs = currentServiceType === 'shop' ? [...TABS, MATERIALS_TAB] : TABS;
+
+  const activeTab = tabs.some((t) => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'sales';
 
   const [from, setFrom] = useState(daysAgoIso(30));
   const [to, setTo] = useState(todayIso());
@@ -59,7 +66,7 @@ export default function ReportsPage() {
         {!serviceId && !branchId && <p className="text-xs text-gray-500 pb-2">Showing every business — pick one from the switcher above for its own branch-level detail.</p>}
       </div>
 
-      <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
+      <Tabs tabs={tabs} active={activeTab} onChange={setTab} />
 
       {!branchId && !serviceId ? (
         <AllBusinessesSummary tab={activeTab} from={from} to={to} />
@@ -68,6 +75,7 @@ export default function ReportsPage() {
           {activeTab === 'sales' && <SalesSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
           {activeTab === 'stock' && <StockSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
           {activeTab === 'cash' && <CashSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
+          {activeTab === 'materials' && <MaterialsSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
         </>
       )}
     </div>
@@ -337,6 +345,186 @@ function CashSummary({ branchId, serviceId, from, to }) {
                   <td className="px-4 py-3 text-right">{formatMoney(d.amount / 100)}</td>
                   <td className="px-4 py-3">{d.bankName}</td>
                   <td className="px-4 py-3"><StatusPill status={d.status} color={d.status === 'approved' ? 'green' : d.status === 'rejected' ? 'red' : 'amber'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// M6 — Construction Material only (the Materials tab only shows when the selected service is
+// 'shop'). Ported from ecana_shop-app's reports/products + reports/trucks + reports/quarry-purchases,
+// combined into one sub-tab set rather than three separate pages.
+function MaterialsSummary({ branchId, serviceId, from, to }) {
+  const [sub, setSub] = useState('products');
+  const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        {[['products', 'Sales Per Product'], ['trucks', 'Truck Utilization'], ['quarry', 'Quarry Purchases']].map(([key, label]) => (
+          <button
+            key={key} onClick={() => setSub(key)}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${sub === key ? 'bg-brand-600 text-white' : 'border hover:bg-gray-50'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === 'products' && <ProductsReport scope={scope} from={from} to={to} />}
+      {sub === 'trucks' && <TrucksReport scope={scope} from={from} to={to} />}
+      {sub === 'quarry' && <QuarryPurchasesReport scope={scope} from={from} to={to} />}
+    </div>
+  );
+}
+
+function ProductsReport({ scope, from, to }) {
+  const [rows, setRows] = useState(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/reports/materials?type=products&${scope}&from=${from}&to=${to}`);
+    const d = await r.json();
+    if (d.success) setRows(d.data); else toast.error(d.error || 'Failed to load');
+  }, [scope, from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!rows) return <Loader />;
+  const groups = [['cement', 'Cement Brands'], ['aggregate', 'Aggregate / Quarry Products'], ['shop', 'Cement Warehouse (Shop)']];
+
+  return (
+    <div className="space-y-6">
+      {groups.map(([key, label]) => {
+        const group = rows.filter((r) => r.category === key);
+        if (group.length === 0) return null;
+        return (
+          <Card key={key} className="overflow-hidden">
+            <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">{label}</h3></div>
+            <div className={tableScrollCls}>
+              <table className="w-full text-sm">
+                <thead className={theadCls}>
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Product</th>
+                    <th className="px-4 py-3 text-right font-medium">Sold (Billed)</th>
+                    <th className="px-4 py-3 text-right font-medium">Loaded (Actual)</th>
+                    <th className="px-4 py-3 text-right font-medium">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {group.map((r) => (
+                    <tr key={r.productId}>
+                      <td className="px-4 py-3 font-medium">{r.name}</td>
+                      <td className="px-4 py-3 text-right">{r.billQty.toLocaleString()} {r.unit}</td>
+                      <td className="px-4 py-3 text-right">{r.actualQty.toLocaleString()} {r.unit}</td>
+                      <td className="px-4 py-3 text-right font-medium">{formatMoney(r.revenue / 100)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        );
+      })}
+      {rows.length === 0 && <Card><EmptyRow colSpan={4} text="No sales in this range" /></Card>}
+    </div>
+  );
+}
+
+function TrucksReport({ scope, from, to }) {
+  const [rows, setRows] = useState(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/reports/materials?type=trucks&${scope}&from=${from}&to=${to}`);
+    const d = await r.json();
+    if (d.success) setRows(d.data); else toast.error(d.error || 'Failed to load');
+  }, [scope, from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!rows) return <Loader />;
+
+  return (
+    <Card className="overflow-hidden">
+      <div className={tableScrollCls}>
+        <table className="w-full text-sm">
+          <thead className={theadCls}>
+            <tr>
+              <th className="px-4 py-3 text-left font-medium">Truck</th>
+              <th className="px-4 py-3 text-left font-medium">Driver</th>
+              <th className="px-4 py-3 text-right font-medium">Trips</th>
+              <th className="px-4 py-3 text-right font-medium">Total Delivery Cost</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 && <EmptyRow colSpan={4} text="No truck activity in this range" />}
+            {rows.map((r) => (
+              <tr key={r.plateNumber}>
+                <td className="px-4 py-3 font-medium">{r.plateNumber}</td>
+                <td className="px-4 py-3 text-gray-500">{r.driverName}</td>
+                <td className="px-4 py-3 text-right">{r.trips}</td>
+                <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalCost / 100)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function QuarryPurchasesReport({ scope, from, to }) {
+  const [data, setData] = useState(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/reports/materials?type=quarry-purchases&${scope}&from=${from}&to=${to}`);
+    const d = await r.json();
+    if (d.success) setData(d); else toast.error(d.error || 'Failed to load');
+  }, [scope, from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!data) return <Loader />;
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <Card className="p-4">
+          <p className="text-xs text-gray-500">Total Quantity Purchased</p>
+          <p className="text-xl font-bold mt-1">{data.totals.quantity.toLocaleString()}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-gray-500">Total Cost</p>
+          <p className="text-xl font-bold mt-1">{formatMoney(data.totals.cost / 100)}</p>
+        </Card>
+      </div>
+      <Card className="overflow-hidden">
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Date</th>
+                <th className="px-4 py-3 text-left font-medium">Quarry</th>
+                <th className="px-4 py-3 text-left font-medium">Product</th>
+                <th className="px-4 py-3 text-left font-medium">Truck</th>
+                <th className="px-4 py-3 text-right font-medium">Quantity</th>
+                <th className="px-4 py-3 text-right font-medium">Cost / Unit</th>
+                <th className="px-4 py-3 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {data.data.length === 0 && <EmptyRow colSpan={7} text="No quarry purchases in this range" />}
+              {data.data.map((r, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(r.date)}</td>
+                  <td className="px-4 py-3">{r.quarryName}</td>
+                  <td className="px-4 py-3">{r.product}</td>
+                  <td className="px-4 py-3 text-gray-500">{r.truckPlate}</td>
+                  <td className="px-4 py-3 text-right">{r.quantity.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(r.costPerUnit / 100)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalCost / 100)}</td>
                 </tr>
               ))}
             </tbody>
