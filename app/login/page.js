@@ -22,7 +22,11 @@ export default function LoginPage() {
     }
     const session = await getSession();
     setSubmitting(false);
-    router.push(session?.user?.role === 'customer' ? '/portal' : '/admin');
+    const role = session?.user?.role;
+    // middleware.js only allows STAFF_ROLES (owner/manager/staff) into /admin — a super_admin
+    // pushed there gets bounced straight back here, which looks like login silently did nothing.
+    const destination = role === 'super_admin' ? '/platform/organizations' : role === 'customer' ? '/portal' : '/admin';
+    router.push(destination);
     router.refresh();
   };
 
