@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61-90d', d61_90: '91-120d', d90_plus: '120d+' };
@@ -184,7 +184,7 @@ export default function CustomerDetailPage() {
         <form onSubmit={handlePayment} className="space-y-4">
           <p className="text-sm text-gray-500">Allocated oldest sale first automatically; anything left over stays as credit on the account.</p>
           <Field label="Amount" required>
-            <input type="number" step="0.01" min="0.01" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} className={inputCls} required autoFocus />
+            <NumberInput value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} required autoFocus />
           </Field>
           <Field label="Method">
             <select value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })} className={inputCls}>
@@ -204,7 +204,7 @@ export default function CustomerDetailPage() {
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit Customer">
         <form onSubmit={handleEdit} className="space-y-4">
           <Field label="Credit limit" required>
-            <input type="number" step="0.01" min="0" value={editForm.creditLimit} onChange={(e) => setEditForm({ ...editForm, creditLimit: e.target.value })} className={inputCls} required />
+            <NumberInput value={editForm.creditLimit} onChange={(e) => setEditForm({ ...editForm, creditLimit: e.target.value })} required />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={editForm.onHold} onChange={(e) => setEditForm({ ...editForm, onHold: e.target.checked })} />

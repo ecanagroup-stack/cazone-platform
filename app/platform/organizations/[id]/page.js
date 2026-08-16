@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput, NumberInput } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
@@ -209,7 +209,7 @@ export default function OrganizationDetailPage() {
               </select>
             </Field>
             <Field label="Monthly price">
-              <input type="number" min="0" value={form.monthlyPrice} onChange={(e) => setForm({ ...form, monthlyPrice: e.target.value })} className={inputCls} />
+              <NumberInput value={form.monthlyPrice} onChange={(e) => setForm({ ...form, monthlyPrice: e.target.value })} />
             </Field>
           </div>
 

@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
-  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar,
+  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar, NumberInput,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
@@ -257,10 +257,10 @@ function DeliveriesTab({ branchId }) {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
-              <input type="number" step="0.01" min="0.01" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} required />
+              <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
             </Field>
             <Field label="Cost per unit" required>
-              <input type="number" step="0.01" min="0" value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} className={inputCls} required />
+              <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
             </Field>
           </div>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel={form.mode === 'allocation' ? 'Start Allocation' : 'Record Delivery'} />

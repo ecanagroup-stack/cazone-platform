@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
-  inputCls, btnPrimaryCls, tableActionCls, theadCls, tableScrollCls, StatusPill,
+  inputCls, btnPrimaryCls, tableActionCls, theadCls, tableScrollCls, StatusPill, NumberInput,
 } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 
@@ -197,7 +197,7 @@ function TanksTab({ branchId }) {
             <input type="text" value={tankForm.label} onChange={(e) => setTankForm({ ...tankForm, label: e.target.value })} className={inputCls} required autoFocus placeholder="e.g., Tank 1" />
           </Field>
           <Field label="Capacity (litres)" required>
-            <input type="number" min="1" value={tankForm.capacity} onChange={(e) => setTankForm({ ...tankForm, capacity: e.target.value })} className={inputCls} required />
+            <NumberInput value={tankForm.capacity} onChange={(e) => setTankForm({ ...tankForm, capacity: e.target.value })} required />
           </Field>
           <Field label="Product" required>
             {products.length > 0 ? (
@@ -252,7 +252,7 @@ function TanksTab({ branchId }) {
           <form onSubmit={handleRecordDip} className="space-y-4">
             <p className="text-sm text-gray-500">Enter the physical dip reading in litres — compared against book stock since the last dip.</p>
             <Field label="Measured (litres)" required>
-              <input type="number" step="0.01" min="0" value={measured} onChange={(e) => setMeasured(e.target.value)} className={inputCls} required autoFocus />
+              <NumberInput value={measured} onChange={(e) => setMeasured(e.target.value)} required autoFocus />
             </Field>
             <FormButtons onCancel={closeDipModal} submitting={submitting} submitLabel="Record Dip" />
           </form>

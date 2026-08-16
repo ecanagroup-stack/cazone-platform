@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField, NumberInput } from '@/components/ui';
 
 export default function ShiftPage() {
   const searchParams = useSearchParams();
@@ -221,10 +221,10 @@ export default function ShiftPage() {
         <Modal open={!!closingFor} onClose={() => setClosingFor(null)} title="Record Closing Reading">
           <form onSubmit={handleCloseDispenser} className="space-y-4">
             <Field label="Closing reading" required>
-              <input type="number" step="0.01" value={closingForm.closing} onChange={(e) => setClosingForm({ ...closingForm, closing: e.target.value })} className={inputCls} required autoFocus />
+              <NumberInput value={closingForm.closing} onChange={(e) => setClosingForm({ ...closingForm, closing: e.target.value })} required autoFocus />
             </Field>
             <Field label="Return to tank (RTT)">
-              <input type="number" step="0.01" value={closingForm.rtt} onChange={(e) => setClosingForm({ ...closingForm, rtt: e.target.value })} className={inputCls} />
+              <NumberInput value={closingForm.rtt} onChange={(e) => setClosingForm({ ...closingForm, rtt: e.target.value })} />
             </Field>
             <FormButtons onCancel={() => setClosingFor(null)} submitting={submitting} submitLabel="Save Reading" />
           </form>
@@ -262,7 +262,7 @@ export default function ShiftPage() {
               )}
             </Field>
             <Field label="Litres" required>
-              <input type="number" step="0.01" min="0.01" value={creditLitres} onChange={(e) => setCreditLitres(e.target.value)} className={inputCls} required />
+              <NumberInput value={creditLitres} onChange={(e) => setCreditLitres(e.target.value)} required />
             </Field>
 
             {creditWarning && (
@@ -286,10 +286,10 @@ export default function ShiftPage() {
           <form onSubmit={handleEndShift} className="space-y-4">
             <p className="text-sm text-gray-500">Count the cash on hand and enter it below — the expected amount and any difference are computed automatically.</p>
             <Field label="Counted cash" required>
-              <input type="number" step="0.01" value={endForm.countedCash} onChange={(e) => setEndForm({ ...endForm, countedCash: e.target.value })} className={inputCls} required autoFocus />
+              <NumberInput value={endForm.countedCash} onChange={(e) => setEndForm({ ...endForm, countedCash: e.target.value })} required autoFocus />
             </Field>
             <Field label="Counted float">
-              <input type="number" step="0.01" value={endForm.countedFloat} onChange={(e) => setEndForm({ ...endForm, countedFloat: e.target.value })} className={inputCls} />
+              <NumberInput value={endForm.countedFloat} onChange={(e) => setEndForm({ ...endForm, countedFloat: e.target.value })} />
             </Field>
             <Field label="Note (required if the difference is large)">
               <textarea value={endForm.note} onChange={(e) => setEndForm({ ...endForm, note: e.target.value })} className={inputCls} rows={2} />
@@ -315,7 +315,7 @@ export default function ShiftPage() {
           <Card className="p-5">
             <h3 className="font-semibold text-sm mb-4">Cash Float</h3>
             <Field label="Opening float" required>
-              <input type="number" step="0.01" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} className={inputCls} required placeholder="Cash placed in the till at the start of the shift" />
+              <NumberInput value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} required placeholder="Cash placed in the till at the start of the shift" />
             </Field>
           </Card>
 
@@ -326,10 +326,10 @@ export default function ShiftPage() {
                 const product = data.products.find((p) => p.id === productId);
                 return (
                   <Field key={productId} label={`${product?.name || productId} price per litre`}>
-                    <input
-                      type="number" step="0.01" value={prices[productId] ?? ''}
+                    <NumberInput
+                      value={prices[productId] ?? ''}
                       onChange={(e) => setPrices({ ...prices, [productId]: e.target.value })}
-                      className={inputCls} required
+                      required
                     />
                   </Field>
                 );
@@ -361,10 +361,10 @@ export default function ShiftPage() {
                           </select>
                         </Field>
                         <Field label="Opening reading" required>
-                          <input
-                            type="number" step="0.01" value={selected[d.id].opening}
+                          <NumberInput
+                            value={selected[d.id].opening}
                             onChange={(e) => setSelected({ ...selected, [d.id]: { ...selected[d.id], opening: e.target.value } })}
-                            className={inputCls} required
+                            required
                           />
                         </Field>
                       </div>

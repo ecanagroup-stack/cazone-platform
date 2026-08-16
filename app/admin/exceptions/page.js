@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField, NumberInput } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 
 const SEVERITY_COLOR = { info: 'blue', concern: 'amber', issue: 'red' };
@@ -433,7 +433,7 @@ function DepositsTab() {
             </select>
           </Field>
           <Field label="Amount" required>
-            <input type="number" step="0.01" min="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputCls} required autoFocus />
+            <NumberInput value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required autoFocus />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Bank name" required>

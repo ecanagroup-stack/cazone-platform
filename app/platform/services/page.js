@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 const STATUS_COLOR = { available: 'green', coming_soon: 'amber', retired: 'gray' };
@@ -114,10 +114,10 @@ export default function PlatformServicesPage() {
               </select>
             </Field>
             <Field label="Sort order">
-              <input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} className={inputCls} />
+              <NumberInput value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
             </Field>
             <Field label="Base price/mo">
-              <input type="number" value={form.basePriceMonthly} onChange={(e) => setForm({ ...form, basePriceMonthly: e.target.value })} className={inputCls} />
+              <NumberInput value={form.basePriceMonthly} onChange={(e) => setForm({ ...form, basePriceMonthly: e.target.value })} />
             </Field>
           </div>
           <FormButtons onCancel={() => setModal(null)} submitting={submitting} submitLabel={modal === 'add' ? 'Add Service' : 'Save'} />

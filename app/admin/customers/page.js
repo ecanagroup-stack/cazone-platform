@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 const blankForm = { name: '', phone: '', email: '', businessName: '', creditLimit: '' };
@@ -114,7 +114,7 @@ export default function CustomersPage() {
             </Field>
           </div>
           <Field label="Credit limit">
-            <input type="number" step="0.01" min="0" value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} className={inputCls} placeholder="0 for cash-only" />
+            <NumberInput value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} placeholder="0 for cash-only" />
           </Field>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Customer" />
         </form>

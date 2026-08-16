@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { toCsv, downloadCsv } from '@/lib/csv';
@@ -46,6 +46,62 @@ export function PasswordInput({ className = inputCls, ...props }) {
         {visible ? <FiEyeOff size={16} /> : <FiEye size={16} />}
       </button>
     </div>
+  );
+}
+
+function formatWithCommas(raw) {
+  if (raw === '' || raw == null) return '';
+  const negative = String(raw).startsWith('-');
+  const [intPart, decPart] = String(raw).replace('-', '').split('.');
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${negative ? '-' : ''}${withCommas}${decPart !== undefined ? `.${decPart}` : ''}`;
+}
+
+// Every numeric field in the app goes through this instead of a bare type="number" input — that
+// native type has two problems: its spinner buttons (and, worse, the scroll wheel while hovering
+// it, even unfocused in some browsers) silently increment/decrement the value, and it can't display
+// thousands separators at all. This is a type="text" field instead — no spinner, no scroll-wheel
+// surprise — that formats with commas as you type while keeping the (value, onChange) contract a
+// plain number input has, so callers that already do `onChange={(e) => setForm({...form, x:
+// e.target.value})}` and `Number(form.x)` on submit don't need to change at all.
+export function NumberInput({ value, onChange, className = inputCls, ...props }) {
+  const ref = useRef(null);
+
+  const handleChange = (e) => {
+    const typed = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    const digitsBeforeCursor = typed.slice(0, cursorPos).replace(/[^\d.-]/g, '').length;
+
+    const cleaned = typed.replace(/,/g, '');
+    if (cleaned !== '' && !/^-?\d*\.?\d*$/.test(cleaned)) return; // reject anything not a plain number
+
+    onChange({ target: { value: cleaned } });
+
+    // Reformatting on every keystroke moves the cursor to the end unless we put it back — walk the
+    // freshly-formatted string to the position with the same count of digits before it.
+    requestAnimationFrame(() => {
+      if (!ref.current) return;
+      const formatted = formatWithCommas(cleaned);
+      let seen = 0;
+      let pos = 0;
+      for (; pos < formatted.length; pos++) {
+        if (/[\d.-]/.test(formatted[pos])) seen++;
+        if (seen >= digitsBeforeCursor) { pos++; break; }
+      }
+      ref.current.setSelectionRange(pos, pos);
+    });
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode="decimal"
+      value={formatWithCommas(value)}
+      onChange={handleChange}
+      className={className}
+      {...props}
+    />
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 const blankForm = { name: '', unit: 'bag', category: 'shop', price: '', grade: '', bagSize: '', quarry: '', size: '' };
@@ -175,7 +175,7 @@ export default function ProductsPage() {
             </div>
           )}
           <Field label="Price" required>
-            <input type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} required />
+            <NumberInput value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
           </Field>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Product" />
         </form>
@@ -185,7 +185,7 @@ export default function ProductsPage() {
         <form onSubmit={handlePriceChange} className="space-y-4">
           <p className="text-sm text-gray-500">If you're not an owner, this change won't take effect until an owner approves it.</p>
           <Field label="New price" required>
-            <input type="number" step="0.01" min="0" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className={inputCls} required autoFocus />
+            <NumberInput value={newPrice} onChange={(e) => setNewPrice(e.target.value)} required autoFocus />
           </Field>
           <FormButtons onCancel={() => setPriceFor(null)} submitting={submitting} submitLabel="Save" />
         </form>

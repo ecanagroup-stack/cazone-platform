@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, inputCls, btnPrimaryCls } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, inputCls, btnPrimaryCls, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 export default function PortalShopPage() {
@@ -99,8 +99,8 @@ export default function PortalShopPage() {
                   <p className="text-xs text-gray-500">{formatMoney(l.unitPrice / 100)} / {l.unit}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <input
-                    type="number" min="1" value={l.qty}
+                  <NumberInput
+                    value={l.qty}
                     onChange={(e) => updateQty(l.productId, Number(e.target.value) || 1)}
                     className="w-14 px-1 py-1 border rounded text-sm text-center"
                   />
