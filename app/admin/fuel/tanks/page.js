@@ -262,7 +262,7 @@ function TanksTab({ branchId }) {
   );
 }
 
-const blankAttendant = { staffNumber: '', name: '', phone: '', position: '', employmentType: 'full_time' };
+const blankAttendant = { staffNumber: '', name: '', phone: '', position: '', employmentType: 'full_time', dateOfBirth: '', gender: '', employmentDate: '', photoUrl: '' };
 
 function AttendantsTab({ branchId }) {
   const [attendants, setAttendants] = useState(null);
@@ -371,6 +371,29 @@ function AttendantsTab({ branchId }) {
               <option value="casual">Casual</option>
             </select>
           </Field>
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">HR details (optional)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Date of birth">
+                <input type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Gender">
+                <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className={inputCls}>
+                  <option value="">Prefer not to say</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <Field label="Employment date">
+                <input type="date" value={form.employmentDate} onChange={(e) => setForm({ ...form, employmentDate: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Photo URL">
+                <input type="text" value={form.photoUrl} onChange={(e) => setForm({ ...form, photoUrl: e.target.value })} className={inputCls} placeholder="Optional" />
+              </Field>
+            </div>
+          </div>
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Add Attendant" />
         </form>
       </Modal>

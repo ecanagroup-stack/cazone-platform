@@ -33,6 +33,10 @@ export const POST = withOrg(async (request) => {
         phone: (body.phone || '').trim() || null,
         position: (body.position || '').trim() || null,
         employmentType: (body.employmentType || '').trim() || null,
+        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+        gender: (body.gender || '').trim() || null,
+        employmentDate: body.employmentDate ? new Date(body.employmentDate) : null,
+        photoUrl: (body.photoUrl || '').trim() || null,
       },
     });
     return NextResponse.json({ success: true, data: attendant }, { status: 201 });

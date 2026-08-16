@@ -935,6 +935,12 @@ model Attendant {
   phone          String?
   position       String?
   employmentType String?
+  // HR fields matching petrol-station-app's Attendant.js — optional, filled in as an org actually
+  // wants the fuller profile.
+  dateOfBirth    DateTime?
+  gender         String?
+  photoUrl       String?
+  employmentDate DateTime?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
