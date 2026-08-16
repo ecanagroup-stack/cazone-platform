@@ -710,6 +710,14 @@ model Shift {
   reopenedBy String?
   reopenedAt DateTime?
 
+  // Multi-shift-per-day labeling (petrol-station-app's shiftKey/shiftOrder/totalShiftsPlanned) — all
+  // optional. A branch that just runs one shift at a time leaves these unset and nothing changes;
+  // one that plans e.g. 3 shifts/day sets totalShiftsPlanned once at the first Begin Shift of the
+  // day and shiftOrder increments as each one opens.
+  shiftLabel         String?
+  shiftOrder         Int?
+  totalShiftsPlanned Int?
+
   cashDeposits CashDeposit[]
 
   // Fuel pack

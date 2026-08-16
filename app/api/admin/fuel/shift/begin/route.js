@@ -32,6 +32,18 @@ export const POST = withOrg(async (request) => {
     const existing = await prisma.shift.findFirst({ where: { branchId, status: 'open' } });
     if (existing) throw new ApiError('A shift is already open for this branch', 400);
 
+    // Multi-shift-per-day (optional — see prisma/schema.prisma Shift comment). totalShiftsPlanned is
+    // set once at the day's first Begin Shift and inherited by every later shift that day;
+    // shiftOrder is this branch's Nth shift opened since local midnight.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todaysShifts = await prisma.shift.findMany({ where: { branchId, openedAt: { gte: startOfToday } }, orderBy: { openedAt: 'desc' }, take: 1 });
+    const shiftOrder = todaysShifts.length + 1;
+    const totalShiftsPlanned = Number.isFinite(Number(body.totalShiftsPlanned)) && Number(body.totalShiftsPlanned) > 0
+      ? Number(body.totalShiftsPlanned)
+      : todaysShifts[0]?.totalShiftsPlanned ?? null;
+    const shiftLabel = (body.shiftLabel || '').trim() || (totalShiftsPlanned ? `Shift ${shiftOrder}` : null);
+
     const shift = await prisma.$transaction(async (tx) => {
       let anyPricePending = false;
       for (const p of prices) {
@@ -41,7 +53,9 @@ export const POST = withOrg(async (request) => {
         if (result.pending) anyPricePending = true;
       }
 
-      const createdShift = await tx.shift.create({ data: { branchId, openedBy: session.user.id, openingFloat } });
+      const createdShift = await tx.shift.create({
+        data: { branchId, openedBy: session.user.id, openingFloat, shiftLabel, shiftOrder: totalShiftsPlanned ? shiftOrder : null, totalShiftsPlanned },
+      });
 
       for (const a of assignments) {
         await tx.attendantAssignment.create({

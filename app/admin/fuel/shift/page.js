@@ -13,6 +13,7 @@ export default function ShiftPage() {
   const [selected, setSelected] = useState({}); // { [dispenserId]: { attendantId, opening } }
   const [prices, setPrices] = useState({}); // { [productId]: price in Naira, display units }
   const [openingFloat, setOpeningFloat] = useState(''); // Naira, display units
+  const [totalShiftsPlanned, setTotalShiftsPlanned] = useState(''); // optional multi-shift-per-day
   const [beginning, setBeginning] = useState(false);
 
   const [closingFor, setClosingFor] = useState(null); // dispenserId
@@ -66,10 +67,13 @@ export default function ShiftPage() {
       const priceEntries = Object.entries(prices).map(([productId, naira]) => ({ productId, price: Math.round(Number(naira) * 100) }));
       const r = await fetch('/api/admin/fuel/shift/begin', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branchId, openingFloat: Math.round(Number(openingFloat || 0) * 100), assignments, prices: priceEntries }),
+        body: JSON.stringify({
+          branchId, openingFloat: Math.round(Number(openingFloat || 0) * 100), assignments, prices: priceEntries,
+          totalShiftsPlanned: totalShiftsPlanned || undefined,
+        }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(d.message || 'Shift started'); setSelected({}); setOpeningFloat(''); load(); }
+      if (d.success) { toast.success(d.message || 'Shift started'); setSelected({}); setOpeningFloat(''); setTotalShiftsPlanned(''); load(); }
       else toast.error(d.error);
     } finally {
       setBeginning(false);
@@ -174,7 +178,7 @@ export default function ShiftPage() {
       <div>
         <PageHeader
           title="Pumps"
-          subtitle={`Shift open since ${new Date(data.shift.openedAt).toLocaleTimeString()}`}
+          subtitle={`${data.shift.shiftLabel ? `${data.shift.shiftLabel} — ` : ''}Open since ${new Date(data.shift.openedAt).toLocaleTimeString()}${data.shift.totalShiftsPlanned ? ` (shift ${data.shift.shiftOrder} of ${data.shift.totalShiftsPlanned} today)` : ''}`}
           action={allClosed && <button onClick={() => setShowEndModal(true)} className={btnPrimaryCls}>End Shift</button>}
         />
 
@@ -317,6 +321,12 @@ export default function ShiftPage() {
             <Field label="Opening float" required>
               <NumberInput value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} required placeholder="Cash placed in the till at the start of the shift" />
             </Field>
+            <div className="mt-4">
+              <Field label="Shifts planned today (optional)">
+                <NumberInput value={totalShiftsPlanned} onChange={(e) => setTotalShiftsPlanned(e.target.value)} placeholder="Leave blank to run shifts unlabeled" />
+              </Field>
+              <p className="text-xs text-gray-500 mt-1">Only needs setting on the first shift of the day — later shifts pick it up automatically and get numbered.</p>
+            </div>
           </Card>
 
           <Card className="p-5">
