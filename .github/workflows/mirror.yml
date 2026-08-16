@@ -1,0 +1,18 @@
+name: Mirror repository to company
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mirror repository
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          git clone --mirror https://github.com/mail2chuka/cazone-platform.git
+          cd cazone-platform.git
+          git push --mirror https://x-access-token:${MIRROR_TOKEN}@github.com/ecanagroup-stack/cazone-tech.git
