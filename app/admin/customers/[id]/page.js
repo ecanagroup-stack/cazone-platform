@@ -170,7 +170,7 @@ export default function CustomerDetailPage() {
                 <td className="px-4 py-2 text-gray-500">{formatDate(entry.date)}</td>
                 <td className="px-4 py-2">
                   {entry.label}
-                  {entry.channel === 'shop' && <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">General Store</span>}
+                  {entry.channel === 'shop' && <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Shop Counter</span>}
                 </td>
                 <td className={`px-4 py-2 text-right ${entry.amount < 0 ? 'text-green-700' : ''}`}>{formatMoney(entry.amount / 100)}</td>
                 <td className="px-4 py-2 text-right font-medium">{formatMoney(entry.runningBalance / 100)}</td>

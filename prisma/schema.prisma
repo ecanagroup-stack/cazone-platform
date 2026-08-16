@@ -531,9 +531,10 @@ model Order {
   paymentMethod String? // cash | credit | pos | transfer
   offlineId     String?
   createdBy     String?
-  // Which side of the business this sale came from — e.g. 'shop' (General Store retail/self-service)
-  // vs a future 'atc' (wholesale allocation). Null = unspecified/legacy. Lets a shared customer
-  // statement keep the two distinguishable without a separate ledger per channel.
+  // Which side of the Materials business this sale came from — 'shop' (retail counter/self-service)
+  // vs 'atc' (wholesale allocation, see lib/allocation.js) vs 'retail' (the separate General Retail
+  // Store service). Null = unspecified/legacy. Lets a shared customer statement keep them
+  // distinguishable without a separate ledger per channel.
   channel       String?
   createdAt     DateTime @default(now())
 

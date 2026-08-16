@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, ReportToolbar } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
-const CHANNEL_LABEL = { shop: 'General Store', atc: 'Wholesale' };
+const CHANNEL_LABEL = { shop: 'Shop Counter', atc: 'Wholesale' };
 
 export default function PortalStatementPage() {
   const [data, setData] = useState(null);
