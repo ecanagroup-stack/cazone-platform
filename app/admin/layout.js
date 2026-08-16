@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
 import prisma from '@/lib/prisma';
+import { getCachedOrganization } from '@/lib/orgLookup';
 import TopBar from '@/components/shell/TopBar';
 import Sidebar from '@/components/shell/Sidebar';
 import LapsedBanner from '@/components/shell/LapsedBanner';
@@ -12,6 +13,18 @@ import LapsedBanner from '@/components/shell/LapsedBanner';
 // getServerSession() with no real request context (surfaces as a cryptic `new URL('')` crash).
 export const dynamic = 'force-dynamic';
 
+// The signed-in org's own logo as the favicon while inside /admin — falls through to the root
+// layout's (Cazone's own logo) when the org hasn't uploaded one, since returning no `icons` key
+// here means Next.js metadata inheritance leaves the parent's value in place.
+export async function generateMetadata() {
+  const session = await getOrgSession();
+  if (!session || session.user.role === 'super_admin') return {};
+  const orgId = requireOrg(session);
+  const organization = await getCachedOrganization(orgId);
+  const icon = organization?.logoUrlSmall || organization?.logoUrl;
+  return icon ? { icons: { icon } } : {};
+}
+
 export default async function AdminLayout({ children }) {
   const session = await getOrgSession();
   if (!session) redirect('/login');
@@ -19,7 +32,7 @@ export default async function AdminLayout({ children }) {
 
   const orgId = requireOrg(session);
   const [organization, services] = await Promise.all([
-    prisma.organization.findUnique({ where: { id: orgId } }),
+    getCachedOrganization(orgId),
     prisma.service.findMany({
       where: { isActive: true },
       include: { branches: { where: { isActive: true }, orderBy: { name: 'asc' } } },

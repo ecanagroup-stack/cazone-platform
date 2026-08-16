@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
-import prisma from '@/lib/prisma';
+import { getCachedOrganization } from '@/lib/orgLookup';
 import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 
@@ -11,12 +11,23 @@ import SignOutButton from '@/components/SignOutButton';
 // Never statically prerenderable — see app/admin/layout.js's dynamic export for why.
 export const dynamic = 'force-dynamic';
 
+// The org's own logo as the favicon while inside /portal — falls through to the root layout's
+// (Cazone's own logo) when the org hasn't uploaded one, same mechanism as app/admin/layout.js.
+export async function generateMetadata() {
+  const session = await getOrgSession();
+  if (!session || session.user.role !== 'customer') return {};
+  const orgId = requireOrg(session);
+  const organization = await getCachedOrganization(orgId);
+  const icon = organization?.logoUrlSmall || organization?.logoUrl;
+  return icon ? { icons: { icon } } : {};
+}
+
 export default async function PortalLayout({ children }) {
   const session = await getOrgSession();
   if (!session || session.user.role !== 'customer') redirect('/login');
 
   const orgId = requireOrg(session);
-  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true, logoUrl: true, logoUrlSmall: true } });
+  const org = await getCachedOrganization(orgId);
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { signIn, getSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Logo, inputCls, PasswordInput } from '@/components/ui';
+import { inputCls, PasswordInput } from '@/components/ui';
+import PlatformLogo from '@/components/shell/PlatformLogo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <Logo className="h-12 w-12 mb-2" />
+          <PlatformLogo className="h-12 w-12 mb-2" />
           <h1 className="text-xl font-bold text-gray-900">Cazone</h1>
         </div>
         <form onSubmit={handleSubmit} className="bg-white border rounded-lg p-6 space-y-4">

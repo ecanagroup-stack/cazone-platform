@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, PasswordInput, OrgLogo } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, PasswordInput, OrgLogo, UsernameField } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
@@ -161,9 +161,7 @@ export default function PlatformOrganizationsPage() {
               <Field label="Owner name" required>
                 <input type="text" value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} className={inputCls} required />
               </Field>
-              <Field label="Username" required>
-                <input type="text" value={form.ownerUsername} onChange={(e) => setForm({ ...form, ownerUsername: e.target.value })} className={inputCls} required />
-              </Field>
+              <UsernameField label="Username" required value={form.ownerUsername} onChange={(v) => setForm({ ...form, ownerUsername: v })} />
             </div>
             <Field label="Password" required>
               <PasswordInput value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} required minLength={8} />

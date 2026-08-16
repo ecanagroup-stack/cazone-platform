@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier', auditor: 'Auditor', staff: 'Staff' };
 
@@ -148,9 +148,10 @@ export default function UsersPage() {
           <Field label="Name" required>
             <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} required autoFocus />
           </Field>
-          <Field label="Email, username or phone" required>
-            <input type="text" value={form.identifier} onChange={(e) => setForm({ ...form, identifier: e.target.value })} className={inputCls} required />
-          </Field>
+          <UsernameField
+            label="Email, username or phone" mode="identifier" required
+            value={form.identifier} onChange={(v) => setForm({ ...form, identifier: v })}
+          />
           <div className="grid grid-cols-2 gap-3">
             <Field label="Role" required>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls}>

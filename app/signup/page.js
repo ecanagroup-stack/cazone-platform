@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Logo, Field, inputCls, FormButtons, PasswordInput } from '@/components/ui';
+import { Field, inputCls, FormButtons, PasswordInput, UsernameField } from '@/components/ui';
+import PlatformLogo from '@/components/shell/PlatformLogo';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
 
@@ -68,7 +69,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <Logo className="h-12 w-12 mb-2" />
+          <PlatformLogo className="h-12 w-12 mb-2" />
           <h1 className="text-xl font-bold text-gray-900">Create your Cazone account</h1>
           <p className="text-sm text-gray-500 mt-1 text-center">
             You can add more services and branches once you're in.
@@ -99,9 +100,7 @@ export default function SignupPage() {
               <input type="text" required value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} className={inputCls} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Username" required>
-                <input type="text" required value={form.ownerUsername} onChange={(e) => setForm({ ...form, ownerUsername: e.target.value })} className={inputCls} />
-              </Field>
+              <UsernameField label="Username" required value={form.ownerUsername} onChange={(v) => setForm({ ...form, ownerUsername: v })} />
               <Field label="Password" required>
                 <PasswordInput required minLength={8} value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} />
               </Field>

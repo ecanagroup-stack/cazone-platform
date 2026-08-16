@@ -56,6 +56,16 @@ model ServiceCatalog {
   services Service[]
 }
 
+// A single fixed row (id always "singleton") — Cazone's own brand, not any tenant's. Deliberately
+// outside TENANT_SCOPED_MODELS (lib/prisma.js): it has no organizationId and must be readable
+// pre-auth (login/signup favicon) as well as by super_admin (the only one who can change it).
+model PlatformSettings {
+  id           String   @id @default("singleton")
+  logoUrl      String?
+  logoUrlSmall String?
+  updatedAt    DateTime @updatedAt
+}
+
 // The tenant. Everything else in the system belongs to exactly one Organization
 // (except User, which is null-organization only for the super_admin platform operator).
 model Organization {

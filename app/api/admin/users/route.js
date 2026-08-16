@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
+import { classifyIdentifier } from '@/lib/identifier';
 import { ApiError } from '@/lib/apiError';
 
 // owner is never invited — it's created once at signup/org-creation. super_admin/customer are out of
@@ -37,12 +38,7 @@ export const POST = withOrg(async (request) => {
     if (!INVITABLE_ROLES.includes(role)) throw new ApiError('Invalid role', 400);
     if (password.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
 
-    const isEmail = identifier.includes('@');
-    const isPhone = /^\+?\d[\d\s-]{6,}$/.test(identifier);
-    const idField = isEmail ? 'email' : isPhone ? 'phone' : 'username';
-    // Always lowercase for storage — login (lib/auth.js) always lowercases the identifier it
-    // searches with, so a mixed-case email/username stored as-is would never match at login.
-    const idValue = identifier.toLowerCase();
+    const { field: idField, value: idValue } = classifyIdentifier(identifier);
 
     const existing = await prisma.user.findFirst({ where: { [idField]: idValue } });
     if (existing) throw new ApiError('That login is already taken', 400);

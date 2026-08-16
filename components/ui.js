@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff, FiImage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { toCsv, downloadCsv } from '@/lib/csv';
@@ -64,6 +64,51 @@ export function PasswordInput({ className = inputCls, ...props }) {
         {visible ? <FiEyeOff size={16} /> : <FiEye size={16} />}
       </button>
     </div>
+  );
+}
+
+// A username/login field that checks availability live as the person types (debounced, against
+// /api/username-check) and reports it in a span right under the input — so a taken name is caught
+// immediately, before the person fills out the rest of the form and only finds out on submit.
+// `mode="identifier"` (Invite User's combined email/username/phone field) auto-classifies which
+// field it's checking, same as the invite route itself; the default `mode="username"` always checks
+// the username field regardless of what's typed, for forms where that's the only thing it can be.
+export function UsernameField({ label = 'Username', value, onChange, required, mode = 'username', placeholder, autoFocus }) {
+  const [status, setStatus] = useState('idle'); // idle | checking | available | taken
+  const [checkedField, setCheckedField] = useState('username');
+
+  useEffect(() => {
+    const trimmed = (value || '').trim();
+    if (trimmed.length < 2) { setStatus('idle'); return; }
+    setStatus('checking');
+    const t = setTimeout(async () => {
+      const param = mode === 'identifier' ? `identifier=${encodeURIComponent(trimmed)}` : `username=${encodeURIComponent(trimmed)}`;
+      const r = await fetch(`/api/username-check?${param}`);
+      const d = await r.json();
+      if (d.success && d.data.available != null) {
+        setCheckedField(d.data.field);
+        setStatus(d.data.available ? 'available' : 'taken');
+      } else {
+        setStatus('idle');
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [value, mode]);
+
+  return (
+    <Field label={label} required={required}>
+      <input
+        type="text" value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}
+        required={required} placeholder={placeholder} autoFocus={autoFocus}
+      />
+      {status !== 'idle' && (
+        <span className={`block text-xs mt-1 ${status === 'taken' ? 'text-red-600' : status === 'available' ? 'text-green-600' : 'text-gray-400'}`}>
+          {status === 'checking' && 'Checking availability...'}
+          {status === 'available' && `That ${checkedField} is available.`}
+          {status === 'taken' && `That ${checkedField} is already taken — please choose another.`}
+        </span>
+      )}
+    </Field>
   );
 }
 
