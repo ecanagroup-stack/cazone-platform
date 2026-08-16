@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
-  Loader, PageHeader, Card, EmptyRow, EmptyState, Tabs, StatusPill,
+  Loader, PageHeader, Card, EmptyRow, Tabs, StatusPill,
   inputCls, theadCls, tableScrollCls, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
@@ -46,24 +46,25 @@ export default function ReportsPage() {
     <div>
       <PageHeader title="Reports" subtitle="Sales, stock and cash over a date range" />
 
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
+          <input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} className={inputCls} />
+        </div>
+        {serviceId && !branchId && <p className="text-xs text-gray-500 pb-2">Showing all branches for this service.</p>}
+        {!serviceId && !branchId && <p className="text-xs text-gray-500 pb-2">Showing every business — pick one from the switcher above for its own branch-level detail.</p>}
+      </div>
+
+      <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
+
       {!branchId && !serviceId ? (
-        <Card><EmptyState title="Pick a service" subtitle="Choose a service from the switcher at the top of the page to see its reports — leave the branch as 'All branches' to roll everything up." /></Card>
+        <AllBusinessesSummary tab={activeTab} from={from} to={to} />
       ) : (
         <>
-          <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">From</label>
-              <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
-              <input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} className={inputCls} />
-            </div>
-            {!branchId && <p className="text-xs text-gray-500 pb-2">Showing all branches for this service.</p>}
-          </div>
-
-          <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
-
           {activeTab === 'sales' && <SalesSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
           {activeTab === 'stock' && <StockSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
           {activeTab === 'cash' && <CashSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
@@ -342,6 +343,93 @@ function CashSummary({ branchId, serviceId, from, to }) {
           </table>
         </div>
       </Card>
+    </div>
+  );
+}
+
+// "All Businesses" — shown when the switcher is on "All services" (no ?service=/?branch= at all).
+// One headline card per enabled service, calling the same already-branch-rolled-up report endpoints
+// once each, plus a combined total where that's a meaningful single number (Sales' revenue). Stock
+// and Cash don't collapse to one comparable number across different businesses as cleanly, so their
+// cards show the headline that actually matters per business instead of forcing a fake combined sum.
+function AllBusinessesSummary({ tab, from, to }) {
+  const router = useRouter();
+  const [services, setServices] = useState(null);
+  const [totals, setTotals] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setTotals({});
+    (async () => {
+      const sr = await fetch('/api/admin/services').then((r) => r.json());
+      if (!sr.success || cancelled) return;
+      const activeServices = sr.data.filter((s) => s.isActive);
+      setServices(activeServices);
+
+      const endpoint = tab === 'sales' ? 'sales' : tab === 'stock' ? 'stock' : 'cash';
+      const entries = await Promise.all(activeServices.map(async (s) => {
+        const r = await fetch(`/api/admin/reports/${endpoint}?serviceId=${s.id}&from=${from}&to=${to}`).then((res) => res.json());
+        if (!r.success) return [s.id, null];
+        if (tab === 'sales') {
+          return [s.id, { total: r.data.reduce((sum, row) => sum + row.total, 0), count: r.data.reduce((sum, row) => sum + row.count, 0) }];
+        }
+        if (tab === 'stock') {
+          return [s.id, { moves: r.data.rows.length, exceptions: r.data.variance.filter((v) => v.status === 'exception').length }];
+        }
+        return [s.id, {
+          shifts: r.data.shifts.length,
+          diffTotal: r.data.shifts.reduce((sum, sh) => sum + (sh.difference || 0), 0),
+          depositTotal: r.data.deposits.reduce((sum, d) => sum + d.amount, 0),
+        }];
+      }));
+      if (!cancelled) setTotals(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [tab, from, to]);
+
+  if (!services) return <Loader />;
+  if (services.length === 0) return <Card><p className="p-6 text-center text-sm text-gray-500">No services enabled yet.</p></Card>;
+
+  const grandTotal = tab === 'sales' ? Object.values(totals).reduce((sum, t) => sum + (t?.total || 0), 0) : null;
+
+  return (
+    <div>
+      {grandTotal != null && (
+        <p className="text-sm text-gray-500 mb-3">Combined total: <span className="font-semibold text-gray-900">{formatMoney(grandTotal / 100)}</span></p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {services.map((s) => {
+          const t = totals[s.id];
+          return (
+            <Card
+              key={s.id} className="p-4 cursor-pointer hover:border-brand-400"
+              onClick={() => router.push(`/admin/reports?service=${s.id}${tab !== 'sales' ? `&tab=${tab}` : ''}`)}
+            >
+              <p className="text-sm font-semibold">{s.name || s.type}</p>
+              {!t ? (
+                <p className="text-xs text-gray-400 mt-2">Loading...</p>
+              ) : tab === 'sales' ? (
+                <>
+                  <p className="text-2xl font-bold mt-1">{formatMoney(t.total / 100)}</p>
+                  <p className="text-xs text-gray-500 mt-1">{t.count} order{t.count === 1 ? '' : 's'}</p>
+                </>
+              ) : tab === 'stock' ? (
+                <>
+                  <p className="text-2xl font-bold mt-1">{t.moves} move{t.moves === 1 ? '' : 's'}</p>
+                  {t.exceptions > 0 && <p className="text-xs text-amber-700 mt-1">{t.exceptions} variance exception{t.exceptions === 1 ? '' : 's'}</p>}
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold mt-1">{formatMoney(t.depositTotal / 100)}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {t.shifts} shift{t.shifts === 1 ? '' : 's'} closed{t.diffTotal ? `, ${formatMoney(t.diffTotal / 100)} diff` : ''}
+                  </p>
+                </>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }
