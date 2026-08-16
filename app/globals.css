@@ -14,3 +14,17 @@ thead th {
   position: sticky;
   top: 0;
 }
+
+/* Print mechanism for report-like screens (components/ui.js ReportToolbar's Print button) — the
+   browser's native print dialog already offers "Save as PDF", so no PDF-generation library is
+   needed. App chrome uses Tailwind's `print:hidden` (already the convention here — see
+   tableScrollCls's print:overflow-visible above), not a bespoke class. */
+@media print {
+  body {
+    background: white;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}

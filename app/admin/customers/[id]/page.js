@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61-90d', d61_90: '91-120d', d90_plus: '120d+' };
@@ -139,7 +139,21 @@ export default function CustomerDetailPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">Statement</h3></div>
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Statement</h3>
+          <ReportToolbar
+            title={`${customer.name} — Statement`}
+            csvFilename={`${customer.name}-statement`}
+            csvRows={ledger}
+            csvColumns={[
+              { key: 'date', label: 'Date', value: (r) => formatDate(r.date) },
+              { key: 'label', label: 'Entry' },
+              { key: 'channel', label: 'Channel' },
+              { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
+              { key: 'runningBalance', label: 'Balance', value: (r) => (r.runningBalance / 100).toFixed(2) },
+            ]}
+          />
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500">
             <tr>

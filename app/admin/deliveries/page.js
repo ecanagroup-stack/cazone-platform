@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
-  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill,
+  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
@@ -136,7 +136,21 @@ function DeliveriesTab({ branchId }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-between items-center mb-4">
+        <ReportToolbar
+          title="Deliveries"
+          csvFilename="deliveries"
+          csvRows={deliveries}
+          csvColumns={[
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'supplier.name', label: 'Supplier' },
+            { key: 'product.name', label: 'Product' },
+            { key: 'quantity', label: 'Quantity' },
+            { key: 'totalCost', label: 'Cost', value: (r) => (r.totalCost / 100).toFixed(2) },
+            { key: 'vehicle.plateNumber', label: 'Vehicle' },
+            { key: 'status', label: 'Status', value: (r) => (r.qtyRemaining != null ? r.status : 'received') },
+          ]}
+        />
         <button onClick={() => { setForm(blankDelivery); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>
       </div>
 

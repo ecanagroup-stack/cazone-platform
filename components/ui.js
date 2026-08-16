@@ -1,6 +1,9 @@
 'use client';
 
-import { FiX } from 'react-icons/fi';
+import { useState } from 'react';
+import { FiX, FiPrinter, FiDownload, FiLink, FiMail } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import { toCsv, downloadCsv } from '@/lib/csv';
 
 export function Logo({ className = 'h-8 w-8' }) {
   return (
@@ -140,6 +143,66 @@ export function Field({ label, children, required }) {
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+// The global print/export/share mechanism — drop onto any report-like table screen. Print uses the
+// browser's native dialog (which already offers "Save as PDF"); Export CSV and Copy Link need
+// nothing configured; Email needs RESEND_API_KEY set server-side (lib/email.js) and shows a clear
+// error if it isn't, rather than pretending to send.
+export function ReportToolbar({ title, csvRows, csvColumns, csvFilename, allowEmail = true }) {
+  const [showEmail, setShowEmail] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: '', note: '' });
+  const [sending, setSending] = useState(false);
+
+  const buildCsv = () => toCsv(csvRows, csvColumns);
+
+  const handlePrint = () => window.print();
+
+  const handleExport = () => downloadCsv(csvFilename, buildCsv());
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    toast.success('Link copied');
+  };
+
+  const handleEmail = async (e) => {
+    e.preventDefault();
+    setSending(true);
+    try {
+      const r = await fetch('/api/admin/reports/email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: emailForm.to, subject: title, note: emailForm.note, csvFilename, csv: buildCsv() }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Emailed'); setShowEmail(false); setEmailForm({ to: '', note: '' }); }
+      else toast.error(d.error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="print:hidden flex items-center gap-4">
+      <button type="button" onClick={handlePrint} className={`flex items-center gap-1.5 ${tableActionCls}`}><FiPrinter size={14} /> Print</button>
+      <button type="button" onClick={handleExport} className={`flex items-center gap-1.5 ${tableActionCls}`}><FiDownload size={14} /> Export CSV</button>
+      <button type="button" onClick={handleCopyLink} className={`flex items-center gap-1.5 ${tableActionCls}`}><FiLink size={14} /> Copy Link</button>
+      {allowEmail && (
+        <button type="button" onClick={() => setShowEmail(true)} className={`flex items-center gap-1.5 ${tableActionCls}`}><FiMail size={14} /> Email</button>
+      )}
+
+      <Modal open={showEmail} onClose={() => setShowEmail(false)} title={`Email — ${title}`}>
+        <form onSubmit={handleEmail} className="space-y-4">
+          <Field label="Recipient email" required>
+            <input type="email" value={emailForm.to} onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })} className={inputCls} required autoFocus />
+          </Field>
+          <Field label="Note">
+            <textarea value={emailForm.note} onChange={(e) => setEmailForm({ ...emailForm, note: e.target.value })} className={inputCls} rows={2} placeholder="Optional" />
+          </Field>
+          <FormButtons onCancel={() => setShowEmail(false)} submitting={sending} submitLabel="Send" />
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 
 const SEVERITY_COLOR = { info: 'blue', concern: 'amber', issue: 'red' };
@@ -72,6 +72,21 @@ function FlagsTab() {
 
   return (
     <div>
+      <div className="flex justify-end mb-3">
+        <ReportToolbar
+          title="Anything Wrong"
+          csvFilename="anything-wrong"
+          csvRows={flags}
+          csvColumns={[
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'branchName', label: 'Branch' },
+            { key: 'targetType', label: 'Type', value: (r) => TARGET_LABEL[r.targetType] || r.targetType },
+            { key: 'severity', label: 'Severity' },
+            { key: 'status', label: 'Status' },
+            { key: 'reason', label: 'Reason' },
+          ]}
+        />
+      </div>
       {flags.length === 0 ? (
         <Card><EmptyState title="Nothing open" subtitle="Every flag raised across your branches has been acknowledged." /></Card>
       ) : (
@@ -164,6 +179,20 @@ function PendingOrdersTab() {
 
   return (
     <div>
+      <div className="flex justify-end mb-3">
+        <ReportToolbar
+          title="Pending Orders"
+          csvFilename="pending-orders"
+          csvRows={orders}
+          csvColumns={[
+            { key: 'orderNumber', label: 'Order #' },
+            { key: 'customer.name', label: 'Customer' },
+            { key: 'branch.name', label: 'Branch' },
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'grandTotal', label: 'Total', value: (r) => (r.grandTotal / 100).toFixed(2) },
+          ]}
+        />
+      </div>
       {orders.length === 0 ? (
         <Card><EmptyState title="Nothing pending" subtitle="Self-service orders placed from the customer portal will show up here for confirmation." /></Card>
       ) : (
@@ -249,6 +278,20 @@ function PricingTab() {
 
   return (
     <div>
+      <div className="flex justify-end mb-3">
+        <ReportToolbar
+          title="Price Changes"
+          csvFilename="price-changes"
+          csvRows={rows}
+          csvColumns={[
+            { key: 'product.name', label: 'Product' },
+            { key: 'oldPrice', label: 'Old Price', value: (r) => (r.oldPrice != null ? (r.oldPrice / 100).toFixed(2) : '') },
+            { key: 'newPrice', label: 'New Price', value: (r) => (r.newPrice / 100).toFixed(2) },
+            { key: 'status', label: 'Status' },
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+          ]}
+        />
+      </div>
       {rows.length === 0 ? (
         <Card><EmptyState title="Nothing pending" subtitle="Price changes proposed by managers or staff will show up here for approval." /></Card>
       ) : (
@@ -343,7 +386,20 @@ function DepositsTab() {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-between items-center mb-4">
+        <ReportToolbar
+          title="Deposits"
+          csvFilename="deposits"
+          csvRows={deposits}
+          csvColumns={[
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'branch.name', label: 'Branch' },
+            { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
+            { key: 'bankName', label: 'Bank' },
+            { key: 'accountNumber', label: 'Account' },
+            { key: 'status', label: 'Status' },
+          ]}
+        />
         <button onClick={() => { setForm(blankDepositForm); setShowModal(true); }} className={btnPrimaryCls}>Record Deposit</button>
       </div>
 

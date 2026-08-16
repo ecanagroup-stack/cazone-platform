@@ -13,7 +13,7 @@ export function isLapsed(org) {
 export default function LapsedBanner({ org }) {
   if (!isLapsed(org)) return null;
   return (
-    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 text-center">
+    <div className="print:hidden bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 text-center">
       Your subscription needs attention — visit <a href="/admin/billing" className="underline font-medium">Billing</a> to sort it out. This won't stop anything you're already doing.
     </div>
   );

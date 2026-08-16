@@ -12,7 +12,7 @@ export default async function PortalLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="h-14 border-b bg-white flex items-center px-4 gap-4">
+      <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4">
         <Link href="/portal" className="flex items-center gap-2">
           <Logo className="h-7 w-7" />
           <span className="font-semibold">{session.user.organizationName}</span>

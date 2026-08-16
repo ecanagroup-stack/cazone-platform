@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
-  FiMapPin, FiUserCheck, FiCreditCard,
+  FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2,
 } from 'react-icons/fi';
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
@@ -39,6 +39,7 @@ const GROUPS = [
     items: [
       { href: '/admin', label: 'Today', icon: FiHome },
       { href: '/admin/exceptions', label: 'Anything Wrong', icon: FiAlertTriangle },
+      { href: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
     ],
   },
 ];
@@ -50,7 +51,7 @@ export default function Sidebar({ enabledTypes = [] }) {
     items: group.items.filter((item) => !item.pack || enabledTypes.includes(item.pack)),
   })).filter((g) => g.items.length > 0);
   return (
-    <nav className="w-56 shrink-0 border-r bg-white p-4 hidden md:block">
+    <nav className="print:hidden w-56 shrink-0 border-r bg-white p-4 hidden md:block">
       {groups.map((group) => (
         <div key={group.label} className="mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>

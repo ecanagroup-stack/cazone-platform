@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 const blankForm = { name: '', phone: '', email: '', businessName: '', creditLimit: '' };
@@ -51,6 +51,21 @@ export default function CustomersPage() {
       />
 
       <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b flex justify-end">
+          <ReportToolbar
+            title="Customers"
+            csvFilename="customers"
+            csvRows={customers}
+            csvColumns={[
+              { key: 'name', label: 'Name' },
+              { key: 'businessName', label: 'Business Name' },
+              { key: 'phone', label: 'Phone' },
+              { key: 'balance', label: 'Balance', value: (r) => (r.balance / 100).toFixed(2) },
+              { key: 'creditLimit', label: 'Credit Limit', value: (r) => (r.creditLimit / 100).toFixed(2) },
+              { key: 'isActive', label: 'Status', value: (r) => (r.onHold ? 'On Hold' : r.isActive ? 'Active' : 'Inactive') },
+            ]}
+          />
+        </div>
         <div className={tableScrollCls}>
           <table className="w-full text-sm">
             <thead className={theadCls}>

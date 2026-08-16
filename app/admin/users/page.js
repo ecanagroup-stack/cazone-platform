@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar } from '@/components/ui';
 
 const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', staff: 'Staff' };
 
@@ -110,6 +110,19 @@ export default function UsersPage() {
       </Card>
 
       <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b flex justify-end">
+          <ReportToolbar
+            title="Users"
+            csvFilename="users"
+            csvRows={users}
+            csvColumns={[
+              { key: 'name', label: 'Name' },
+              { key: 'role', label: 'Role', value: (r) => ROLE_LABELS[r.role] || r.role },
+              { key: 'login', label: 'Login', value: (r) => r.email || r.username || r.phone || '' },
+              { key: 'isActive', label: 'Status', value: (r) => (r.isActive ? 'Active' : 'Inactive') },
+            ]}
+          />
+        </div>
         <div className={tableScrollCls}>
           <table className="w-full text-sm">
             <thead className={theadCls}>

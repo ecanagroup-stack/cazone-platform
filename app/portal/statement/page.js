@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card } from '@/components/ui';
+import { Loader, PageHeader, Card, ReportToolbar } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const CHANNEL_LABEL = { shop: 'General Store', atc: 'Wholesale' };
@@ -23,6 +23,20 @@ export default function PortalStatementPage() {
     <div>
       <PageHeader title="Statement" subtitle="Every order and payment on your account" />
       <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b flex justify-end">
+          <ReportToolbar
+            title="Statement"
+            csvFilename="statement"
+            csvRows={data.ledger}
+            csvColumns={[
+              { key: 'date', label: 'Date', value: (r) => formatDate(r.date) },
+              { key: 'label', label: 'Entry' },
+              { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
+              { key: 'runningBalance', label: 'Balance', value: (r) => (r.runningBalance / 100).toFixed(2) },
+            ]}
+            allowEmail={false}
+          />
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500">
             <tr>
