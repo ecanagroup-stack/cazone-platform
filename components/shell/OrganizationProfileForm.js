@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Card, Field, inputCls, btnPrimaryCls } from '@/components/ui';
+import { Card, Field, inputCls, btnPrimaryCls, OrgLogo } from '@/components/ui';
 import { resizeImageToPng } from '@/lib/imageResize';
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
@@ -60,11 +60,7 @@ export default function OrganizationProfileForm({ org }) {
       <h3 className="font-semibold text-sm mb-4">Organization Profile</h3>
 
       <div className="mb-5 flex items-center gap-4">
-        {logoUrl ? (
-          <img src={logoUrl} alt="Logo" className="h-16 w-16 rounded object-contain border bg-white" />
-        ) : (
-          <div className="h-16 w-16 rounded border bg-gray-50 flex items-center justify-center text-xs text-gray-400">No logo</div>
-        )}
+        <OrgLogo org={{ name: org.name, logoUrl }} dim="h-16 w-16" />
         <label className="px-3 py-1.5 border rounded text-sm font-medium hover:bg-gray-50 cursor-pointer">
           {uploading ? 'Uploading...' : 'Upload logo'}
           <input type="file" accept={ALLOWED_TYPES.join(',')} onChange={handleLogoUpload} disabled={uploading} className="hidden" />

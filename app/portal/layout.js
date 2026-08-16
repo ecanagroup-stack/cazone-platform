@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
-import { Logo } from '@/components/ui';
+import { requireOrg } from '@/lib/tenantScope';
+import prisma from '@/lib/prisma';
+import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
@@ -13,11 +15,14 @@ export default async function PortalLayout({ children }) {
   const session = await getOrgSession();
   if (!session || session.user.role !== 'customer') redirect('/login');
 
+  const orgId = requireOrg(session);
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true, logoUrl: true, logoUrlSmall: true } });
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4">
         <Link href="/portal" className="flex items-center gap-2">
-          <Logo className="h-7 w-7" />
+          <OrgLogo org={org} dim="h-7 w-7" />
           <span className="font-semibold">{session.user.organizationName}</span>
         </Link>
         <nav className="flex items-center gap-4 text-sm text-gray-600">

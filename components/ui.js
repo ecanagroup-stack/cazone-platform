@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff, FiImage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { toCsv, downloadCsv } from '@/lib/csv';
+import { formatDate } from '@/lib/format';
 
 export function Logo({ className = 'h-8 w-8' }) {
   return (
@@ -13,6 +14,23 @@ export function Logo({ className = 'h-8 w-8' }) {
       <circle cx="50" cy="70" r="6" fill="#ffffff" />
     </svg>
   );
+}
+
+// An org's actual uploaded mark — never the generic <Logo/> as a stand-in, so "no logo yet" reads as
+// exactly that rather than looking like a real (wrong) brand. Used on the platform's organizations
+// list/detail and anywhere else an org's own logo is shown, not the app's own chrome. `dim` must be
+// a literal Tailwind size pair (e.g. "h-8 w-8") — Tailwind's JIT scanner needs the class text to
+// appear verbatim in source, so this can't be built from a numeric prop at runtime.
+export function OrgLogo({ org, dim = 'h-16 w-16', className = '' }) {
+  const src = org?.logoUrlSmall || org?.logoUrl;
+  if (!src) {
+    return (
+      <div title="No logo uploaded" className={`${dim} rounded border border-dashed bg-gray-50 flex items-center justify-center text-gray-300 shrink-0 ${className}`}>
+        <FiImage size={16} />
+      </div>
+    );
+  }
+  return <img src={src} alt={org.name ? `${org.name} logo` : 'Logo'} className={`${dim} rounded object-contain border bg-white shrink-0 ${className}`} />;
 }
 
 export const btnPrimaryCls = 'px-4 py-2 bg-brand-600 text-white rounded text-sm font-medium hover:bg-brand-700 disabled:opacity-50';
@@ -280,6 +298,34 @@ export function ReportToolbar({ title, csvRows, csvColumns, csvFilename, allowEm
           <FormButtons onCancel={() => setShowEmail(false)} submitting={sending} submitLabel="Send" />
         </form>
       </Modal>
+    </div>
+  );
+}
+
+// The printable-document header (petrol-station-app has no receipt of its own — this is
+// ecana_shop-app's proven ReceiptHeader pattern, ported: logo + org identity on the left, a
+// reference number/date on the right, the document title centered below). No logo → the header
+// just runs without one, same as any receipt from a business that hasn't set one up — unlike
+// OrgLogo elsewhere in the app, this deliberately does NOT print a "No logo" placeholder box.
+export function ReceiptHeader({ org, refNumber, date, title }) {
+  const logoSrc = org?.logoUrlSmall || org?.logoUrl;
+  return (
+    <div className="mb-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          {logoSrc && <img src={logoSrc} alt={org.name} className="h-14 w-14 object-contain rounded" />}
+          <div>
+            <p className="font-bold text-lg leading-tight">{org?.name}</p>
+            {org?.address && <p className="text-xs text-gray-500">{org.address}</p>}
+            {(org?.phone || org?.email) && <p className="text-xs text-gray-500">{[org?.phone, org?.email].filter(Boolean).join(' · ')}</p>}
+          </div>
+        </div>
+        <div className="text-right text-xs text-gray-500">
+          {refNumber && <p className="font-medium text-gray-700">{refNumber}</p>}
+          {date && <p>{formatDate(date)}</p>}
+        </div>
+      </div>
+      {title && <h2 className="text-center text-sm font-semibold uppercase tracking-wide mt-4 border-t border-b py-2">{title}</h2>}
     </div>
   );
 }

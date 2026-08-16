@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField, NumberInput } from '@/components/ui';
 
@@ -325,6 +326,11 @@ export default function ShiftPage() {
                     <button onClick={() => { setApproveFor(p.dispenserId); setApproveNote(''); }} className="text-sm font-medium text-brand-600 hover:text-brand-700">
                       Review
                     </button>
+                  )}
+                  {status === 'approved' && p.reading?.orderId && (
+                    <Link href={`/admin/orders/${p.reading.orderId}/receipt`} target="_blank" className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                      Receipt
+                    </Link>
                   )}
                   {!submitted && (
                     <>

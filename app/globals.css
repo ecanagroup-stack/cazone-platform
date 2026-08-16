@@ -28,3 +28,27 @@ thead th {
     max-width: none !important;
   }
 }
+
+/* Receipt/invoice documents (app/admin/orders/[id]/receipt) — ecana_shop-app's proven A4 print
+   layout, ported: fixed 210mm width that scales down to fit narrow screens on-screen, but prints
+   at true size with no browser scaling. */
+.receipt-page {
+  width: 210mm;
+  max-width: 100%;
+  margin: 0 auto;
+  background: white;
+}
+@media screen and (max-width: 210mm) {
+  .receipt-page {
+    zoom: calc(100vw / 210mm);
+  }
+}
+@media print {
+  .receipt-page {
+    zoom: 1 !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, PasswordInput } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, PasswordInput, OrgLogo } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 
 const CURRENCIES = ['NGN', 'USD', 'GBP'];
@@ -96,8 +96,13 @@ export default function PlatformOrganizationsPage() {
                 {orgs.map((o) => (
                   <tr key={o.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/platform/organizations/${o.id}`)}>
                     <td className="px-4 py-3">
-                      <Link href={`/platform/organizations/${o.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{o.name}</Link>
-                      <p className="text-xs text-gray-500">{o.slug}</p>
+                      <div className="flex items-center gap-3">
+                        <OrgLogo org={o} dim="h-8 w-8" />
+                        <div>
+                          <Link href={`/platform/organizations/${o.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{o.name}</Link>
+                          <p className="text-xs text-gray-500">{o.slug}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600">{o.serviceTypes.map((t) => catalogLabel(t)).join(', ') || '—'}</td>
                     <td className="px-4 py-3">

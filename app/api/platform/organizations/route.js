@@ -35,6 +35,8 @@ export async function GET() {
         slug: o.slug,
         phone: o.phone,
         email: o.email,
+        logoUrl: o.logoUrl,
+        logoUrlSmall: o.logoUrlSmall,
         currency: o.currency,
         subscriptionStatus: o.subscriptionStatus,
         freeForever: o.freeForever,

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls, OtpField, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
@@ -27,6 +28,7 @@ export default function CounterPage() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '' });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [lastOrder, setLastOrder] = useState(null); // { id, orderNumber } — for the "Print receipt" link
 
   const loadProducts = useCallback(async () => {
     if (!serviceId) { setProducts(null); return; }
@@ -107,6 +109,7 @@ export default function CounterPage() {
       const d = await r.json();
       if (d.success) {
         toast.success(d.data.flagged ? `Sale ${d.data.order.orderNumber} recorded — flagged for credit override` : `Sale ${d.data.order.orderNumber} recorded`);
+        setLastOrder(d.data.order);
         setCart([]); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash'); setCreditWarning(null); setOverridePin('');
       } else if (d.needsApproval) {
         setCreditWarning(d);
@@ -139,6 +142,16 @@ export default function CounterPage() {
   return (
     <div>
       <PageHeader title="Counter" subtitle="Ring up a sale" />
+
+      {lastOrder && (
+        <Card className="p-3 mb-4 flex items-center justify-between bg-green-50 border-green-200">
+          <p className="text-sm text-green-800">Sale <span className="font-semibold">{lastOrder.orderNumber}</span> recorded.</p>
+          <div className="flex items-center gap-4">
+            <Link href={`/admin/orders/${lastOrder.id}/receipt`} target="_blank" className="text-sm font-medium text-brand-600 hover:text-brand-700">View Receipt</Link>
+            <button onClick={() => setLastOrder(null)} className="text-xs text-gray-500 hover:text-gray-700">Dismiss</button>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">

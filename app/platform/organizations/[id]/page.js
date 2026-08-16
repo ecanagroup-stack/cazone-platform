@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput, NumberInput } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput, NumberInput, OrgLogo } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
@@ -122,19 +122,24 @@ export default function OrganizationDetailPage() {
         <FiArrowLeft size={14} /> All Organizations
       </Link>
 
-      <PageHeader
-        title={org.name}
-        subtitle={org.slug}
-        action={
-          <button
-            onClick={toggleActive}
-            disabled={togglingActive}
-            className={`px-4 py-2 rounded text-sm font-medium border disabled:opacity-50 ${org.isActive ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-green-300 text-green-700 hover:bg-green-50'}`}
-          >
-            {org.isActive ? 'Suspend Organization' : 'Reactivate Organization'}
-          </button>
-        }
-      />
+      <div className="flex items-center gap-4">
+        <OrgLogo org={org} dim="h-12 w-12" />
+        <div className="flex-1">
+          <PageHeader
+            title={org.name}
+            subtitle={org.slug}
+            action={
+              <button
+                onClick={toggleActive}
+                disabled={togglingActive}
+                className={`px-4 py-2 rounded text-sm font-medium border disabled:opacity-50 ${org.isActive ? 'border-red-300 text-red-700 hover:bg-red-50' : 'border-green-300 text-green-700 hover:bg-green-50'}`}
+              >
+                {org.isActive ? 'Suspend Organization' : 'Reactivate Organization'}
+              </button>
+            }
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
