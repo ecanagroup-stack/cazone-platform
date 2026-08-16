@@ -649,6 +649,18 @@ model Delivery {
   createdBy         String?
   createdAt         DateTime @default(now())
 
+  // Fuel-only, optional: a tanker offload verified against a physical tank dip rather than trusted
+  // on the waybill alone. When set, `quantity` above IS `actualOffloaded` (closingDip - openingDip)
+  // so every existing consumer of Delivery.quantity/totalCost keeps working unchanged — declaredLoad
+  // and offloadVariance are just the extra provenance the dip check adds (petrol-station-app's
+  // declaredLoad/actualOffloaded/offloadVariance, ported field-for-field).
+  tankId          String?
+  tank            Tank?   @relation(fields: [tankId], references: [id])
+  declaredLoad    Float?
+  openingDip      Float?
+  closingDip      Float?
+  offloadVariance Float?
+
   orderLines OrderLine[]
 
   @@index([organizationId])
@@ -859,6 +871,7 @@ model Tank {
   createdAt DateTime @default(now())
 
   dispensers Dispenser[]
+  deliveries Delivery[]
 
   @@unique([branchId, label])
   @@index([organizationId])

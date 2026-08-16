@@ -40,7 +40,7 @@ export default function DeliveriesPage() {
   );
 }
 
-const blankDelivery = { mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '' };
+const blankDelivery = { mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '', useDip: false, tankId: '', openingDip: '', closingDip: '' };
 const ALLOCATION_STATUS_COLOR = { pending: 'gray', assigned: 'blue', loaded: 'amber', arrived: 'green', closed: 'gray' };
 const ALLOCATION_STATUS_LABEL = { pending: 'Pending', assigned: 'Assigned', loaded: 'Loaded', arrived: 'Arrived', closed: 'Closed (sold out)' };
 const LOADING_HOURS_AGO = [
@@ -49,7 +49,7 @@ const LOADING_HOURS_AGO = [
 ];
 
 function DeliveriesTab({ branchId }) {
-  const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand }
+  const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand, tanks }
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankDelivery);
   const [submitting, setSubmitting] = useState(false);
@@ -74,11 +74,21 @@ function DeliveriesTab({ branchId }) {
     try {
       const r = await fetch('/api/admin/deliveries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branchId, ...form, costPerUnit: Math.round(Number(form.costPerUnit || 0) * 100) }),
+        body: JSON.stringify({
+          branchId, ...form, costPerUnit: Math.round(Number(form.costPerUnit || 0) * 100),
+          tankId: form.useDip ? form.tankId : undefined,
+          openingDip: form.useDip ? form.openingDip : undefined,
+          closingDip: form.useDip ? form.closingDip : undefined,
+        }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded'); setShowModal(false); setForm(blankDelivery); load(); }
-      else toast.error(d.error);
+      if (d.success) {
+        toast[d.data.flagged ? 'error' : 'success'](
+          d.data.flagged ? 'Delivery recorded — offload variance flagged for review'
+            : form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded'
+        );
+        setShowModal(false); setForm(blankDelivery); load();
+      } else toast.error(d.error);
     } finally {
       setSubmitting(false);
     }
@@ -132,7 +142,8 @@ function DeliveriesTab({ branchId }) {
 
   if (!data) return <Loader />;
 
-  const { deliveries, suppliers, products, onHand } = data;
+  const { deliveries, suppliers, products, onHand, tanks } = data;
+  const tanksForProduct = (tanks || []).filter((t) => t.productId === form.productId);
 
   return (
     <div>
@@ -195,6 +206,11 @@ function DeliveriesTab({ branchId }) {
                     <td className="px-4 py-3 text-right">
                       {d.quantity.toLocaleString()} {d.product.unit}
                       {isAllocation && <span className="block text-xs text-gray-400">{d.qtyRemaining.toLocaleString()} left</span>}
+                      {d.offloadVariance != null && (
+                        <span className={`block text-xs ${Math.abs(d.offloadVariance) > 0.01 ? 'text-amber-700' : 'text-gray-400'}`}>
+                          Dip: {d.openingDip.toLocaleString()}→{d.closingDip.toLocaleString()} ({d.offloadVariance > 0 ? '+' : ''}{d.offloadVariance.toFixed(1)}L vs declared)
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">{formatMoney(d.totalCost / 100)}</td>
                     <td className="px-4 py-3 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
@@ -250,19 +266,59 @@ function DeliveriesTab({ branchId }) {
             </Field>
           )}
           <Field label="Product" required>
-            <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} className={inputCls} required>
+            <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value, tankId: '' })} className={inputCls} required>
               <option value="">Select...</option>
               {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
-              <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
-            </Field>
-            <Field label="Cost per unit" required>
-              <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
-            </Field>
-          </div>
+
+          {form.mode === 'received' && tanksForProduct.length > 0 && (
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox" checked={form.useDip}
+                onChange={(e) => setForm({ ...form, useDip: e.target.checked, tankId: e.target.checked ? tanksForProduct[0].id : '' })}
+              />
+              Verify with tank dip (tanker offload)
+            </label>
+          )}
+
+          {form.useDip ? (
+            <>
+              <Field label="Receiving tank" required>
+                <select value={form.tankId} onChange={(e) => setForm({ ...form, tankId: e.target.value })} className={inputCls} required>
+                  {tanksForProduct.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Opening dip (before offload)" required>
+                  <NumberInput value={form.openingDip} onChange={(e) => setForm({ ...form, openingDip: e.target.value })} required />
+                </Field>
+                <Field label="Closing dip (after offload)" required>
+                  <NumberInput value={form.closingDip} onChange={(e) => setForm({ ...form, closingDip: e.target.value })} required />
+                </Field>
+              </div>
+              {form.openingDip !== '' && form.closingDip !== '' && Number.isFinite(Number(form.closingDip) - Number(form.openingDip)) && (
+                <p className="text-xs text-gray-500">Actual offloaded: {(Number(form.closingDip) - Number(form.openingDip)).toLocaleString()} L</p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Declared load (per waybill)" required>
+                  <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
+                </Field>
+                <Field label="Cost per unit" required>
+                  <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
+                </Field>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
+                <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
+              </Field>
+              <Field label="Cost per unit" required>
+                <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
+              </Field>
+            </div>
+          )}
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel={form.mode === 'allocation' ? 'Start Allocation' : 'Record Delivery'} />
         </form>
       </Modal>
