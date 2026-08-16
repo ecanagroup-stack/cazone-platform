@@ -68,6 +68,9 @@ function TanksTab({ branchId }) {
   const [measured, setMeasured] = useState('');
   const [dipResult, setDipResult] = useState(null);
 
+  const [historyFor, setHistoryFor] = useState(null); // tank object
+  const [history, setHistory] = useState(null);
+
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/fuel/tanks?branchId=${branchId}`);
     const d = await r.json();
@@ -147,6 +150,14 @@ function TanksTab({ branchId }) {
 
   const closeDipModal = () => { setDipFor(null); setMeasured(''); setDipResult(null); };
 
+  const openHistory = async (tank) => {
+    setHistoryFor(tank);
+    setHistory(null);
+    const r = await fetch(`/api/admin/fuel/tanks/${tank.id}/reconciliations`);
+    const d = await r.json();
+    if (d.success) setHistory(d.data); else toast.error(d.error || 'Failed to load');
+  };
+
   if (!data) return <Loader />;
 
   const { tanks, products } = data;
@@ -179,6 +190,7 @@ function TanksTab({ branchId }) {
               <div className="flex items-center gap-3">
                 <StatusPill status={tank.isActive ? 'Active' : 'Inactive'} color={tank.isActive ? 'green' : 'gray'} />
                 <button onClick={() => { setDipFor(tank); setMeasured(''); setDipResult(null); }} className={tableActionCls}>Record Dip</button>
+                <button onClick={() => openHistory(tank)} className={tableActionCls}>Closing Stock History</button>
                 <button onClick={() => toggleTank(tank)} className={tableActionCls}>{tank.isActive ? 'Deactivate' : 'Reactivate'}</button>
                 <button onClick={() => { setAddDispenserFor(tank); setDispenserForm(blankDispenser); }} className={tableActionCls}>+ Add Dispenser</button>
               </div>
@@ -264,6 +276,30 @@ function TanksTab({ branchId }) {
             </Field>
             <FormButtons onCancel={closeDipModal} submitting={submitting} submitLabel="Record Dip" />
           </form>
+        )}
+      </Modal>
+
+      <Modal open={!!historyFor} onClose={() => setHistoryFor(null)} title={`Closing Stock History — ${historyFor?.label || ''}`}>
+        {!history ? (
+          <Loader />
+        ) : history.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-6">No dips recorded yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {history.map((r) => (
+              <div key={r.id} className={`rounded p-3 text-sm ${r.status === 'exception' ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}>
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">{formatDate(r.periodEnd)}</p>
+                  <StatusPill status={r.status === 'exception' ? 'Exception' : 'Within Tolerance'} color={r.status === 'exception' ? 'red' : 'green'} />
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-gray-600">
+                  <div><p className="text-gray-400">Book</p><p className="font-medium text-gray-800">{r.book.toLocaleString()} L</p></div>
+                  <div><p className="text-gray-400">Measured</p><p className="font-medium text-gray-800">{r.measured.toLocaleString()} L</p></div>
+                  <div><p className="text-gray-400">Variance</p><p className={`font-medium ${r.status === 'exception' ? 'text-amber-700' : 'text-gray-800'}`}>{r.variance > 0 ? '+' : ''}{r.variance.toFixed(1)} L ({r.variancePct.toFixed(2)}%)</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </Modal>
     </div>
