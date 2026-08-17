@@ -28,7 +28,7 @@ export const GET = withOrg(async (request) => {
 
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'branches.manage')) {
+  if (!can(session.user.role, 'materials.catalog.manage')) {
     return NextResponse.json({ error: 'You do not have permission to manage cement brands' }, { status: 403 });
   }
   try {

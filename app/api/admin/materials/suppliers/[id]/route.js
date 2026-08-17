@@ -5,7 +5,7 @@ import { can } from '@/lib/permissions';
 
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'branches.manage')) {
+  if (!can(session.user.role, 'materials.catalog.manage')) {
     return NextResponse.json({ error: 'You do not have permission to manage suppliers' }, { status: 403 });
   }
   try {

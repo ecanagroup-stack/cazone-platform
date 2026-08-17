@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
 
-const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier', auditor: 'Auditor', staff: 'Staff' };
+const ROLE_LABELS = {
+  owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier',
+  materials_manager: 'Materials Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', staff: 'Staff',
+};
 
 // Plain-language, not a permission-key matrix — platform-ui skill, section 5.
 const ROLE_DESCRIPTIONS = [
@@ -12,9 +15,18 @@ const ROLE_DESCRIPTIONS = [
   { role: 'Manager', can: 'Invite users, manage services and branches, and approve fuel readings/payments.' },
   { role: 'Supervisor', can: 'Fuel only — submits pump readings for a manager to approve.' },
   { role: 'Cashier', can: 'Fuel only — records payments collected for a manager to approve.' },
+  { role: 'Materials Manager', can: 'Construction Material only — sales, customers, stock and catalog upkeep, no branch/user admin.' },
+  { role: 'ATC Manager', can: 'Construction Material only — ATC allocation lifecycle (assign/loading/arrive) only.' },
   { role: 'Auditor', can: 'Raises flags on discrepancies; otherwise read-only.' },
   { role: 'Staff', can: 'Day-to-day work on the branches they are assigned to.' },
 ];
+
+// Roles scoped to a specific pack only show once a branch of that pack's type is selected —
+// same idea Sidebar.js already uses for currentServiceType, just applied to the invite form's role
+// picker instead of nav items.
+const ROLES_FOR_SERVICE_TYPE = { fuel_station: ['supervisor', 'cashier'], shop: ['materials_manager', 'atc_manager'] };
+const UNIVERSAL_ROLES = ['manager', 'staff', 'auditor'];
+const ROLE_OPTION_LABELS = { ...ROLE_LABELS, supervisor: 'Supervisor (fuel)', cashier: 'Cashier (fuel)', materials_manager: 'Materials Manager', atc_manager: 'ATC Manager' };
 
 const blankInvite = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 
@@ -34,11 +46,20 @@ export default function UsersPage() {
 
   useEffect(() => { load(); }, []);
 
+  const allBranches = services.flatMap((s) => s.branches.map((b) => ({ ...b, serviceType: s.type, serviceName: s.name })));
+  const selectedServiceTypes = [...new Set(form.branchIds.map((id) => allBranches.find((b) => b.id === id)?.serviceType).filter(Boolean))];
+  const availableRoles = [
+    ...UNIVERSAL_ROLES,
+    ...selectedServiceTypes.flatMap((t) => ROLES_FOR_SERVICE_TYPE[t] || []),
+  ];
+
   const toggleBranch = (branchId) => {
-    setForm((f) => ({
-      ...f,
-      branchIds: f.branchIds.includes(branchId) ? f.branchIds.filter((id) => id !== branchId) : [...f.branchIds, branchId],
-    }));
+    setForm((f) => {
+      const branchIds = f.branchIds.includes(branchId) ? f.branchIds.filter((id) => id !== branchId) : [...f.branchIds, branchId];
+      const nextTypes = [...new Set(branchIds.map((id) => allBranches.find((b) => b.id === id)?.serviceType).filter(Boolean))];
+      const nextRoles = [...UNIVERSAL_ROLES, ...nextTypes.flatMap((t) => ROLES_FOR_SERVICE_TYPE[t] || [])];
+      return { ...f, branchIds, role: nextRoles.includes(f.role) ? f.role : 'staff' };
+    });
   };
 
   const handleInvite = async (e) => {
@@ -68,8 +89,6 @@ export default function UsersPage() {
   };
 
   if (!users) return <Loader />;
-
-  const allBranches = services.flatMap((s) => s.branches.map((b) => ({ ...b, serviceName: s.name })));
 
   return (
     <div>
@@ -152,32 +171,27 @@ export default function UsersPage() {
             label="Email, username or phone" mode="identifier" required
             value={form.identifier} onChange={(v) => setForm({ ...form, identifier: v })}
           />
+          <Field label="Branches" required>
+            <p className="text-xs text-gray-500 mb-2">Pick branches first — the role options below depend on what kind of business they belong to.</p>
+            <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto">
+              {allBranches.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.branchIds.includes(b.id)} onChange={() => toggleBranch(b.id)} />
+                  {b.name}
+                </label>
+              ))}
+            </div>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Role" required>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls}>
-                <option value="staff">Staff</option>
-                <option value="manager">Manager</option>
-                <option value="supervisor">Supervisor (fuel)</option>
-                <option value="cashier">Cashier (fuel)</option>
-                <option value="auditor">Auditor</option>
+                {availableRoles.map((r) => <option key={r} value={r}>{ROLE_OPTION_LABELS[r]}</option>)}
               </select>
             </Field>
             <Field label="Password" required>
               <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
             </Field>
           </div>
-          {allBranches.length > 0 && (
-            <Field label="Branches">
-              <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto">
-                {allBranches.map((b) => (
-                  <label key={b.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={form.branchIds.includes(b.id)} onChange={() => toggleBranch(b.id)} />
-                    {b.name}
-                  </label>
-                ))}
-              </div>
-            </Field>
-          )}
           <FormButtons onCancel={() => setShowInvite(false)} submitting={submitting} submitLabel="Invite User" />
         </form>
       </Modal>

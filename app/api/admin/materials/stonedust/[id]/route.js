@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/apiError';
 // editing) — only size, price (via .../price), and isActive change afterward.
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'branches.manage')) {
+  if (!can(session.user.role, 'materials.catalog.manage')) {
     return NextResponse.json({ error: 'You do not have permission to manage aggregate products' }, { status: 403 });
   }
   try {

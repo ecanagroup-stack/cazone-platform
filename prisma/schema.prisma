@@ -16,6 +16,10 @@ enum Role {
   // before either counts. Additive to staff, not a replacement — other packs still just use staff.
   supervisor
   cashier
+  // Construction Material's day-to-day manager and narrow ATC-only role (ecana_shop-app's
+  // gsm_manager/atc_manager) — additive to staff, same pattern as fuel's tier above.
+  materials_manager
+  atc_manager
   auditor
   staff
   customer

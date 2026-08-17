@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/apiError';
 
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'branches.manage')) {
+  if (!can(session.user.role, 'materials.catalog.manage')) {
     return NextResponse.json({ error: 'You do not have permission to change prices' }, { status: 403 });
   }
   try {

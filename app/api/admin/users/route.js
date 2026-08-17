@@ -8,9 +8,9 @@ import { ApiError } from '@/lib/apiError';
 
 // owner is never invited — it's created once at signup/org-creation. super_admin/customer are out of
 // scope for this form entirely (platform operator and, in v1, a role with no screens to use yet).
-// supervisor/cashier/auditor are fuel's review-chain tier (lib/permissions.js) — invitable like any
-// other staff-side role.
-const INVITABLE_ROLES = ['manager', 'supervisor', 'cashier', 'auditor', 'staff'];
+// supervisor/cashier/auditor are fuel's review-chain tier, materials_manager/atc_manager are
+// Construction Material's (lib/permissions.js) — all invitable like any other staff-side role.
+const INVITABLE_ROLES = ['manager', 'supervisor', 'cashier', 'materials_manager', 'atc_manager', 'auditor', 'staff'];
 
 export const GET = withOrg(async () => {
   const users = await prisma.user.findMany({
@@ -37,6 +37,9 @@ export const POST = withOrg(async (request) => {
     if (!name || !identifier || !role || !password) throw new ApiError('Name, login, role and password are all required', 400);
     if (!INVITABLE_ROLES.includes(role)) throw new ApiError('Invalid role', 400);
     if (password.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
+    // Every non-owner role needs at least one branch — a staff member with no branch has nowhere to
+    // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
+    if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
 
     const { field: idField, value: idValue } = classifyIdentifier(identifier);
 
