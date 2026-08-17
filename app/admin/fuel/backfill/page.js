@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 import { PageHeader, Card, EmptyState, Field, FormButtons, inputCls, btnPrimaryCls, NumberInput, OtpField } from '@/components/ui';
 
 function yesterdayIso() {
@@ -77,8 +78,11 @@ export default function BackfillPage() {
 
   const handleShift = async (e) => {
     e.preventDefault();
-    const assignments = Object.entries(assignForm).map(([dispenserId, v]) => ({ dispenserId, attendantId: v.attendantId, opening: v.opening }));
-    if (assignments.length === 0) return toast.error('Assign at least one pump');
+    const touched = Object.entries(assignForm).filter(([, v]) => v.attendantId || v.opening !== undefined && v.opening !== '');
+    const incomplete = touched.find(([, v]) => !v.attendantId || v.opening === undefined || v.opening === '');
+    if (incomplete) return toast.error('Every pump you started filling in needs both an attendant and an opening reading — finish it or clear both fields to skip it');
+    const assignments = touched.map(([dispenserId, v]) => ({ dispenserId, attendantId: v.attendantId, opening: v.opening }));
+    if (assignments.length === 0) return toast.error('Assign at least one pump — pick an attendant and enter an opening reading for at least one row above');
     const data = await submitStep({ type: 'shift', branchId, openingFloat: Number(openingFloat) || 0, assignments, otp });
     if (data) { toast.success('Shift added'); setShiftId(data.id); setStep('readings'); }
   };
@@ -143,19 +147,34 @@ export default function BackfillPage() {
         </Card>
       )}
 
-      {step === 'shift' && reference && (
+      {step === 'shift' && reference && reference.dispensers.length === 0 && (
+        <Card className="p-6 max-w-2xl text-center">
+          <p className="text-sm font-medium text-gray-900 mb-1">No pumps set up at this branch yet</p>
+          <p className="text-sm text-gray-500 mb-4">
+            Backfilling a historical shift needs at least one tank and dispenser to already exist —
+            there's nothing to enter historical readings against otherwise. Set that up once
+            (it only takes a minute), then come back here.
+          </p>
+          <Link href={`/admin/fuel/tanks?branch=${branchId}`} className={btnPrimaryCls}>Go to Fuel Setup</Link>
+        </Card>
+      )}
+
+      {step === 'shift' && reference && reference.dispensers.length > 0 && (
         <Card className="p-5 max-w-2xl">
           <form onSubmit={handleShift} className="space-y-4">
-            <Field label="Opening float"><NumberInput value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} /></Field>
+            <Field label="Opening float">
+              <NumberInput value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} placeholder="Cash that was in the till at the start of this historical shift" />
+            </Field>
             <div>
               <p className="text-sm font-medium mb-2">Pump assignments</p>
+              <p className="text-xs text-gray-500 mb-3">Every pump you enter needs both an attendant and an opening reading. Leave a pump's row completely untouched to skip it for this historical shift.</p>
               <div className="space-y-3">
                 {reference.dispensers.map((d) => (
                   <div key={d.id} className="border rounded p-3">
                     <p className="text-sm font-medium mb-2">{d.label} <span className="text-xs text-gray-400">— {d.tank?.product?.name}</span></p>
                     <div className="grid grid-cols-2 gap-3">
                       <select value={assignForm[d.id]?.attendantId || ''} onChange={(e) => setAssignForm({ ...assignForm, [d.id]: { ...assignForm[d.id], attendantId: e.target.value } })} className={inputCls}>
-                        <option value="">No attendant (skip)</option>
+                        <option value="">Select attendant...</option>
                         {reference.attendants.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                       <NumberInput value={assignForm[d.id]?.opening ?? ''} onChange={(e) => setAssignForm({ ...assignForm, [d.id]: { ...assignForm[d.id], opening: e.target.value } })} placeholder="Opening reading" />
@@ -163,6 +182,11 @@ export default function BackfillPage() {
                   </div>
                 ))}
               </div>
+              {reference.attendants.length === 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-3">
+                  No attendants registered yet — you can still assign a pump without one, or add attendants first from Fuel Setup.
+                </p>
+              )}
             </div>
             <Field label="Verification code" required>
               <OtpField purpose="backfill" value={otp} onChange={setOtp} />
