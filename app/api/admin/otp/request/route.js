@@ -3,7 +3,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { requestOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
 
-const VALID_PURPOSES = ['credit_override', 'price_approval'];
+const VALID_PURPOSES = ['credit_override', 'price_approval', 'backfill'];
 
 export const POST = withOrg(async (request) => {
   try {

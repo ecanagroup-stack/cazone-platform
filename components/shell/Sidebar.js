@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen,
+  FiCheckCircle, FiBookOpen, FiClock,
 } from 'react-icons/fi';
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
@@ -35,6 +35,7 @@ const GROUPS = [
       { href: '/admin/customers', label: 'Customers', icon: FiUsers },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
+      { href: '/admin/fuel/backfill', label: 'Historical Backfill', icon: FiClock, pack: 'fuel_station' },
       { href: '/admin/materials/cement-brands', label: 'Cement Brands', icon: FiBox, pack: 'shop' },
       { href: '/admin/materials/stonedust', label: 'Aggregate', icon: FiLayers, pack: 'shop' },
       { href: '/admin/materials/quarries', label: 'Quarries', icon: FiMap, pack: 'shop' },

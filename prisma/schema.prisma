@@ -754,6 +754,9 @@ model Delivery {
   closingDip      Float?
   offloadVariance Float?
 
+  // Set only by the historical backfill wizard (Part 4) — see Shift.isBackfill for the full rationale.
+  isBackfill Boolean @default(false)
+
   orderLines OrderLine[]
 
   @@index([organizationId])
@@ -787,6 +790,9 @@ model Reconciliation {
   status             String  @default("pending") // within_tolerance | exception | acknowledged
   acknowledgedBy     String?
   acknowledgedReason String?
+
+  // Set only by the historical backfill wizard (Part 4) — see Shift.isBackfill for the full rationale.
+  isBackfill Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -826,6 +832,12 @@ model Shift {
   shiftOrder         Int?
   totalShiftsPlanned Int?
 
+  // Set only by the historical backfill wizard (Part 4) — a real schema flag rather than
+  // petrol-station-app's inconsistent free-text "Backfill" notes convention, so provenance is a
+  // filter, not a grep. Backfilled data still counts toward every derived total (stock, sales) the
+  // same as live data — unlike the old app, there's no mutable running-stock field to protect here.
+  isBackfill Boolean @default(false)
+
   cashDeposits CashDeposit[]
 
   // Fuel pack
@@ -855,6 +867,9 @@ model CashDeposit {
   approvedBy    String?
   note          String?
   createdAt     DateTime @default(now())
+
+  // Set only by the historical backfill wizard (Part 4) — see Shift.isBackfill for the full rationale.
+  isBackfill Boolean @default(false)
 
   @@index([organizationId])
   @@index([branchId])
