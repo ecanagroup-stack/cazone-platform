@@ -6,6 +6,8 @@ import { Card, StatusPill } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 import { CAZONE_BANK_DETAILS } from '@/lib/billing';
 import { isLapsed } from '@/components/shell/LapsedBanner';
+import BillingSubscription from '@/components/billing/BillingSubscription';
+import ProvisioningPayButton from '@/components/billing/ProvisioningPayButton';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
 const requestStatusColor = { pending: 'amber', quoted: 'blue', approved: 'green', rejected: 'red' };
@@ -57,9 +59,10 @@ export default async function BillingPage() {
             {openRequests.map((r) => (
               <div key={r.id} className="flex items-center justify-between text-sm">
                 <span>{r.type === 'service' ? `New business (${r.serviceType})` : `New branch: ${r.branchName} — ${r.service?.name || r.service?.type}`}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {r.quotedAmount != null && <span className="text-gray-500">{formatMoney(r.quotedAmount, org.currency)}</span>}
                   <StatusPill status={r.status} color={requestStatusColor[r.status]} />
+                  {r.status === 'quoted' && <ProvisioningPayButton requestId={r.id} />}
                 </div>
               </div>
             ))}
@@ -74,8 +77,12 @@ export default async function BillingPage() {
       )}
 
       {!org.freeForever && (
+        <BillingSubscription organizationId={org.id} hasSubscription={!!org.paystackSubscriptionCode} />
+      )}
+
+      {!org.freeForever && (
         <Card className="p-5 mb-6">
-          <h3 className="font-semibold text-sm mb-4">Pay by bank transfer</h3>
+          <h3 className="font-semibold text-sm mb-4">Or pay by bank transfer</h3>
           <div className="space-y-1.5 text-sm max-w-sm">
             <div className="flex justify-between"><span className="text-gray-500">Bank</span><span className="font-medium">{CAZONE_BANK_DETAILS.bankName}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Account number</span><span className="font-medium">{CAZONE_BANK_DETAILS.accountNumber}</span></div>

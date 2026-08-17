@@ -98,9 +98,10 @@ model Organization {
   otpEmail String?
   otpPhone String?
 
-  // Billing — Paystack fields are inert placeholders until that phase lands, same as the precedent
-  // set in ecana_shop-app's Organization model. subscriptionEndsAt is the current PAID period end,
-  // distinct from trialEndsAt; both are set manually by super_admin for now.
+  // Billing — subscriptionEndsAt is the current PAID period end, distinct from trialEndsAt. Both can
+  // still be set manually by super_admin (extend-subscription route, for bank transfers/edge cases),
+  // but paystackCustomerCode/paystackSubscriptionCode/paystackPlanCode are now live: set by the real
+  // Paystack integration (lib/paystack.js, app/api/webhooks/paystack) once an org subscribes.
   subscriptionStatus       SubscriptionStatus @default(trialing)
   trialEndsAt              DateTime?
   subscriptionEndsAt       DateTime?
@@ -108,6 +109,12 @@ model Organization {
   freeForever              Boolean            @default(false)
   paystackCustomerCode     String?
   paystackSubscriptionCode String?
+  // The Plan this org's recurring subscription is tied to, and the amount (kobo) it was created at —
+  // paystackPlanAmount lets lib/paystack.js detect a stale plan (monthlyPrice changed since) without
+  // an extra Paystack API round-trip on every subscribe click; a price change creates a NEW plan
+  // rather than mutating the old one (Paystack plans are immutable in practice once subscribers exist).
+  paystackPlanCode         String?
+  paystackPlanAmount       Int?
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -195,12 +202,17 @@ model ProvisioningRequest {
   note         String?
   requestedBy  String?
   status       String    @default("pending") // pending | quoted | approved | rejected
-  quotedAmount Int?
+  quotedAmount Int? // whole currency units (Naira), same convention as Organization.monthlyPrice
   quotedAt     DateTime?
   decisionNote String?
-  decidedBy    String?
+  decidedBy    String? // null when decided automatically by a Paystack payment, not a super_admin
   decidedAt    DateTime?
   createdAt    DateTime  @default(now())
+
+  // Set once the org pays via Paystack for this quote (app/api/admin/provisioning-requests/[id]/pay) —
+  // lets the webhook (app/api/webhooks/paystack) find which request a one-time charge belongs to, and
+  // gives a support trail distinct from the manual bank-transfer path this sits alongside.
+  paystackReference String? @unique
 
   @@index([organizationId])
 }
@@ -952,6 +964,19 @@ model Counter {
   seq Int    @default(0)
 
   @@unique([organizationId, key])
+}
+
+// Idempotency guard for app/api/webhooks/paystack — a webhook has no tenant context at receipt time
+// (the org is derived from the payload's metadata after parsing), so unlike everything else in this
+// file this is deliberately NOT in lib/prisma.js's TENANT_SCOPED_MODELS. Inserting a row is the lock:
+// a unique-constraint violation on `reference` means this event was already processed (Paystack
+// retries webhook delivery), so the handler can skip re-applying its effects — critical since
+// extending subscriptionEndsAt or provisioning a branch is not naturally safe to run twice.
+model PaystackEvent {
+  id        String   @id @default(cuid())
+  reference String   @unique
+  event     String
+  createdAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------
