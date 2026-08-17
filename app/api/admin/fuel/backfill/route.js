@@ -57,6 +57,12 @@ export const POST = withOrg(async (request) => {
   }
 });
 
+// A backfilled shift spans a real business-day window (not a zero-width instant) so a dip/deposit
+// timestamped at close falls inside [openedAt, closedAt] the same way Summary Book/Reports expect a
+// live shift's closing figures to.
+const BACKFILL_OPEN_HOUR = '08';
+const BACKFILL_CLOSE_HOUR = '20';
+
 // The real gate for every non-shift step — proves an OTP-verified shift step already ran for this
 // branch/date in this wizard session, rather than re-verifying OTP (single-use) on every call.
 async function requireBackfillShift(branchId, dayStart) {
@@ -77,10 +83,14 @@ async function handleShift(session, body, date, dayStart) {
   const existing = await prisma.shift.findFirst({ where: { branchId, isBackfill: true, openedAt: { gte: dayStart, lte: dayEnd } } });
   if (existing) return NextResponse.json({ success: true, data: existing, reused: true });
 
-  const openedAt = new Date(`${date}T08:00:00.000Z`);
+  // A real business-day window, not a zero-width instant — a dip/deposit timestamped at closedAt
+  // (BACKFILL_CLOSE) needs periodEnd to actually fall within [openedAt, closedAt] for Summary Book's
+  // closing-stock lookup and computePeriod's receipts bucketing to find it (see BACKFILL_* below).
+  const openedAt = new Date(`${date}T${BACKFILL_OPEN_HOUR}:00:00.000Z`);
+  const closedAt = new Date(`${date}T${BACKFILL_CLOSE_HOUR}:00:00.000Z`);
   const shift = await prisma.$transaction(async (tx) => {
     const created = await tx.shift.create({
-      data: { branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt: openedAt, isBackfill: true },
+      data: { branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt, isBackfill: true },
     });
     for (const a of assignments) {
       if (!a.dispenserId || !a.attendantId || !Number.isFinite(Number(a.opening))) {
@@ -136,19 +146,21 @@ async function handleReading(session, body) {
       update: { seq: { increment: 1 } }, create: { key: 'order', seq: 1 },
     });
     const orderNumber = `ORD-${String(counter.seq).padStart(6, '0')}`;
+    // A closing reading is logically taken at end of shift, not open — timestamped at closedAt so it
+    // falls inside the shift's own window for anything that reads sales by date range.
     const order = await tx.order.create({
       data: {
         branchId: shift.branchId, orderNumber, subtotal: expectedAmount, grandTotal: expectedAmount,
-        paymentMethod: 'cash', createdBy: session.user.id, createdAt: shift.openedAt,
+        paymentMethod: 'cash', createdBy: session.user.id, createdAt: shift.closedAt,
         lines: { create: [{ productId, qty: litres, unitPrice: litres > 0 ? Math.round(expectedAmount / litres) : 0, lineTotal: expectedAmount }] },
       },
     });
     await tx.stockMove.create({
-      data: { branchId: shift.branchId, productId, qty: -litres, reason: 'sale', ref: order.id, userId: session.user.id, at: shift.openedAt },
+      data: { branchId: shift.branchId, productId, qty: -litres, reason: 'sale', ref: order.id, userId: session.user.id, at: shift.closedAt },
     });
     return tx.meterReading.update({
       where: { id: reading.id },
-      data: { closing, rtt, litres, expectedAmount, orderId: order.id, reviewStatus: 'approved', reviewedBy: session.user.id, reviewedAt: shift.openedAt, recordedBy: session.user.id },
+      data: { closing, rtt, litres, expectedAmount, orderId: order.id, reviewStatus: 'approved', reviewedBy: session.user.id, reviewedAt: shift.closedAt, recordedBy: session.user.id },
     });
   }, { timeout: 15000 });
 
@@ -175,7 +187,7 @@ async function handlePayment(body) {
       });
     }
     return tx.meterReading.update({
-      where: { id: reading.id }, data: { cashCollected, paymentRecordedAt: shift.openedAt },
+      where: { id: reading.id }, data: { cashCollected, paymentRecordedAt: shift.closedAt },
       include: { posPayments: true },
     });
   });
@@ -191,7 +203,11 @@ async function handleDelivery(session, body, dayStart) {
   if (!branchId || !productId) throw new ApiError('Branch and product are required', 400);
   if (!Number.isFinite(quantity) || quantity <= 0) throw new ApiError('Quantity must be positive', 400);
   if (!Number.isFinite(costPerUnit) || costPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
-  await requireBackfillShift(branchId, dayStart);
+  const shift = await requireBackfillShift(branchId, dayStart);
+
+  // Mid-day, between the shift's open and close, so it's picked up as "receipts" (not "opening")
+  // by anything computing that shift's period — see BACKFILL_OPEN_HOUR/BACKFILL_CLOSE_HOUR.
+  const at = new Date((shift.openedAt.getTime() + shift.closedAt.getTime()) / 2);
 
   const totalCost = Math.round(quantity * costPerUnit);
   const dup = await prisma.delivery.findFirst({
@@ -206,9 +222,9 @@ async function handleDelivery(session, body, dayStart) {
       supplierId = supplier.id;
     }
     const created = await tx.delivery.create({
-      data: { branchId, supplierId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: dayStart, createdBy: session.user.id, createdAt: dayStart, isBackfill: true },
+      data: { branchId, supplierId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: at, createdBy: session.user.id, createdAt: at, isBackfill: true },
     });
-    await tx.stockMove.create({ data: { branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id, at: dayStart } });
+    await tx.stockMove.create({ data: { branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id, at } });
     return { delivery: created };
   }, { timeout: 15000 });
 
@@ -221,14 +237,18 @@ async function handleDip(session, body, dayStart) {
   const measured = Number(body.measured);
   if (!branchId || !productId) throw new ApiError('Branch and product are required', 400);
   if (!Number.isFinite(measured) || measured < 0) throw new ApiError('Measured litres must be a non-negative number', 400);
-  await requireBackfillShift(branchId, dayStart);
+  const shift = await requireBackfillShift(branchId, dayStart);
+
+  // A closing dip is taken at end of shift — periodEnd must land inside [openedAt, closedAt] for
+  // Summary Book/Reports' closing-stock lookup to find it.
+  const periodEnd = shift.closedAt;
 
   const dup = await prisma.reconciliation.findFirst({ where: { branchId, productId, measured, isBackfill: true, periodEnd: { gte: dayStart, lte: new Date(dayStart.getTime() + 86400000) } } });
   if (dup) return NextResponse.json({ success: true, data: dup, reused: true });
 
   const created = await prisma.reconciliation.create({
     data: {
-      branchId, productId, periodStart: dayStart, periodEnd: dayStart,
+      branchId, productId, periodStart: shift.openedAt, periodEnd,
       opening: 0, receipts: 0, sales: 0, book: measured, measured, variance: 0, variancePct: 0, tolerance: 0,
       status: 'within_tolerance', isBackfill: true,
     },
@@ -242,7 +262,7 @@ async function handleDeposit(session, body, dayStart) {
   const amount = Math.round(Number(body.amount));
   if (!branchId) throw new ApiError('branchId is required', 400);
   if (!Number.isFinite(amount) || amount <= 0) throw new ApiError('Amount must be positive', 400);
-  await requireBackfillShift(branchId, dayStart);
+  const shift = await requireBackfillShift(branchId, dayStart);
 
   const dup = await prisma.cashDeposit.findFirst({ where: { branchId, amount, isBackfill: true, createdAt: { gte: dayStart, lte: new Date(dayStart.getTime() + 86400000) } } });
   if (dup) return NextResponse.json({ success: true, data: dup, reused: true });
@@ -250,7 +270,7 @@ async function handleDeposit(session, body, dayStart) {
   const created = await prisma.cashDeposit.create({
     data: {
       branchId, shiftId, amount, bankName: (body.bankName || '').trim() || null, accountNumber: (body.accountNumber || '').trim() || null,
-      initiatedBy: session.user.id, status: 'approved', approvedBy: session.user.id, note: body.note || null, createdAt: dayStart, isBackfill: true,
+      initiatedBy: session.user.id, status: 'approved', approvedBy: session.user.id, note: body.note || null, createdAt: shift.closedAt, isBackfill: true,
     },
   });
   return NextResponse.json({ success: true, data: created }, { status: 201 });
