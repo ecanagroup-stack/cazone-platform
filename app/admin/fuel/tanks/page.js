@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
@@ -376,7 +377,9 @@ function AttendantsTab({ branchId }) {
               {attendants.map((a) => (
                 <tr key={a.id}>
                   <td className="px-4 py-3 font-mono text-xs">{a.staffNumber}</td>
-                  <td className="px-4 py-3 font-medium">{a.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link href={`/admin/fuel/attendants/${a.id}`} className="text-brand-600 hover:underline">{a.name}</Link>
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{a.position || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{a.phone || '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={a.isActive ? 'Active' : 'Inactive'} color={a.isActive ? 'green' : 'gray'} /></td>
