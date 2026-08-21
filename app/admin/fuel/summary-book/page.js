@@ -163,6 +163,10 @@ function DayDetail({ branchId, date, onBack }) {
   const [section, setSection] = useState('supervisor');
   const [correctingDelivery, setCorrectingDelivery] = useState(null);
   const [correctForm, setCorrectForm] = useState({ quantity: '', costPerUnit: '', reason: '' });
+  const [correctingReading, setCorrectingReading] = useState(null);
+  const [correctReadingForm, setCorrectReadingForm] = useState({ closing: '', rtt: '', cashCollected: '', reason: '' });
+  const [correctingDeposit, setCorrectingDeposit] = useState(null);
+  const [correctDepositForm, setCorrectDepositForm] = useState({ amount: '', bankName: '', accountNumber: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -189,6 +193,55 @@ function DayDetail({ branchId, date, onBack }) {
       });
       const d = await r.json();
       if (d.success) { toast.success('Delivery corrected'); setCorrectingDelivery(null); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openCorrectReading = (r) => {
+    setCorrectingReading(r);
+    setCorrectReadingForm({ closing: r.closing.toString(), rtt: r.rtt.toString(), cashCollected: r.cashCollected != null ? (r.cashCollected / 100).toString() : '', reason: '' });
+  };
+
+  const submitCorrectReading = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/shift/${correctingReading.shiftId}/dispensers/${correctingReading.dispenserId}/correct`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          closing: Number(correctReadingForm.closing), rtt: Number(correctReadingForm.rtt),
+          cashCollected: correctReadingForm.cashCollected === '' ? undefined : Math.round(Number(correctReadingForm.cashCollected) * 100),
+          reason: correctReadingForm.reason,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Reading corrected'); setCorrectingReading(null); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openCorrectDeposit = (d) => {
+    setCorrectingDeposit(d);
+    setCorrectDepositForm({ amount: (d.amount / 100).toString(), bankName: d.bankName || '', accountNumber: d.accountNumber || '', reason: '' });
+  };
+
+  const submitCorrectDeposit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/deposits/${correctingDeposit.id}/correct`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: Math.round(Number(correctDepositForm.amount) * 100),
+          bankName: correctDepositForm.bankName, accountNumber: correctDepositForm.accountNumber, reason: correctDepositForm.reason,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Deposit corrected'); setCorrectingDeposit(null); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -269,10 +322,11 @@ function DayDetail({ branchId, date, onBack }) {
                         <th className="px-4 py-2 text-right font-medium">RTT</th>
                         <th className="px-4 py-2 text-right font-medium">Litres</th>
                         <th className="px-4 py-2 text-left font-medium">Status</th>
+                        <th className="px-4 py-2 text-right font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {shifts.flatMap((s) => s.readings).length === 0 && <EmptyRow colSpan={6} text="No meter readings" />}
+                      {shifts.flatMap((s) => s.readings).length === 0 && <EmptyRow colSpan={7} text="No meter readings" />}
                       {shifts.flatMap((s) => s.readings).map((r) => (
                         <tr key={r.id}>
                           <td className="px-4 py-2 font-medium">{r.dispenser.label}</td>
@@ -283,6 +337,9 @@ function DayDetail({ branchId, date, onBack }) {
                           <td className="px-4 py-2">
                             <StatusPill status={r.reviewStatus} color={r.reviewStatus === 'approved' ? 'green' : r.reviewStatus === 'queried' ? 'amber' : 'blue'} />
                             {r.reviewStatus === 'queried' && r.discrepancyNote && <p className="text-xs text-amber-700 mt-0.5">{r.discrepancyNote}</p>}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            {r.reviewStatus === 'approved' && <button onClick={() => openCorrectReading(r)} className={tableActionCls}>Correct</button>}
                           </td>
                         </tr>
                       ))}
@@ -401,15 +458,19 @@ function DayDetail({ branchId, date, onBack }) {
                         <th className="px-4 py-2 text-right font-medium">Amount</th>
                         <th className="px-4 py-2 text-left font-medium">Bank</th>
                         <th className="px-4 py-2 text-left font-medium">Status</th>
+                        <th className="px-4 py-2 text-right font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {shifts.flatMap((s) => s.deposits).length === 0 && <EmptyRow colSpan={3} text="No deposits" />}
+                      {shifts.flatMap((s) => s.deposits).length === 0 && <EmptyRow colSpan={4} text="No deposits" />}
                       {shifts.flatMap((s) => s.deposits).map((d) => (
                         <tr key={d.id}>
                           <td className="px-4 py-2 text-right font-semibold">{formatMoney(d.amount / 100)}</td>
                           <td className="px-4 py-2">{d.bankName || '—'}</td>
                           <td className="px-4 py-2"><StatusPill status={d.status} color={d.status === 'approved' ? 'green' : d.status === 'rejected' ? 'red' : 'amber'} /></td>
+                          <td className="px-4 py-2 text-right">
+                            <button onClick={() => openCorrectDeposit(d)} className={tableActionCls}>Correct</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -436,6 +497,47 @@ function DayDetail({ branchId, date, onBack }) {
             <input type="text" value={correctForm.reason} onChange={(e) => setCorrectForm({ ...correctForm, reason: e.target.value })} className={inputCls} required placeholder="Why is this being corrected?" />
           </Field>
           <FormButtons onCancel={() => setCorrectingDelivery(null)} submitting={submitting} submitLabel="Correct Delivery" />
+        </form>
+      </Modal>
+
+      <Modal open={!!correctingReading} onClose={() => setCorrectingReading(null)} title="Correct Pump Reading">
+        <form onSubmit={submitCorrectReading} className="space-y-4">
+          <p className="text-sm text-gray-500">Adjusts the recorded litres/cash and appends an offsetting stock entry for the difference — the original sale isn't erased, just corrected.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Closing reading" required>
+              <NumberInput value={correctReadingForm.closing} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, closing: e.target.value })} required />
+            </Field>
+            <Field label="RTT" required>
+              <NumberInput value={correctReadingForm.rtt} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, rtt: e.target.value })} required />
+            </Field>
+          </div>
+          <Field label="Cash collected">
+            <NumberInput value={correctReadingForm.cashCollected} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, cashCollected: e.target.value })} />
+          </Field>
+          <Field label="Reason" required>
+            <input type="text" value={correctReadingForm.reason} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, reason: e.target.value })} className={inputCls} required placeholder="Why is this being corrected?" />
+          </Field>
+          <FormButtons onCancel={() => setCorrectingReading(null)} submitting={submitting} submitLabel="Correct Reading" />
+        </form>
+      </Modal>
+
+      <Modal open={!!correctingDeposit} onClose={() => setCorrectingDeposit(null)} title="Correct Deposit">
+        <form onSubmit={submitCorrectDeposit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Amount" required>
+              <NumberInput value={correctDepositForm.amount} onChange={(e) => setCorrectDepositForm({ ...correctDepositForm, amount: e.target.value })} required />
+            </Field>
+            <Field label="Bank name">
+              <input type="text" value={correctDepositForm.bankName} onChange={(e) => setCorrectDepositForm({ ...correctDepositForm, bankName: e.target.value })} className={inputCls} />
+            </Field>
+          </div>
+          <Field label="Account number">
+            <input type="text" value={correctDepositForm.accountNumber} onChange={(e) => setCorrectDepositForm({ ...correctDepositForm, accountNumber: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Reason" required>
+            <input type="text" value={correctDepositForm.reason} onChange={(e) => setCorrectDepositForm({ ...correctDepositForm, reason: e.target.value })} className={inputCls} required placeholder="Why is this being corrected?" />
+          </Field>
+          <FormButtons onCancel={() => setCorrectingDeposit(null)} submitting={submitting} submitLabel="Correct Deposit" />
         </form>
       </Modal>
     </div>
