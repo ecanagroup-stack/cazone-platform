@@ -53,6 +53,10 @@ export default function ShiftPage() {
   const [approveFor, setApproveFor] = useState(null); // dispenserId
   const [approveNote, setApproveNote] = useState('');
 
+  const [showAddPump, setShowAddPump] = useState(false);
+  const [addPumpForm, setAddPumpForm] = useState({ dispenserId: '', attendantId: '', opening: '' });
+  const [addingPump, setAddingPump] = useState(false);
+
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
     const r = await fetch(`/api/admin/fuel/shift?branchId=${branchId}`);
@@ -276,6 +280,30 @@ export default function ShiftPage() {
     }
   };
 
+  const handleAddPump = async (e) => {
+    e.preventDefault();
+    setAddingPump(true);
+    try {
+      const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(addPumpForm),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success('Pump added to the shift');
+        setShowAddPump(false); setAddPumpForm({ dispenserId: '', attendantId: '', opening: '' }); load();
+      } else toast.error(d.error);
+    } finally {
+      setAddingPump(false);
+    }
+  };
+
+  const handleRemovePump = async (p) => {
+    if (!confirm(`Remove ${p.dispenserLabel} from this shift? Nothing has been recorded on it yet.`)) return;
+    const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${p.dispenserId}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) { toast.success('Pump removed from the shift'); load(); } else toast.error(d.error);
+  };
+
   if (!branchId) {
     return (
       <div>
@@ -317,6 +345,7 @@ export default function ShiftPage() {
           subtitle={`${data.shift.shiftLabel ? `${data.shift.shiftLabel} — ` : ''}Open since ${new Date(data.shift.openedAt).toLocaleTimeString()}${data.shift.totalShiftsPlanned ? ` (shift ${data.shift.shiftOrder} of ${data.shift.totalShiftsPlanned} today)` : ''}`}
           action={
             <div className="flex items-center gap-4">
+              <button onClick={() => setShowAddPump(true)} className="text-sm font-medium text-gray-500 hover:text-gray-700">Add Pump</button>
               <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
               {allApproved && <button onClick={() => setShowEndModal(true)} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
             </div>
@@ -427,6 +456,12 @@ export default function ShiftPage() {
                         className="text-sm font-medium text-gray-600 hover:text-gray-900"
                       >
                         Reassign
+                      </button>
+                      <button
+                        onClick={() => handleRemovePump(p)}
+                        className="text-sm font-medium text-red-600 hover:text-red-800"
+                      >
+                        Remove from shift
                       </button>
                     </>
                   )}
@@ -624,6 +659,34 @@ export default function ShiftPage() {
               ))}
             </div>
           )}
+        </Modal>
+
+        <Modal open={showAddPump} onClose={() => setShowAddPump(false)} title="Add Pump">
+          <form onSubmit={handleAddPump} className="space-y-4">
+            <p className="text-sm text-gray-500">Open a pump that wasn't part of the original Begin Shift assignment.</p>
+            <Field label="Pump" required>
+              <select
+                value={addPumpForm.dispenserId}
+                onChange={(e) => setAddPumpForm({ ...addPumpForm, dispenserId: e.target.value })}
+                className={inputCls} required autoFocus
+              >
+                <option value="">Select...</option>
+                {(data.dispensers || []).filter((d) => !data.pumps.some((p) => p.dispenserId === d.id)).map((d) => (
+                  <option key={d.id} value={d.id}>{d.label} — {d.tank?.product?.name || 'no product'}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Attendant" required>
+              <select value={addPumpForm.attendantId} onChange={(e) => setAddPumpForm({ ...addPumpForm, attendantId: e.target.value })} className={inputCls} required>
+                <option value="">Select...</option>
+                {(data.attendants || []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Opening reading" required>
+              <NumberInput value={addPumpForm.opening} onChange={(e) => setAddPumpForm({ ...addPumpForm, opening: e.target.value })} required />
+            </Field>
+            <FormButtons onCancel={() => setShowAddPump(false)} submitting={addingPump} submitLabel="Add Pump" />
+          </form>
         </Modal>
       </div>
     );

@@ -20,7 +20,7 @@ export const GET = withOrg(async (request) => {
     });
 
     if (openShift) {
-      const [assignments, meterReadings, attendants, posTerminals, tanks] = await Promise.all([
+      const [assignments, meterReadings, attendants, posTerminals, tanks, dispensers] = await Promise.all([
         prisma.attendantAssignment.findMany({
           where: { shiftId: openShift.id, endedAt: null },
           include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
@@ -31,6 +31,9 @@ export const GET = withOrg(async (request) => {
         // Closing tank stock (ecana's End Day "every tank needs a closing reading") — a tank counts as
         // done for this shift once it has a dip (lib/reconciliation.js) recorded after the shift opened.
         prisma.tank.findMany({ where: { branchId, isActive: true }, include: { product: true } }),
+        // Every active dispenser at the branch, not just the ones already on this shift — lets the UI
+        // offer "Add Pump" for one that was opened late (not part of the original Begin Shift batch).
+        prisma.dispenser.findMany({ where: { branchId, isActive: true }, include: { tank: { include: { product: true } } } }),
       ]);
       const readingByDispenser = Object.fromEntries(meterReadings.map((r) => [r.dispenserId, r]));
       const pumps = assignments.map((a) => ({
@@ -52,7 +55,7 @@ export const GET = withOrg(async (request) => {
       const dippedProductIds = new Set(dipsSinceOpen.map((d) => d.productId));
       const tanksWithDipStatus = tanks.map((t) => ({ ...t, dippedThisShift: dippedProductIds.has(t.productId) }));
 
-      return NextResponse.json({ success: true, data: { shift: openShift, pumps, attendants, posTerminals, tanks: tanksWithDipStatus } });
+      return NextResponse.json({ success: true, data: { shift: openShift, pumps, attendants, posTerminals, tanks: tanksWithDipStatus, dispensers } });
     }
 
     const [dispensers, attendants] = await Promise.all([
