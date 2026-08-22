@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput, OtpField } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
 const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61-90d', d61_90: '91-120d', d90_plus: '120d+' };
@@ -18,6 +18,10 @@ export default function CustomerDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState({ creditLimit: '', onHold: false });
   const [submitting, setSubmitting] = useState(false);
+
+  const [showAdjustment, setShowAdjustment] = useState(null); // null | 'surcharge' | 'refund'
+  const [adjustmentForm, setAdjustmentForm] = useState({ amount: '', reason: '', otp: '' });
+  const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
   const [portalCreds, setPortalCreds] = useState(null); // { loginId, password, reset } shown once
 
   const [allBranches, setAllBranches] = useState([]);
@@ -30,7 +34,7 @@ export default function CustomerDetailPage() {
       fetch(`/api/admin/customers/${id}`), fetch('/api/admin/services'), fetch('/api/admin/me'),
     ]);
     const [d, sd, md] = await Promise.all([r.json(), sr.json(), mr.json()]);
-    if (d.success) { setData(d.data); setEditForm({ creditLimit: (d.data.customer.creditLimit / 100).toString(), onHold: d.data.customer.onHold }); }
+    if (d.success) { setData(d.data); setEditForm({ creditLimit: d.data.customer.creditLimit === null ? '' : (d.data.customer.creditLimit / 100).toString(), onHold: d.data.customer.onHold }); }
     else toast.error(d.error || 'Failed to load');
     if (sd.success) setAllBranches(sd.data.flatMap((s) => s.branches.map((b) => ({ ...b, serviceName: s.name }))));
     if (md.success) setAccessibleBranchIds(md.data.accessibleBranchIds);
@@ -110,7 +114,7 @@ export default function CustomerDetailPage() {
     try {
       const r = await fetch(`/api/admin/customers/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creditLimit: Math.round(Number(editForm.creditLimit) * 100), onHold: editForm.onHold }),
+        body: JSON.stringify({ creditLimit: editForm.creditLimit === '' ? null : Math.round(Number(editForm.creditLimit) * 100), onHold: editForm.onHold }),
       });
       const d = await r.json();
       if (d.success) { toast.success('Saved'); setShowEdit(false); load(); }
@@ -120,10 +124,36 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const openAdjustment = (type) => {
+    setAdjustmentForm({ amount: '', reason: '', otp: '' });
+    setShowAdjustment(type);
+  };
+
+  const handleAdjustmentSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingAdjustment(true);
+    try {
+      const r = await fetch(`/api/admin/customers/${id}/adjustments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: showAdjustment,
+          amount: Math.round(Number(adjustmentForm.amount) * 100),
+          reason: adjustmentForm.reason,
+          otp: adjustmentForm.otp,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(showAdjustment === 'refund' ? 'Fund applied' : 'Surcharge applied'); setShowAdjustment(null); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSubmittingAdjustment(false);
+    }
+  };
+
   if (!data) return <Loader />;
 
   const { customer, ledger, buckets } = data;
-  const available = customer.creditLimit - customer.balance;
+  const available = customer.creditLimit === null ? null : customer.creditLimit - customer.balance;
 
   return (
     <div>
@@ -144,6 +174,8 @@ export default function CustomerDetailPage() {
                 {customer.userId ? 'Reactivate Portal Login' : 'Enable Portal Login'}
               </button>
             )}
+            <button onClick={() => openAdjustment('surcharge')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Apply Surcharge</button>
+            <button onClick={() => openAdjustment('refund')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Fund</button>
             <button onClick={() => setShowPayment(true)} className={btnPrimaryCls}>Record Payment</button>
           </div>
         }
@@ -153,8 +185,8 @@ export default function CustomerDetailPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <Card className="p-4"><p className="text-xs text-gray-500">Balance</p><p className="text-2xl font-bold mt-1">{formatMoney(customer.balance / 100)}</p></Card>
-        <Card className="p-4"><p className="text-xs text-gray-500">Credit Limit</p><p className="text-2xl font-bold mt-1">{formatMoney(customer.creditLimit / 100)}</p></Card>
-        <Card className="p-4"><p className="text-xs text-gray-500">Available</p><p className={`text-2xl font-bold mt-1 ${available < 0 ? 'text-red-600' : ''}`}>{formatMoney(available / 100)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Credit Limit</p><p className="text-2xl font-bold mt-1">{customer.creditLimit === null ? 'Unlimited' : formatMoney(customer.creditLimit / 100)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Available</p><p className={`text-2xl font-bold mt-1 ${available !== null && available < 0 ? 'text-red-600' : ''}`}>{available === null ? 'Unlimited' : formatMoney(available / 100)}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Status</p><div className="mt-1">{customer.onHold ? <StatusPill status="On Hold" color="red" /> : <StatusPill status="Active" color="green" />}</div></Card>
       </div>
 
@@ -262,14 +294,29 @@ export default function CustomerDetailPage() {
 
       <Modal open={showEdit} onClose={() => setShowEdit(false)} title="Edit Customer">
         <form onSubmit={handleEdit} className="space-y-4">
-          <Field label="Credit limit" required>
-            <NumberInput value={editForm.creditLimit} onChange={(e) => setEditForm({ ...editForm, creditLimit: e.target.value })} required />
+          <Field label="Credit limit">
+            <NumberInput value={editForm.creditLimit} onChange={(e) => setEditForm({ ...editForm, creditLimit: e.target.value })} placeholder="Leave blank for unlimited, 0 for cash-only" />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={editForm.onHold} onChange={(e) => setEditForm({ ...editForm, onHold: e.target.checked })} />
             On hold (blocks new credit sales)
           </label>
           <FormButtons onCancel={() => setShowEdit(false)} submitting={submitting} submitLabel="Save" />
+        </form>
+      </Modal>
+
+      <Modal open={!!showAdjustment} onClose={() => setShowAdjustment(null)} title={showAdjustment === 'refund' ? 'Fund' : 'Apply Surcharge'}>
+        <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
+          <Field label={`${showAdjustment === 'refund' ? 'Fund' : 'Surcharge'} amount`} required>
+            <NumberInput value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} required autoFocus />
+          </Field>
+          <Field label="Reason" required>
+            <textarea value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} rows={2} className={inputCls} required />
+          </Field>
+          <Field label="Verification code" required>
+            <OtpField purpose="customer_adjustment" value={adjustmentForm.otp} onChange={(v) => setAdjustmentForm({ ...adjustmentForm, otp: v })} />
+          </Field>
+          <FormButtons onCancel={() => setShowAdjustment(null)} submitting={submittingAdjustment} submitLabel={showAdjustment === 'refund' ? 'Apply Fund' : 'Apply Surcharge'} />
         </form>
       </Modal>
 

@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { ApiError } from '@/lib/apiError';
+import { normalizeCreditLimit } from '@/lib/credit';
 
 // The management list — unlike the counter-facing search (app/api/admin/customers/search), this
 // shows every customer regardless of branch access when no branchId is given, since an owner/manager
@@ -40,8 +41,8 @@ export const POST = withOrg(async (request) => {
     if (!name) throw new ApiError('Name is required', 400);
     if (!branchId) throw new ApiError('A branch is required to register a customer', 400);
 
-    const creditLimit = Math.round(Number(body.creditLimit) || 0);
-    if (creditLimit < 0) throw new ApiError('Credit limit cannot be negative', 400);
+    const normalized = normalizeCreditLimit(body.creditLimit);
+    const creditLimit = normalized === null ? null : Math.round(normalized);
 
     const accessible = await getAccessibleBranchIds(session);
     const extraBranchIds = Array.isArray(body.branchIds) ? body.branchIds.filter((id) => id !== branchId) : [];

@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
 import { buildCustomerStatement } from '@/lib/statement';
+import { normalizeCreditLimit } from '@/lib/credit';
 
 export const GET = withOrg(async (request, { params }) => {
   try {
@@ -37,9 +38,8 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (typeof body.onHold === 'boolean') update.onHold = body.onHold;
     if (body.creditLimit !== undefined) {
-      const n = Math.round(Number(body.creditLimit));
-      if (!Number.isFinite(n) || n < 0) throw new ApiError('Invalid credit limit', 400);
-      update.creditLimit = n;
+      const normalized = normalizeCreditLimit(body.creditLimit);
+      update.creditLimit = normalized === null ? null : Math.round(normalized);
     }
 
     const before = await prisma.customer.findUnique({ where: { id } });

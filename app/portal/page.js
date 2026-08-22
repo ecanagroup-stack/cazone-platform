@@ -17,7 +17,7 @@ export default function PortalOverviewPage() {
 
   if (!customer) return <Loader />;
 
-  const available = customer.creditLimit - customer.balance;
+  const available = customer.creditLimit === null ? null : customer.creditLimit - customer.balance;
 
   return (
     <div>
@@ -31,8 +31,8 @@ export default function PortalOverviewPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="p-4"><p className="text-xs text-gray-500">Balance</p><p className="text-2xl font-bold mt-1">{formatMoney(customer.balance / 100)}</p></Card>
-        <Card className="p-4"><p className="text-xs text-gray-500">Credit Limit</p><p className="text-2xl font-bold mt-1">{formatMoney(customer.creditLimit / 100)}</p></Card>
-        <Card className="p-4"><p className="text-xs text-gray-500">Available</p><p className={`text-2xl font-bold mt-1 ${available < 0 ? 'text-red-600' : ''}`}>{formatMoney(available / 100)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Credit Limit</p><p className="text-2xl font-bold mt-1">{customer.creditLimit === null ? 'Unlimited' : formatMoney(customer.creditLimit / 100)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Available</p><p className={`text-2xl font-bold mt-1 ${available !== null && available < 0 ? 'text-red-600' : ''}`}>{available === null ? 'Unlimited' : formatMoney(available / 100)}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Status</p><div className="mt-1">{customer.onHold ? <StatusPill status="On Hold" color="red" /> : <StatusPill status="Active" color="green" />}</div></Card>
       </div>
     </div>

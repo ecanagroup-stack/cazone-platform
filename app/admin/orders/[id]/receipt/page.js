@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { FiPrinter } from 'react-icons/fi';
 import { Loader, Card, ReceiptHeader } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { shareReceiptAsPdf, shareReceiptAsJpg } from '@/lib/receiptCapture';
 
 // A printable receipt for any completed Order — fuel, materials, or retail all produce the same
 // Order/OrderLine shape (lib/sale.js), so one generic document covers every pack rather than a
@@ -13,6 +14,7 @@ import { formatMoney, formatDate } from '@/lib/format';
 export default function OrderReceiptPage() {
   const { id } = useParams();
   const [data, setData] = useState(null);
+  const [sharing, setSharing] = useState(null); // null | 'pdf' | 'jpg'
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/orders/${id}`);
@@ -28,15 +30,43 @@ export default function OrderReceiptPage() {
   const { order, organization } = data;
   const currency = organization?.currency || 'NGN';
 
+  const handleSharePdf = async () => {
+    setSharing('pdf');
+    try {
+      await shareReceiptAsPdf('receipt-content', `Receipt-${order.orderNumber}.pdf`, `Receipt ${order.orderNumber}`);
+    } catch (err) {
+      toast.error(err.message || 'Could not generate PDF');
+    } finally {
+      setSharing(null);
+    }
+  };
+
+  const handleShareJpg = async () => {
+    setSharing('jpg');
+    try {
+      await shareReceiptAsJpg('receipt-content', `Receipt-${order.orderNumber}.jpg`, `Receipt ${order.orderNumber}`);
+    } catch (err) {
+      toast.error(err.message || 'Could not generate image');
+    } finally {
+      setSharing(null);
+    }
+  };
+
   return (
     <div>
-      <div className="print:hidden flex justify-end mb-4">
+      <div className="print:hidden flex justify-end gap-4 mb-4">
+        <button onClick={handleSharePdf} disabled={!!sharing} className="text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50">
+          {sharing === 'pdf' ? 'Preparing...' : 'Share PDF'}
+        </button>
+        <button onClick={handleShareJpg} disabled={!!sharing} className="text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50">
+          {sharing === 'jpg' ? 'Preparing...' : 'Share JPG'}
+        </button>
         <button onClick={() => window.print()} className="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700">
           <FiPrinter size={14} /> Print
         </button>
       </div>
 
-      <Card className="receipt-page p-8 print:shadow-none print:border-0">
+      <Card id="receipt-content" className="receipt-page p-8 print:shadow-none print:border-0">
         <ReceiptHeader org={organization} refNumber={order.orderNumber} date={order.createdAt} title="Sales Receipt" />
 
         <div className="grid grid-cols-2 gap-4 text-sm mb-6">

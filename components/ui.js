@@ -211,8 +211,8 @@ export function PageHeader({ title, subtitle, action }) {
   );
 }
 
-export function Card({ children, className = '' }) {
-  return <div className={`bg-white border rounded-lg ${className}`}>{children}</div>;
+export function Card({ children, className = '', ...rest }) {
+  return <div className={`bg-white border rounded-lg ${className}`} {...rest}>{children}</div>;
 }
 
 export function StatusPill({ status, color }) {

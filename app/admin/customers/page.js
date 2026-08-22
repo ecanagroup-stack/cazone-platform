@@ -58,7 +58,7 @@ export default function CustomersPage() {
       const [branchId, ...branchIds] = form.branchIds;
       const r = await fetch('/api/admin/customers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, branchId, branchIds, creditLimit: Math.round(Number(form.creditLimit || 0) * 100) }),
+        body: JSON.stringify({ ...form, branchId, branchIds, creditLimit: form.creditLimit === '' ? null : Math.round(Number(form.creditLimit) * 100) }),
       });
       const d = await r.json();
       if (d.success) { toast.success(`${form.name} added`); setShowModal(false); setForm(blankForm); load(); }
@@ -89,7 +89,7 @@ export default function CustomersPage() {
               { key: 'businessName', label: 'Business Name' },
               { key: 'phone', label: 'Phone' },
               { key: 'balance', label: 'Balance', value: (r) => (r.balance / 100).toFixed(2) },
-              { key: 'creditLimit', label: 'Credit Limit', value: (r) => (r.creditLimit / 100).toFixed(2) },
+              { key: 'creditLimit', label: 'Credit Limit', value: (r) => (r.creditLimit === null ? 'Unlimited' : (r.creditLimit / 100).toFixed(2)) },
               { key: 'isActive', label: 'Status', value: (r) => (r.onHold ? 'On Hold' : r.isActive ? 'Active' : 'Inactive') },
             ]}
           />
@@ -114,7 +114,7 @@ export default function CustomersPage() {
                   <td className="px-4 py-3 text-xs text-gray-500">{(c.access || []).map((a) => a.branch.name).join(', ') || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{c.phone || '—'}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatMoney(c.balance / 100)}</td>
-                  <td className="px-4 py-3 text-right text-gray-500">{formatMoney(c.creditLimit / 100)}</td>
+                  <td className="px-4 py-3 text-right text-gray-500">{c.creditLimit === null ? 'Unlimited' : formatMoney(c.creditLimit / 100)}</td>
                   <td className="px-4 py-3">
                     {c.onHold ? <StatusPill status="On Hold" color="red" /> : <StatusPill status={c.isActive ? 'Active' : 'Inactive'} color={c.isActive ? 'green' : 'gray'} />}
                   </td>
@@ -144,7 +144,7 @@ export default function CustomersPage() {
             </Field>
           </div>
           <Field label="Credit limit">
-            <NumberInput value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} placeholder="0 for cash-only" />
+            <NumberInput value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} placeholder="Leave blank for unlimited, 0 for cash-only" />
           </Field>
           <Field label="Register at" required>
             <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto border rounded p-2">

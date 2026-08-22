@@ -360,7 +360,9 @@ model Customer {
   email        String?
   businessName String?
 
-  creditLimit Int     @default(0)
+  // null = unlimited credit; 0 = zero debt tolerance (strictly enforced). Never treat null and 0
+  // as interchangeable defaults — see lib/credit.js.
+  creditLimit Int?
   onHold      Boolean @default(false)
   // Cache only — Order/Payment rows are the source of truth (core-algorithms skill §3). Recompute
   // and alert on drift; never let this field be the only record of a balance.
@@ -398,7 +400,9 @@ model CustomerAccess {
   @@index([branchId])
 }
 
-// A manual balance move not tied to a specific Order — surcharge or refund.
+// A manual balance move — a surcharge or refund/fund. Either standalone (orderId null, e.g. a
+// goodwill credit or standalone penalty) or tied to a specific sale (ecana_shop-app's Sale.adjustments
+// embedded array, flattened into its own row here since Prisma has no embedded-array equivalent).
 model CustomerAdjustment {
   id             String       @id @default(cuid())
   organizationId String
@@ -407,7 +411,11 @@ model CustomerAdjustment {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
   type          String // surcharge | refund
+  method        String? // per_unit | flat_total | transport | shortfall — surcharge/refund-on-sale only
   amount        Int
   reason        String?
   balanceBefore Int
@@ -417,6 +425,7 @@ model CustomerAdjustment {
 
   @@index([organizationId])
   @@index([customerId])
+  @@index([orderId])
 }
 
 // Money received against a customer's account. `allocations` records which Order(s) it settles —
@@ -651,6 +660,7 @@ model Order {
 
   lines       OrderLine[]
   allocations PaymentAllocation[]
+  adjustments CustomerAdjustment[]
 
   @@unique([organizationId, orderNumber])
   @@unique([organizationId, offlineId])
