@@ -13,6 +13,7 @@ const TABS = [
   { key: 'sales', label: 'Sales Summary' },
   { key: 'stock', label: 'Stock Summary' },
   { key: 'cash', label: 'Cash Summary' },
+  { key: 'balances', label: 'Balances' },
 ];
 const MATERIALS_TAB = { key: 'materials', label: 'Materials' };
 
@@ -68,7 +69,11 @@ export default function ReportsPage() {
 
       <Tabs tabs={tabs} active={activeTab} onChange={setTab} />
 
-      {!branchId && !serviceId ? (
+      {activeTab === 'balances' ? (
+        // Customer is an org-level account, not branch/service-scoped (prisma/schema.prisma) — this
+        // tab always shows the whole org's book regardless of the branch/service switcher above.
+        <BalancesSummary from={from} to={to} />
+      ) : !branchId && !serviceId ? (
         <AllBusinessesSummary tab={activeTab} from={from} to={to} />
       ) : (
         <>
@@ -78,6 +83,96 @@ export default function ReportsPage() {
           {activeTab === 'materials' && <MaterialsSummary branchId={branchId} serviceId={serviceId} from={from} to={to} />}
         </>
       )}
+    </div>
+  );
+}
+
+function BalancesSummary({ from, to }) {
+  const router = useRouter();
+  const [data, setData] = useState(null);
+  const [filter, setFilter] = useState('all'); // all | owing | credit
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/admin/reports/balances?from=${from}&to=${to}`);
+    const d = await r.json();
+    if (d.success) setData(d.data); else toast.error(d.error || 'Failed to load');
+  }, [from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!data) return <Loader />;
+  const { customers, totals, monthly } = data;
+  const rows = customers.filter((c) => filter === 'owing' ? c.balance > 0 : filter === 'credit' ? c.balance < 0 : true);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card className="p-4"><p className="text-xs text-gray-500">Total Owed to You</p><p className="text-xl font-bold mt-1">{formatMoney(totals.totalOwed / 100)}</p><p className="text-xs text-gray-500 mt-1">{totals.owingCount} customers</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Total Credit in Hand</p><p className="text-xl font-bold mt-1">{formatMoney(totals.totalCredit / 100)}</p><p className="text-xs text-gray-500 mt-1">{totals.creditCount} customers</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Net</p><p className={`text-xl font-bold mt-1 ${totals.net > 0 ? 'text-red-600' : ''}`}>{formatMoney(totals.net / 100)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Zero Balance</p><p className="text-xl font-bold mt-1">{totals.zeroCount}</p></Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Customer Balances</h3>
+          <div className="flex gap-2">
+            {[['all', 'All'], ['owing', 'Owing'], ['credit', 'In Credit']].map(([key, label]) => (
+              <button key={key} onClick={() => setFilter(key)} className={`px-3 py-1 rounded text-xs font-medium ${filter === key ? 'bg-brand-600 text-white' : 'border hover:bg-gray-50'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Customer</th>
+                <th className="px-4 py-3 text-right font-medium">Balance</th>
+                <th className="px-4 py-3 text-right font-medium">Credit Limit</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.length === 0 && <EmptyRow colSpan={4} text="No customers in this view" />}
+              {rows.map((c) => (
+                <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/admin/customers/${c.id}`)}>
+                  <td className="px-4 py-3 font-medium">{c.name}</td>
+                  <td className={`px-4 py-3 text-right font-medium ${c.balance > 0 ? 'text-red-600' : c.balance < 0 ? 'text-green-600' : ''}`}>{formatMoney(c.balance / 100)}</td>
+                  <td className="px-4 py-3 text-right text-gray-500">{c.creditLimit === null ? 'Unlimited' : formatMoney(c.creditLimit / 100)}</td>
+                  <td className="px-4 py-3">{c.onHold ? <StatusPill status="On Hold" color="red" /> : <StatusPill status="Active" color="green" />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">Monthly Activity (debt added vs payments received, in range)</h3></div>
+        <div className={tableScrollCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Month</th>
+                <th className="px-4 py-3 text-right font-medium">Debt Added</th>
+                <th className="px-4 py-3 text-right font-medium">Payments Received</th>
+                <th className="px-4 py-3 text-right font-medium">Net</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {monthly.length === 0 && <EmptyRow colSpan={4} text="No activity in this period" />}
+              {monthly.map((m) => (
+                <tr key={m.month}>
+                  <td className="px-4 py-3">{m.month}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(m.debtAdded / 100)}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(m.paymentsReceived / 100)}</td>
+                  <td className={`px-4 py-3 text-right font-medium ${m.net > 0 ? 'text-red-600' : ''}`}>{formatMoney(m.net / 100)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }
