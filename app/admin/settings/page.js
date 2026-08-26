@@ -4,6 +4,7 @@ import { requireOrg } from '@/lib/tenantScope';
 import { Card } from '@/components/ui';
 import OrganizationProfileForm from '@/components/shell/OrganizationProfileForm';
 import OtpSettingsCard from '@/components/shell/OtpSettingsCard';
+import PaymentCollectionCard from '@/components/shell/PaymentCollectionCard';
 
 // Owner-only — logo/profile/invoicing/security all live here now, consolidated instead of scattered
 // (the OTP Security card moves here from Billing, which stays subscription-only).
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
         <>
           <OrganizationProfileForm org={org} />
           <OtpSettingsCard org={org} />
+          <PaymentCollectionCard />
         </>
       )}
     </div>

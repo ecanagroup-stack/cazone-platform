@@ -1,24 +1,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, inputCls, btnPrimaryCls, NumberInput } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import PaystackButton from '@/components/billing/PaystackButton';
 
 export default function PortalShopPage() {
+  const { data: authSession } = useSession();
   const [data, setData] = useState(null);
   const [branchId, setBranchId] = useState('');
   const [cart, setCart] = useState([]); // [{ productId, name, unit, unitPrice, qty }]
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     fetch('/api/portal/shop').then((r) => r.json()).then((d) => {
       if (d.success) {
         setData(d.data);
         if (d.data.branches.length === 1) setBranchId(d.data.branches[0].id);
       } else toast.error(d.error || 'Failed to load');
     });
-  }, []);
+  };
+
+  useEffect(load, []);
 
   const addToCart = (product) => {
     setCart((c) => {
@@ -30,7 +35,11 @@ export default function PortalShopPage() {
 
   const updateQty = (productId, qty) => setCart((c) => c.map((l) => (l.productId === productId ? { ...l, qty: Math.max(1, qty) } : l)));
   const removeLine = (productId) => setCart((c) => c.filter((l) => l.productId !== productId));
-  const total = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  // Transport doesn't apply to an empty, hypothetical order — only once there's actually something
+  // in the cart to deliver.
+  const transportFee = cart.length > 0 ? data?.transportRate || 0 : 0;
+  const total = subtotal + transportFee;
 
   const submitOrder = async (e) => {
     e.preventDefault();
@@ -109,13 +118,42 @@ export default function PortalShopPage() {
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-sm font-semibold mb-3 pt-2 border-t">
+          {cart.length > 0 && data.transportRate != null && (
+            <div className="flex justify-between text-sm text-gray-500 pt-2 border-t">
+              <span>Subtotal</span>
+              <span>{formatMoney(subtotal / 100)}</span>
+            </div>
+          )}
+          {cart.length > 0 && data.transportRate != null && (
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Transport</span>
+              <span>{formatMoney(transportFee / 100)}</span>
+            </div>
+          )}
+          <div className={`flex justify-between text-sm font-semibold mb-3 ${cart.length > 0 && data.transportRate != null ? 'pt-1' : 'pt-2 border-t'}`}>
             <span>Total</span>
             <span>{formatMoney(total / 100)}</span>
           </div>
           <button onClick={submitOrder} disabled={submitting || cart.length === 0} className={`w-full ${btnPrimaryCls}`}>
-            {submitting ? 'Placing order...' : 'Place Order'}
+            {submitting ? 'Placing order...' : 'Place Order (Pay Later)'}
           </button>
+          {data.paymentsEnabled && (
+            <>
+              <p className="text-xs text-gray-400 text-center my-2">or</p>
+              <PaystackButton
+                prepareUrl="/api/portal/shop/pay"
+                prepareBody={{ branchId, lines: cart.map((l) => ({ productId: l.productId, qty: l.qty })) }}
+                metadata={{
+                  type: 'shop_order', customerId: authSession?.user?.customerId, organizationId: authSession?.user?.organizationId,
+                  branchId, transportFee, lines: cart.map((l) => ({ productId: l.productId, qty: l.qty })),
+                }}
+                label="Pay Now"
+                disabled={cart.length === 0 || !branchId}
+                className="w-full px-4 py-2 border border-brand-600 text-brand-600 rounded text-sm font-medium hover:bg-brand-50 disabled:opacity-50"
+                onPaid={() => { setCart([]); load(); toast.success('Order placed and paid'); }}
+              />
+            </>
+          )}
         </Card>
       </div>
     </div>

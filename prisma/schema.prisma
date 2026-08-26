@@ -67,6 +67,12 @@ model PlatformSettings {
   id           String   @id @default("singleton")
   logoUrl      String?
   logoUrlSmall String?
+  // Cazone's cut of every customer payment collected on an opted-in org's behalf (see
+  // Organization.paymentsEnabled) — one global rate, not per-org. A percentage (e.g. 1.5 = 1.5%),
+  // applied when creating/updating an org's Paystack Subaccount as its `percentage_charge`, so
+  // Paystack itself splits every charge at the point of payment rather than Cazone computing and
+  // moving the cut afterward.
+  paymentCollectionFeePercent Float @default(1.5)
   updatedAt    DateTime @updatedAt
 }
 
@@ -116,6 +122,22 @@ model Organization {
   paystackPlanCode         String?
   paystackPlanAmount       Int?
 
+  // Customer payment collection — separate from the subscription billing above (that's this org
+  // paying Cazone; this is Cazone collecting on this org's behalf from ITS customers). Opt-in per
+  // org, off by default. A Paystack Subaccount tied to the org's own bank account, created once
+  // enabled — every customer charge (lib/sale.js createSaleOrder, app/api/portal/pay) is initialized
+  // with a `subaccount` split, so Paystack settles the org's share DIRECTLY to their bank account on
+  // Paystack's own schedule and Cazone's cut (PlatformSettings.paymentCollectionFeePercent, applied at
+  // subaccount-creation time) never passes through Cazone's own account. payoutAccountName is the
+  // name Paystack's own bank-resolve API returned for the account number, shown back to the owner so
+  // they can confirm it's really their account before it goes live — never trust a typed name alone.
+  paymentsEnabled        Boolean @default(false)
+  paystackSubaccountCode String?
+  payoutBankCode         String?
+  payoutBankName         String?
+  payoutAccountNumber    String?
+  payoutAccountName      String?
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -132,6 +154,7 @@ model Organization {
   priceRules      PriceRule[]
   priceHistory    PriceHistory[]
   notifications   Notification[]
+  chatMessages    ChatMessage[]
   otpCodes        OtpCode[]
   priceGroups     PriceGroup[]
   orders          Order[]
@@ -364,6 +387,12 @@ model Customer {
   // as interchangeable defaults — see lib/credit.js.
   creditLimit Int?
   onHold      Boolean @default(false)
+  // Standing delivery cost for this customer's own self-service Shop orders (lib/sale.js's
+  // createPendingOrder/confirmPendingOrder) — added once per order, same flat/not-split-per-line
+  // semantics as the manual sale flows' transport fee. null = no standing rate (Shop shows no
+  // transport line at all); 0 = free delivery, shown explicitly. Never set on staff-recorded sales
+  // (Cement/Aggregate Sale pages) — those keep their own free-form per-sale entry untouched.
+  transportRate Int?
   // Cache only — Order/Payment rows are the source of truth (core-algorithms skill §3). Recompute
   // and alert on drift; never let this field be the only record of a balance.
   balance     Int     @default(0)
@@ -372,11 +401,12 @@ model Customer {
   createdBy String?
   createdAt DateTime @default(now())
 
-  orders      Order[]
-  adjustments CustomerAdjustment[]
-  payments    Payment[]
-  priceRules  PriceRule[]
-  access      CustomerAccess[]
+  orders       Order[]
+  adjustments  CustomerAdjustment[]
+  payments     Payment[]
+  priceRules   PriceRule[]
+  access       CustomerAccess[]
+  chatMessages ChatMessage[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -440,7 +470,7 @@ model Payment {
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   amount     Int
-  method     String // cash | transfer | pos | cheque
+  method     String // cash | transfer | pos | cheque | paystack
   reference  String?
   recordedBy String?
   createdAt  DateTime @default(now())
@@ -600,6 +630,41 @@ model Notification {
   @@index([organizationId, recipientRole, isRead])
 }
 
+// A running conversation thread between one customer and the org's owner/manager staff — see
+// app/api/admin/chat and app/api/portal/chat. One thread per customer (no subjects/tickets); the
+// customer initiates, any owner/manager can reply. `isRead` is single-directional per row (unlike
+// Notification's two possible recipients, a chat message only ever needs the OTHER side to read it —
+// staff read what the customer sent, the customer reads what staff sent).
+model ChatMessage {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  fromCustomer Boolean // true = the customer sent it; false = staff sent it
+  // Loose reference, not a relation — same convention as Customer.createdBy — so a staff login being
+  // deactivated later never requires cleaning up chat history.
+  senderUserId String?
+  senderName   String
+
+  // Set when this row was created by a broadcast (app/api/admin/chat/broadcast) rather than a direct
+  // reply — one ChatMessage per targeted customer, all sharing this id so the UI can label them as an
+  // announcement and, later, group/report on a single broadcast's reach. Null for an ordinary message.
+  broadcastId String?
+
+  body String
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, fromCustomer, isRead])
+}
+
 // Logs every price change, and gates non-owner ones behind approval — see lib/pricing.js setPrice().
 // A brand-new product's first price always applies immediately regardless of role (nothing live to
 // protect yet); only a change to an already-priced product needs owner sign-off from non-owners.
@@ -648,7 +713,7 @@ model Order {
   // not subtracted like discount. Zero everywhere else.
   transportFee  Int      @default(0)
   grandTotal    Int
-  paymentMethod String? // cash | credit | pos | transfer
+  paymentMethod String? // cash | credit | pos | transfer | paystack
   offlineId     String?
   createdBy     String?
   // Which side of the Materials business this sale came from — 'shop' (retail counter/self-service)

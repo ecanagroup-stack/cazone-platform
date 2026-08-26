@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { runUnscoped } from '@/lib/tenantScope';
+import { runUnscoped, runWithOrg } from '@/lib/tenantScope';
 import { verifySignature } from '@/lib/paystack';
 import { provisionRequest } from '@/lib/provisioning';
+import { createSaleOrder } from '@/lib/sale';
+import { allocatePayment } from '@/lib/payments';
 import { logAudit } from '@/lib/audit';
 
 // The only source of truth for anything Paystack-related actually taking effect — every client-side
@@ -66,6 +68,19 @@ async function handleChargeSuccess(data) {
     return;
   }
 
+  // Customer payment collection (app/api/portal/pay/balance, app/api/portal/shop/pay) — a customer
+  // paying their own org through Cazone, split via that org's Paystack Subaccount at the point of
+  // charge (see Organization.paystackSubaccountCode). Distinct from the subscription/provisioning
+  // branches above, which are this org paying CAZONE.
+  if (metadata.type === 'balance_payment' && metadata.customerId && metadata.organizationId) {
+    await handleBalancePayment(data, metadata);
+    return;
+  }
+  if (metadata.type === 'shop_order' && metadata.customerId && metadata.organizationId) {
+    await handleShopOrderPayment(data, metadata);
+    return;
+  }
+
   // Subscription payment — the first charge carries metadata.organizationId (set by
   // components/billing/PaystackButton.js); a later Paystack-initiated renewal charge carries no
   // metadata at all, so it's resolved by the customer code instead.
@@ -89,6 +104,42 @@ async function handleChargeSuccess(data) {
     action: 'organization.subscription_paid', entityType: 'Organization', entityId: org.id,
     after: { subscriptionEndsAt, reference: data.reference },
   });
+}
+
+// A customer paying down their own balance (app/api/portal/pay/balance) — same effect as the
+// staff-recorded Record Payment (app/api/admin/customers/[id]/payments), just customer-initiated and
+// tagged 'paystack' so it's visibly distinct on the statement. Runs org-scoped since the webhook
+// itself carries no session.
+async function handleBalancePayment(data, metadata) {
+  const { customerId, organizationId } = metadata;
+  const amount = data.amount; // already kobo — Payment.amount matches Order.grandTotal's convention
+  await runWithOrg(organizationId, () =>
+    prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
+        data: { customerId, amount, method: 'paystack', reference: data.reference, recordedBy: null },
+      });
+      await allocatePayment(tx, { customerId, paymentId: payment.id, amount });
+      await tx.customer.update({ where: { id: customerId }, data: { balance: { decrement: amount } } });
+    }, { timeout: 15000 })
+  );
+}
+
+// A customer paying for a Shop order immediately, in full, rather than placing it on credit
+// (app/api/portal/shop/pay) — reuses createSaleOrder exactly like a staff-recorded cash sale would:
+// stock decrements now, nothing added to the customer's balance (paymentMethod isn't 'credit'), no
+// staff confirmation step to wait on since the money's already real. Lines are re-priced from
+// scratch here (never trusted from the client's earlier prepare-time total — core-algorithms skill
+// §1), so a price that changed between checkout and this webhook firing is what actually gets billed.
+async function handleShopOrderPayment(data, metadata) {
+  const { customerId, organizationId, branchId, lines, transportFee } = metadata;
+  if (!branchId || !Array.isArray(lines) || lines.length === 0) return;
+  await runWithOrg(organizationId, () =>
+    createSaleOrder({
+      session: { user: { organizationId, id: null } },
+      branchId, customerId, paymentMethod: 'paystack', lines,
+      transportFee: Number(transportFee) || 0, channel: 'shop', stockReason: 'sale',
+    })
+  );
 }
 
 // charge.success doesn't reliably carry the subscription_code the first time a plan-linked charge

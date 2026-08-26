@@ -1,12 +1,15 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen, FiClock, FiShield,
+  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare,
 } from 'react-icons/fi';
+
+const CHAT_POLL_MS = 30000;
 
 // Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
 // counter itself — one entry per pack, not a list of pages. Manage's "at most two items per pack"
@@ -33,6 +36,10 @@ const GROUPS = [
     label: 'Manage',
     items: [
       { href: '/admin/customers', label: 'Customers', icon: FiUsers },
+      // Only the org's owner and its managers hold customer conversations — everyone else on staff
+      // (plain staff, and the vertical-specific tiers like cashier/supervisor/materials_manager)
+      // never sees this in the nav at all, not just a 403 if they guess the URL.
+      { href: '/admin/messages', label: 'Messages', icon: FiMessageSquare, roles: ['owner', 'manager'] },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
       { href: '/admin/fuel/backfill', label: 'Historical Backfill', icon: FiClock, pack: 'fuel_station' },
@@ -62,9 +69,19 @@ const GROUPS = [
   },
 ];
 
-export default function Sidebar({ services = [] }) {
+export default function Sidebar({ services = [], user }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [unreadChats, setUnreadChats] = useState(0);
+
+  const canSeeChat = user?.role === 'owner' || user?.role === 'manager';
+  useEffect(() => {
+    if (!canSeeChat) return;
+    const load = () => fetch('/api/admin/chat/unread-count').then((r) => r.json()).then((d) => { if (d.success) setUnreadChats(d.data.count); });
+    load();
+    const t = setInterval(load, CHAT_POLL_MS);
+    return () => clearInterval(t);
+  }, [canSeeChat]);
   // Every page under /admin reads its working service/branch from the URL (ServiceBranchSwitcher) —
   // a sidebar link that dropped those params would force a re-pick on every single navigation. Only
   // service/branch carry forward; anything else a page put in the URL (e.g. a tab) shouldn't leak
@@ -84,7 +101,7 @@ export default function Sidebar({ services = [] }) {
 
   const groups = GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.pack || item.pack === currentServiceType),
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role))),
   })).filter((g) => g.items.length > 0);
   return (
     <nav className="print:hidden w-56 shrink-0 border-r bg-white p-4 hidden md:block">
@@ -105,6 +122,11 @@ export default function Sidebar({ services = [] }) {
                   >
                     <Icon size={16} className={active ? 'text-brand-600' : 'text-gray-400'} />
                     {item.label}
+                    {item.href === '/admin/messages' && unreadChats > 0 && (
+                      <span className="ml-auto min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-xs font-medium flex items-center justify-center">
+                        {unreadChats > 99 ? '99+' : unreadChats}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

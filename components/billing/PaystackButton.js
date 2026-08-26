@@ -24,11 +24,15 @@ function loadPaystackScript() {
 
 // `prepareUrl` is a POST route that ensures whatever Paystack needs already exists server-side
 // (customer/plan for a subscription, a reference for a one-time charge) and returns
-// { reference, amountKobo, email, planCode? } — this component never talks to Paystack's REST API
-// directly, only the popup script. The onSuccess callback here is purely optimistic UI: the ONLY
-// thing that ever actually marks a payment as applied is the webhook (app/api/webhooks/paystack),
-// so this just tells the user to expect a short delay and refreshes once it's done.
-export default function PaystackButton({ prepareUrl, metadata, label, className, onPaid }) {
+// { reference, amountKobo, email, planCode?, subaccountCode? } — this component never talks to
+// Paystack's REST API directly, only the popup script. `subaccountCode` (customer-payment-collection
+// callers only) makes Paystack split this exact charge at the point of payment — the org's share
+// settles straight to their own bank account, Cazone's cut stays behind, per Organization's own
+// Paystack Subaccount (lib/paystack.js createOrUpdateSubaccount). The onSuccess callback here is
+// purely optimistic UI: the ONLY thing that ever actually marks a payment as applied is the webhook
+// (app/api/webhooks/paystack), so this just tells the user to expect a short delay and refreshes once
+// it's done.
+export default function PaystackButton({ prepareUrl, prepareBody, metadata, label, className, disabled, onPaid }) {
   const [loading, setLoading] = useState(false);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
@@ -37,11 +41,14 @@ export default function PaystackButton({ prepareUrl, metadata, label, className,
     setLoading(true);
     try {
       const [prep] = await Promise.all([
-        fetch(prepareUrl, { method: 'POST' }).then((r) => r.json()),
+        fetch(prepareUrl, {
+          method: 'POST',
+          ...(prepareBody ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prepareBody) } : {}),
+        }).then((r) => r.json()),
         loadPaystackScript(),
       ]);
       if (!prep.success) { toast.error(prep.error || 'Could not start payment'); return; }
-      const { reference, amountKobo, email, planCode } = prep.data;
+      const { reference, amountKobo, email, planCode, subaccountCode } = prep.data;
 
       const handler = window.PaystackPop.setup({
         key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
@@ -49,6 +56,7 @@ export default function PaystackButton({ prepareUrl, metadata, label, className,
         amount: amountKobo,
         ref: reference,
         plan: planCode || undefined,
+        subaccount: subaccountCode || undefined,
         metadata: metadata || {},
         onClose: () => { if (mounted.current) setLoading(false); },
         callback: () => {
@@ -65,7 +73,7 @@ export default function PaystackButton({ prepareUrl, metadata, label, className,
   };
 
   return (
-    <button onClick={handleClick} disabled={loading} className={className || `${btnPrimaryCls} disabled:opacity-50`}>
+    <button onClick={handleClick} disabled={loading || disabled} className={className || `${btnPrimaryCls} disabled:opacity-50`}>
       {loading ? 'Opening...' : label}
     </button>
   );

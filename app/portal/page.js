@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, StatusPill } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import PortalPayBalanceButton from '@/components/PortalPayBalanceButton';
 
 export default function PortalOverviewPage() {
   const [customer, setCustomer] = useState(null);
@@ -35,6 +36,8 @@ export default function PortalOverviewPage() {
         <Card className="p-4"><p className="text-xs text-gray-500">Available</p><p className={`text-2xl font-bold mt-1 ${available !== null && available < 0 ? 'text-red-600' : ''}`}>{available === null ? 'Unlimited' : formatMoney(available / 100)}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Status</p><div className="mt-1">{customer.onHold ? <StatusPill status="On Hold" color="red" /> : <StatusPill status="Active" color="green" />}</div></Card>
       </div>
+
+      {customer.paymentsEnabled && customer.balance > 0 && <PortalPayBalanceButton />}
     </div>
   );
 }

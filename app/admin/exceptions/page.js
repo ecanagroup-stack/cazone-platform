@@ -210,6 +210,7 @@ function PendingOrdersTab() {
                 {o.lines.map((l) => (
                   <li key={l.id}>{l.qty} × {l.product.name} — {formatMoney(l.lineTotal / 100)}</li>
                 ))}
+                {o.transportFee > 0 && <li>Transport — {formatMoney(o.transportFee / 100)}</li>}
               </ul>
 
               {creditWarning?.orderId === o.id && (

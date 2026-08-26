@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -12,12 +13,18 @@ const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61
 
 export default function CustomerDetailPage() {
   const { id } = useParams();
+  const { data: authSession } = useSession();
+  const canChat = authSession?.user?.role === 'owner' || authSession?.user?.role === 'manager';
   const [data, setData] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', reference: '' });
   const [showEdit, setShowEdit] = useState(false);
-  const [editForm, setEditForm] = useState({ creditLimit: '', onHold: false });
+  const [editForm, setEditForm] = useState({ creditLimit: '', onHold: false, transportRate: '' });
   const [submitting, setSubmitting] = useState(false);
+
+  const [pricingProducts, setPricingProducts] = useState(null); // null = not loaded / no shop service
+  const [priceDrafts, setPriceDrafts] = useState({}); // { [productId]: string }
+  const [savingPrice, setSavingPrice] = useState(null); // productId currently saving
 
   const [showAdjustment, setShowAdjustment] = useState(null); // null | 'surcharge' | 'refund'
   const [adjustmentForm, setAdjustmentForm] = useState({ amount: '', reason: '', otp: '' });
@@ -34,11 +41,28 @@ export default function CustomerDetailPage() {
       fetch(`/api/admin/customers/${id}`), fetch('/api/admin/services'), fetch('/api/admin/me'),
     ]);
     const [d, sd, md] = await Promise.all([r.json(), sr.json(), mr.json()]);
-    if (d.success) { setData(d.data); setEditForm({ creditLimit: d.data.customer.creditLimit === null ? '' : (d.data.customer.creditLimit / 100).toString(), onHold: d.data.customer.onHold }); }
-    else toast.error(d.error || 'Failed to load');
+    if (d.success) {
+      setData(d.data);
+      setEditForm({
+        creditLimit: d.data.customer.creditLimit === null ? '' : (d.data.customer.creditLimit / 100).toString(),
+        onHold: d.data.customer.onHold,
+        transportRate: d.data.customer.transportRate === null ? '' : (d.data.customer.transportRate / 100).toString(),
+      });
+    } else toast.error(d.error || 'Failed to load');
     if (sd.success) setAllBranches(sd.data.flatMap((s) => s.branches.map((b) => ({ ...b, serviceName: s.name }))));
     if (md.success) setAccessibleBranchIds(md.data.accessibleBranchIds);
   }, [id]);
+
+  const loadPricing = useCallback(async () => {
+    const r = await fetch(`/api/admin/customers/${id}/pricing`);
+    const d = await r.json();
+    if (d.success) {
+      setPricingProducts(d.data.products);
+      setPriceDrafts(Object.fromEntries(d.data.products.map((p) => [p.id, p.customerPrice === null ? '' : (p.customerPrice / 100).toString()])));
+    }
+  }, [id]);
+
+  useEffect(() => { loadPricing(); }, [loadPricing]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,13 +138,38 @@ export default function CustomerDetailPage() {
     try {
       const r = await fetch(`/api/admin/customers/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creditLimit: editForm.creditLimit === '' ? null : Math.round(Number(editForm.creditLimit) * 100), onHold: editForm.onHold }),
+        body: JSON.stringify({
+          creditLimit: editForm.creditLimit === '' ? null : Math.round(Number(editForm.creditLimit) * 100),
+          onHold: editForm.onHold,
+          transportRate: editForm.transportRate === '' ? null : Math.round(Number(editForm.transportRate) * 100),
+        }),
       });
       const d = await r.json();
       if (d.success) { toast.success('Saved'); setShowEdit(false); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSavePrice = async (productId) => {
+    const raw = priceDrafts[productId];
+    setSavingPrice(productId);
+    try {
+      if (raw === '' || raw === undefined) {
+        const r = await fetch(`/api/admin/customers/${id}/pricing/${productId}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.success) { toast.success('Reverted to list price'); loadPricing(); } else toast.error(d.error);
+      } else {
+        const r = await fetch(`/api/admin/customers/${id}/pricing/${productId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: Math.round(Number(raw) * 100) }),
+        });
+        const d = await r.json();
+        if (d.success) { toast.success('Price set'); loadPricing(); } else toast.error(d.error);
+      }
+    } finally {
+      setSavingPrice(null);
     }
   };
 
@@ -167,6 +216,9 @@ export default function CustomerDetailPage() {
         action={
           <div className="flex gap-2">
             <button onClick={() => setShowEdit(true)} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Edit</button>
+            {canChat && customer.userId && customer.user?.isActive && (
+              <Link href={`/admin/messages/${id}`} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Message</Link>
+            )}
             {customer.userId && customer.user?.isActive ? (
               <button onClick={handleRevokePortal} disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-red-600">Revoke Portal Login</button>
             ) : (
@@ -228,6 +280,36 @@ export default function CustomerDetailPage() {
           );
         })()}
       </Card>
+
+      {pricingProducts && pricingProducts.length > 0 && (
+        <Card className="p-5 mb-6">
+          <h3 className="font-semibold text-sm mb-1">Custom Pricing</h3>
+          <p className="text-xs text-gray-500 mb-4">A price set here overrides the list price whenever this customer places their own order in the Shop — leave blank to use the list price. Doesn't affect a manager-recorded sale, where price is always typed in at the time.</p>
+          <div className="divide-y">
+            {pricingProducts.map((p) => (
+              <div key={p.id} className="py-2 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  <p className="text-xs text-gray-500">List price: {p.listPrice === null ? '—' : formatMoney(p.listPrice / 100)} / {p.unit}</p>
+                </div>
+                <NumberInput
+                  value={priceDrafts[p.id] ?? ''}
+                  onChange={(e) => setPriceDrafts({ ...priceDrafts, [p.id]: e.target.value })}
+                  placeholder="List price"
+                  className="w-32 px-3 py-1.5 border rounded text-sm"
+                />
+                <button
+                  onClick={() => handleSavePrice(p.id)}
+                  disabled={savingPrice === p.id}
+                  className="px-3 py-1.5 border rounded text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {savingPrice === p.id ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -301,6 +383,10 @@ export default function CustomerDetailPage() {
             <input type="checkbox" checked={editForm.onHold} onChange={(e) => setEditForm({ ...editForm, onHold: e.target.checked })} />
             On hold (blocks new credit sales)
           </label>
+          <Field label="Transport rate">
+            <NumberInput value={editForm.transportRate} onChange={(e) => setEditForm({ ...editForm, transportRate: e.target.value })} placeholder="Leave blank for none" />
+          </Field>
+          <p className="text-xs text-gray-500 -mt-2">Added once per order to this customer's own self-service Shop orders — shown to them before they place it.</p>
           <FormButtons onCancel={() => setShowEdit(false)} submitting={submitting} submitLabel="Save" />
         </form>
       </Modal>

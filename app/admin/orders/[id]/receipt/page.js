@@ -107,6 +107,9 @@ export default function OrderReceiptPage() {
             {order.discount > 0 && (
               <div className="flex justify-between"><span className="text-gray-500">Discount</span><span>-{formatMoney(order.discount / 100, currency)}</span></div>
             )}
+            {order.transportFee > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500">Transport</span><span>{formatMoney(order.transportFee / 100, currency)}</span></div>
+            )}
             <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>{formatMoney(order.grandTotal / 100, currency)}</span></div>
             <div className="flex justify-between text-gray-500 text-xs pt-1"><span>Payment method</span><span className="capitalize">{order.paymentMethod || '—'}</span></div>
           </div>

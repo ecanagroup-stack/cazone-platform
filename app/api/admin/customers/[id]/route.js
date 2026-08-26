@@ -41,17 +41,20 @@ export const PATCH = withOrg(async (request, { params }) => {
       const normalized = normalizeCreditLimit(body.creditLimit);
       update.creditLimit = normalized === null ? null : Math.round(normalized);
     }
+    if (body.transportRate !== undefined) {
+      update.transportRate = body.transportRate === null || body.transportRate === '' ? null : Math.round(Number(body.transportRate));
+    }
 
     const before = await prisma.customer.findUnique({ where: { id } });
     if (!before) throw new ApiError('Customer not found', 404);
     const updated = await prisma.customer.update({ where: { id }, data: update });
 
-    if (update.creditLimit !== undefined || update.onHold !== undefined) {
+    if (update.creditLimit !== undefined || update.onHold !== undefined || update.transportRate !== undefined) {
       await logAudit({
         organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,
         action: 'customer.updated', entityType: 'Customer', entityId: id,
-        before: { creditLimit: before.creditLimit, onHold: before.onHold },
-        after: { creditLimit: updated.creditLimit, onHold: updated.onHold },
+        before: { creditLimit: before.creditLimit, onHold: before.onHold, transportRate: before.transportRate },
+        after: { creditLimit: updated.creditLimit, onHold: updated.onHold, transportRate: updated.transportRate },
       });
     }
 

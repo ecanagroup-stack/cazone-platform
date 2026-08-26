@@ -5,6 +5,7 @@ import { requireOrg } from '@/lib/tenantScope';
 import { getCachedOrganization } from '@/lib/orgLookup';
 import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
+import PortalMessagesLink from '@/components/PortalMessagesLink';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
 // customer session only ever sees their own account, never the org's operational screens.
@@ -40,6 +41,7 @@ export default async function PortalLayout({ children }) {
           <Link href="/portal" className="hover:text-gray-900">Overview</Link>
           <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
+          <PortalMessagesLink className="hover:text-gray-900" />
         </nav>
         <div className="flex-1" />
         <span className="text-sm text-gray-500">{session.user.name}</span>

@@ -45,7 +45,7 @@ export default async function AdminLayout({ children }) {
       <TopBar org={organization} services={services} user={session.user} />
       <LapsedBanner org={organization} />
       <div className="flex flex-1">
-        <Sidebar services={services} />
+        <Sidebar services={services} user={session.user} />
         <main className="flex-1 p-6 max-w-6xl mx-auto w-full">{children}</main>
       </div>
     </div>
