@@ -310,6 +310,38 @@ export function Field({ label, children, required }) {
   );
 }
 
+// A customer Name input that checks itself against the org's other customers as you type — the same
+// case-/word-order-insensitive match the create/rename routes enforce server-side (lib/customerName.js),
+// and the same DB-level @@unique([organizationId, normalizedName]) backs both up regardless of whether
+// this ever runs; this just surfaces it before submit instead of only from the save error. `excludeId`
+// is the customer being renamed, if any, so it doesn't warn against itself. `onDuplicateChange` (optional)
+// lets the form short-circuit its own submit rather than round-tripping a save it already knows will fail.
+export function CustomerNameField({ value, onChange, excludeId, required = true, autoFocus, onDuplicateChange }) {
+  const [duplicate, setDuplicate] = useState(null);
+
+  useEffect(() => {
+    const trimmed = (value || '').trim();
+    if (trimmed.length < 2) { setDuplicate(null); onDuplicateChange?.(null); return; }
+    const t = setTimeout(async () => {
+      const params = new URLSearchParams({ name: trimmed, ...(excludeId ? { excludeId } : {}) });
+      const r = await fetch(`/api/admin/customers/check-name?${params}`);
+      const d = await r.json();
+      if (d.success) { setDuplicate(d.data.duplicate); onDuplicateChange?.(d.data.duplicate); }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, excludeId]);
+
+  return (
+    <Field label="Name" required={required}>
+      <input type="text" value={value} onChange={onChange} className={inputCls} required={required} autoFocus={autoFocus} />
+      {duplicate && (
+        <p className="text-xs text-amber-700 mt-1">A customer named &quot;{duplicate.name}&quot; already exists — use a different name, or add something to distinguish this one.</p>
+      )}
+    </Field>
+  );
+}
+
 // The global print/export/share mechanism — drop onto any report-like table screen. Print uses the
 // browser's native dialog (which already offers "Save as PDF"); Export CSV and Copy Link need
 // nothing configured; Email needs RESEND_API_KEY set server-side (lib/email.js) and shows a clear

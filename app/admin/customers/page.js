@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar, NumberInput } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, ReportToolbar, NumberInput, CustomerNameField } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 
 const blankForm = { name: '', phone: '', email: '', businessName: '', creditLimit: '', branchIds: [] };
@@ -23,6 +23,7 @@ export default function CustomersPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
+  const [nameDuplicate, setNameDuplicate] = useState(null);
 
   const load = useCallback(async () => {
     const qs = currentBranchId ? `?branchId=${currentBranchId}` : '';
@@ -40,6 +41,7 @@ export default function CustomersPage() {
 
   const openCreate = () => {
     setForm({ ...blankForm, branchIds: currentBranchId ? [currentBranchId] : [] });
+    setNameDuplicate(null);
     setShowModal(true);
   };
 
@@ -53,6 +55,7 @@ export default function CustomersPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.branchIds.length === 0) return toast.error('Pick at least one business/branch to register this customer at');
+    if (nameDuplicate) return toast.error(`A customer named "${nameDuplicate.name}" already exists — use a different name, or add something to distinguish this one`);
     setSubmitting(true);
     try {
       const [branchId, ...branchIds] = form.branchIds;
@@ -128,9 +131,7 @@ export default function CustomersPage() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Customer">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Name" required>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} required autoFocus />
-            </Field>
+            <CustomerNameField value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} onDuplicateChange={setNameDuplicate} autoFocus />
             <Field label="Phone">
               <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputCls} />
             </Field>

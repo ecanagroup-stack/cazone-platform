@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyState, EmptyRow, Modal, FormButtons, Field, Tabs, StatusPill,
   inputCls, btnPrimaryCls, tableActionCls, tableDangerActionCls, theadCls, tableScrollCls,
-  OtpField, NumberInput,
+  OtpField, NumberInput, CustomerNameField,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 
@@ -171,6 +171,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '' });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [newCustomerNameDuplicate, setNewCustomerNameDuplicate] = useState(null);
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [cart, setCart] = useState([]);
@@ -204,6 +205,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
+    if (newCustomerNameDuplicate) return toast.error(`A customer named "${newCustomerNameDuplicate.name}" already exists — use a different name, or add something to distinguish this one`);
     setCreatingCustomer(true);
     try {
       const r = await fetch('/api/admin/customers', {
@@ -310,7 +312,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
                     </button>
                   ))}
                   {customerQuery.trim().length >= 2 && (
-                    <button type="button" onClick={() => { setNewCustomerForm({ name: customerQuery, phone: '' }); setShowNewCustomer(true); }} className="block w-full text-left px-3 py-2 text-sm text-brand-600 hover:bg-brand-50 border-t">
+                    <button type="button" onClick={() => { setNewCustomerForm({ name: customerQuery, phone: '' }); setNewCustomerNameDuplicate(null); setShowNewCustomer(true); }} className="block w-full text-left px-3 py-2 text-sm text-brand-600 hover:bg-brand-50 border-t">
                       + New customer "{customerQuery}"
                     </button>
                   )}
@@ -432,7 +434,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       <Modal open={showNewCustomer} onClose={() => setShowNewCustomer(false)} title="New Customer">
         <form onSubmit={handleCreateCustomer} className="space-y-4">
           <p className="text-sm text-gray-500">Starts with no credit limit — set one from the Customers page if this account needs to buy on credit.</p>
-          <Field label="Name" required><input type="text" value={newCustomerForm.name} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })} className={inputCls} required autoFocus /></Field>
+          <CustomerNameField value={newCustomerForm.name} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })} onDuplicateChange={setNewCustomerNameDuplicate} autoFocus />
           <Field label="Phone"><input type="text" value={newCustomerForm.phone} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })} className={inputCls} /></Field>
           <FormButtons onCancel={() => setShowNewCustomer(false)} submitting={creatingCustomer} submitLabel="Add Customer" />
         </form>
