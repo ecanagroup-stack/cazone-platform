@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { ApiError } from '@/lib/apiError';
 import { normalizeCreditLimit } from '@/lib/credit';
+import { normalizeCustomerName, findDuplicateCustomerName } from '@/lib/customerName';
 
 // The management list — unlike the counter-facing search (app/api/admin/customers/search), this
 // shows every customer regardless of branch access when no branchId is given, since an owner/manager
@@ -41,6 +42,11 @@ export const POST = withOrg(async (request) => {
     if (!name) throw new ApiError('Name is required', 400);
     if (!branchId) throw new ApiError('A branch is required to register a customer', 400);
 
+    const duplicate = await findDuplicateCustomerName(name);
+    if (duplicate) {
+      throw new ApiError(`A customer named "${duplicate.name}" already exists — use a different name, or add something to distinguish this one`, 400);
+    }
+
     const normalized = normalizeCreditLimit(body.creditLimit);
     const creditLimit = normalized === null ? null : Math.round(normalized);
 
@@ -55,6 +61,7 @@ export const POST = withOrg(async (request) => {
       const created = await tx.customer.create({
         data: {
           name,
+          normalizedName: normalizeCustomerName(name),
           phone: (body.phone || '').trim() || null,
           email: (body.email || '').trim() || null,
           businessName: (body.businessName || '').trim() || null,

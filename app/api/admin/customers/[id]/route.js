@@ -6,6 +6,7 @@ import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
 import { buildCustomerStatement } from '@/lib/statement';
 import { normalizeCreditLimit } from '@/lib/credit';
+import { normalizeCustomerName, findDuplicateCustomerName } from '@/lib/customerName';
 
 export const GET = withOrg(async (request, { params }) => {
   try {
@@ -33,7 +34,14 @@ export const PATCH = withOrg(async (request, { params }) => {
     const { id } = await params;
     const body = await request.json();
     const update = {};
-    if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim();
+    if (typeof body.name === 'string' && body.name.trim()) {
+      update.name = body.name.trim();
+      const duplicate = await findDuplicateCustomerName(update.name, id);
+      if (duplicate) {
+        throw new ApiError(`A customer named "${duplicate.name}" already exists — use a different name, or add something to distinguish this one`, 400);
+      }
+      update.normalizedName = normalizeCustomerName(update.name);
+    }
     if (typeof body.phone === 'string') update.phone = body.phone.trim() || null;
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (typeof body.onHold === 'boolean') update.onHold = body.onHold;

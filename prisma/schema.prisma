@@ -45,14 +45,14 @@ enum CatalogStatus {
 // pack (schema + screens) for a new vertical is still separate engineering — this only controls
 // whether an org can see/subscribe to it.
 model ServiceCatalog {
-  key         String        @id
-  name        String
-  description String?
-  status      CatalogStatus @default(coming_soon)
-  sortOrder   Int           @default(0)
+  key              String        @id
+  name             String
+  description      String?
+  status           CatalogStatus @default(coming_soon)
+  sortOrder        Int           @default(0)
   // Inert placeholder until per-service billing lands — same spirit as Organization's unused
   // Paystack fields. Org-level billing (Organization.monthlyPrice) is still the only thing enforced.
-  basePriceMonthly Int      @default(0)
+  basePriceMonthly Int           @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -64,24 +64,24 @@ model ServiceCatalog {
 // outside TENANT_SCOPED_MODELS (lib/prisma.js): it has no organizationId and must be readable
 // pre-auth (login/signup favicon) as well as by super_admin (the only one who can change it).
 model PlatformSettings {
-  id           String   @id @default("singleton")
-  logoUrl      String?
-  logoUrlSmall String?
+  id                          String   @id @default("singleton")
+  logoUrl                     String?
+  logoUrlSmall                String?
   // Cazone's cut of every customer payment collected on an opted-in org's behalf (see
   // Organization.paymentsEnabled) — one global rate, not per-org. A percentage (e.g. 1.5 = 1.5%),
   // applied when creating/updating an org's Paystack Subaccount as its `percentage_charge`, so
   // Paystack itself splits every charge at the point of payment rather than Cazone computing and
   // moving the cut afterward.
-  paymentCollectionFeePercent Float @default(1.5)
-  updatedAt    DateTime @updatedAt
+  paymentCollectionFeePercent Float    @default(1.5)
+  updatedAt                   DateTime @updatedAt
 }
 
 // The tenant. Everything else in the system belongs to exactly one Organization
 // (except User, which is null-organization only for the super_admin platform operator).
 model Organization {
-  id    String @id @default(cuid())
-  name  String
-  slug  String @unique
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
 
   phone    String?
   email    String?
@@ -147,26 +147,26 @@ model Organization {
   users     User[]
   auditLogs AuditLog[]
 
-  customers       Customer[]
+  customers           Customer[]
   customerAdjustments CustomerAdjustment[]
-  payments        Payment[]
-  products        Product[]
-  priceRules      PriceRule[]
-  priceHistory    PriceHistory[]
-  notifications   Notification[]
-  chatMessages    ChatMessage[]
-  otpCodes        OtpCode[]
-  priceGroups     PriceGroup[]
-  orders          Order[]
-  stockMoves      StockMove[]
-  deliveries      Delivery[]
-  reconciliations Reconciliation[]
-  shifts          Shift[]
-  cashDeposits    CashDeposit[]
-  flags           Flag[]
-  vehicles        Vehicle[]
-  suppliers       Supplier[]
-  counters        Counter[]
+  payments            Payment[]
+  products            Product[]
+  priceRules          PriceRule[]
+  priceHistory        PriceHistory[]
+  notifications       Notification[]
+  chatMessages        ChatMessage[]
+  otpCodes            OtpCode[]
+  priceGroups         PriceGroup[]
+  orders              Order[]
+  stockMoves          StockMove[]
+  deliveries          Delivery[]
+  reconciliations     Reconciliation[]
+  shifts              Shift[]
+  cashDeposits        CashDeposit[]
+  flags               Flag[]
+  vehicles            Vehicle[]
+  suppliers           Supplier[]
+  counters            Counter[]
 
   // Fuel pack
   tanks                Tank[]
@@ -184,20 +184,20 @@ model Organization {
 // services they want, eg shop, petrol station etc." `type` references ServiceCatalog.key (a DB row,
 // not a Postgres enum), so adding a new vertical later is a catalog-row edit, not a migration.
 model Service {
-  id             String  @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   type     String
   catalog  ServiceCatalog @relation(fields: [type], references: [key])
   name     String?
-  isActive Boolean @default(true)
-  config   Json    @default("{}")
+  isActive Boolean        @default(true)
+  config   Json           @default("{}")
 
   createdAt DateTime @default(now())
 
-  branches Branch[]
-  products Product[]
+  branches             Branch[]
+  products             Product[]
   provisioningRequests ProvisioningRequest[]
 
   @@unique([organizationId, type])
@@ -377,16 +377,21 @@ model Customer {
   userId String? @unique
   user   User?   @relation(fields: [userId], references: [id])
 
-  code         String?
-  name         String
-  phone        String?
-  email        String?
-  businessName String?
+  code           String?
+  name           String
+  // Case- and word-order-insensitive key for `name` ("Anayo Ezeh" and "ezeh anayo" both normalize to
+  // the same string — lib/customerName.js's normalizeCustomerName, ported from ecana_shop-app) so the
+  // DB itself enforces "no two customers of the same org share a name," not just a client-side check
+  // — kept in sync on every create/update that touches `name`, never trusted from the caller.
+  normalizedName String
+  phone          String?
+  email          String?
+  businessName   String?
 
   // null = unlimited credit; 0 = zero debt tolerance (strictly enforced). Never treat null and 0
   // as interchangeable defaults — see lib/credit.js.
-  creditLimit Int?
-  onHold      Boolean @default(false)
+  creditLimit   Int?
+  onHold        Boolean @default(false)
   // Standing delivery cost for this customer's own self-service Shop orders (lib/sale.js's
   // createPendingOrder/confirmPendingOrder) — added once per order, same flat/not-split-per-line
   // semantics as the manual sale flows' transport fee. null = no standing rate (Shop shows no
@@ -395,7 +400,7 @@ model Customer {
   transportRate Int?
   // Cache only — Order/Payment rows are the source of truth (core-algorithms skill §3). Recompute
   // and alert on drift; never let this field be the only record of a balance.
-  balance     Int     @default(0)
+  balance       Int     @default(0)
 
   isActive  Boolean  @default(true)
   createdBy String?
@@ -409,6 +414,7 @@ model Customer {
   chatMessages ChatMessage[]
 
   @@unique([organizationId, code])
+  @@unique([organizationId, normalizedName])
   @@index([organizationId])
 }
 
@@ -516,8 +522,8 @@ model Product {
   // Stonedust/aggregate products only (ecana_shop-app's StoneDustProduct.quarry) — which quarry
   // Supplier (type: 'quarry') this size/price applies to. Real FK, not a free-text attribute, since
   // it's joined/filtered on (the quarry detail page lists its own products by this).
-  supplierId String?
-  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
 
   // Regulated products (e.g. fuel PMS pricing) cannot be discounted — see PriceRule resolution order.
   priceRegulated   Boolean @default(false)
@@ -594,10 +600,10 @@ model OtpCode {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  userId    String
-  purpose   String // credit_override | price_approval
-  codeHash  String
-  expiresAt DateTime
+  userId     String
+  purpose    String // credit_override | price_approval
+  codeHash   String
+  expiresAt  DateTime
   consumedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -675,14 +681,14 @@ model PriceHistory {
   productId      String
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  oldPrice Int?
-  newPrice Int
-  reason   String?
-  status   String  @default("approved") // pending | approved | rejected
-  changedBy   String?
-  approvedBy  String?
-  approvedAt  DateTime?
-  adminNote   String?
+  oldPrice   Int?
+  newPrice   Int
+  reason     String?
+  status     String    @default("approved") // pending | approved | rejected
+  changedBy  String?
+  approvedBy String?
+  approvedAt DateTime?
+  adminNote  String?
 
   createdAt DateTime @default(now())
 
@@ -744,25 +750,25 @@ model Order {
 // No organizationId of its own — always reached via an already-scoped Order. priceRuleId is the
 // rule that resolved this line's price; the price is never recomputed from it later.
 model OrderLine {
-  id          String     @id @default(cuid())
-  orderId     String
-  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  priceRuleId String?
-  priceRule   PriceRule? @relation(fields: [priceRuleId], references: [id])
+  id           String     @id @default(cuid())
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceRuleId  String?
+  priceRule    PriceRule? @relation(fields: [priceRuleId], references: [id])
   // Set when this line is meant to draw from a specific supply allocation (lib/allocation.js)
   // rather than ordinary on-hand stock — remembered here so a pending order still draws from the
   // right batch once staff confirm it, not just at the moment it was placed.
   allocationId String?
   allocation   Delivery?  @relation(fields: [allocationId], references: [id])
 
-  qty       Float
-  unitPrice Int
-  lineTotal Int
+  qty          Float
+  unitPrice    Int
+  lineTotal    Int
   // This line's own transport cost (a combined cement+aggregate sale prices transport per item, not
   // once for the whole order — see Order.transportFee above) — 0 everywhere else.
-  transportFee Int @default(0)
+  transportFee Int             @default(0)
   costs        OrderLineCost[]
 
   @@index([orderId])
@@ -849,7 +855,7 @@ model Delivery {
   receivedAt        DateTime?
   linkedStockMoveId String?
   createdBy         String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   // Materials/cement-only: an ATC's own tracking number (paired with the brand's abbreviation for
   // display, e.g. "DAN-001" — ecana_shop-app's ATC.atcNumber, ported). `notes` is the free-text field
@@ -978,7 +984,7 @@ model CashDeposit {
   bankName      String?
   accountNumber String?
   initiatedBy   String
-  status        String  @default("pending") // pending | approved | rejected
+  status        String   @default("pending") // pending | approved | rejected
   approvedBy    String?
   note          String?
   createdAt     DateTime @default(now())
@@ -1002,10 +1008,10 @@ model Flag {
 
   targetType     String
   targetId       String?
-  severity       String  @default("info") // info | concern | issue
+  severity       String   @default("info") // info | concern | issue
   classification String? // observation | concern | issue | recommendation
   reason         String
-  status         String  @default("open") // open | acknowledged | resolved
+  status         String   @default("open") // open | acknowledged | resolved
   raisedBy       String
   resolvedBy     String?
   createdAt      DateTime @default(now())
@@ -1027,7 +1033,7 @@ model Vehicle {
   ownership   String? // own | supplier
   capacity    Float?
   type        String? // tanker | truck ...
-  isActive    Boolean @default(true)
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   deliveries Delivery[]
@@ -1042,11 +1048,11 @@ model Supplier {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  name     String
-  type     String? // depot | quarry | fuel_depot ...
-  phone    String?
-  address  String?
-  isActive Boolean @default(true)
+  name      String
+  type      String? // depot | quarry | fuel_depot ...
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   deliveries Delivery[]
@@ -1154,15 +1160,15 @@ model MeterReading {
   // this shift's sales instead of approximating by timestamp.
   orderId        String?      @unique
 
-  opening Float
-  closing Float?
-  rtt     Float @default(0) // return-to-tank
+  opening      Float
+  closing      Float?
+  rtt          Float  @default(0) // return-to-tank
   // Litres already sold to named credit customers mid-shift (see fuel credit-fill action) — the
   // close-time aggregate cash sale is (closing - opening - rtt - creditLitres), so a credit fill
   // is never also counted as an anonymous cash sale.
-  creditLitres Float @default(0)
+  creditLitres Float  @default(0)
 
-  discrepancyFlag Boolean  @default(false)
+  discrepancyFlag Boolean   @default(false)
   // Manager's note when querying a submission (reviewStatus: 'queried') — reused for that purpose
   // now; was unused before D5.
   discrepancyNote String?
@@ -1170,11 +1176,11 @@ model MeterReading {
   // recorded, litres/expectedAmount computed), a cashier separately records the payment, and only a
   // manager's approval creates the Order/StockMove — see .../approve/route.js. 'queried' sends it
   // back for correction; recordedBy/paymentRecordedBy can resubmit while queried.
-  reviewStatus    String   @default("pending")
+  reviewStatus    String    @default("pending")
   reviewedBy      String?
   reviewedAt      DateTime?
   recordedBy      String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   // Computed at submit time (litres = closing - opening - rtt - creditLitres; expectedAmount =
   // litres * the price in effect then) so a manager reviewing later compares against what was true
@@ -1206,7 +1212,7 @@ model PosTerminal {
   label      String
   terminalId String? // provider's own ID for the terminal, if they have one
   provider   String? // e.g. paystack | interswitch | other
-  isActive   Boolean @default(true)
+  isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
   posPayments PosPayment[]
@@ -1253,8 +1259,8 @@ model Attendant {
   gender         String?
   photoUrl       String?
   employmentDate DateTime?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
 
   notes       AttendantNote[]
   assignments AttendantAssignment[]
@@ -1291,13 +1297,13 @@ model AttendantAssignment {
   attendantId    String
   attendant      Attendant    @relation(fields: [attendantId], references: [id], onDelete: Cascade)
 
-  assignedBy String?
-  assignedAt DateTime  @default(now())
-  endedAt    DateTime?
+  assignedBy     String?
+  assignedAt     DateTime  @default(now())
+  endedAt        DateTime?
   // Set on the row that got ended by a mid-shift reassignment (not a normal end-of-shift close) —
   // a required, permanent record of why, matching petrol-station-app's PumpReassignment log.
-  endedBy         String?
-  reassignReason  String?
+  endedBy        String?
+  reassignReason String?
 
   @@index([organizationId])
   @@index([shiftId, dispenserId])
