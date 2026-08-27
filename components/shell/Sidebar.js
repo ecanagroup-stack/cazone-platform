@@ -27,8 +27,7 @@ const GROUPS = [
     items: [
       { href: '/admin/fuel/shift', label: 'Pumps', icon: FiDroplet, pack: 'fuel_station' },
       { href: '/admin/materials/counter', label: 'Cement Warehouse', icon: FiShoppingCart, pack: 'shop' },
-      { href: '/admin/materials/sales/new/cement', label: 'Cement Sale', icon: FiFileText, pack: 'shop' },
-      { href: '/admin/materials/sales/new/stonedust', label: 'Aggregate Sale', icon: FiFileText, pack: 'shop' },
+      { href: '/admin/materials/sales/new', label: 'New Sale', icon: FiFileText, pack: 'shop' },
       { href: '/admin/retail/counter', label: 'Retail Counter', icon: FiShoppingCart, pack: 'general_store' },
     ],
   },

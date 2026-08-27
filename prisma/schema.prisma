@@ -710,8 +710,15 @@ model Order {
   subtotal      Int
   discount      Int      @default(0)
   // Cement/aggregate sales only (ecana_shop-app's Sale.transportFee) — added on top of subtotal,
-  // not subtracted like discount. Zero everywhere else.
+  // not subtracted like discount. Zero everywhere else. All three of transportFee/labourFee/otherFee
+  // are the order-level total of whatever was entered per line (see OrderLine.transportFee and
+  // OrderLineCost below) — a combined materials sale prices transport/labour/other per item (a
+  // cement ATC and an aggregate truck are two different deliveries with their own costs), and these
+  // are the sum, kept here too so every existing receipt/report reading Order.transportFee etc.
+  // keeps working unchanged.
   transportFee  Int      @default(0)
+  labourFee     Int      @default(0)
+  otherFee      Int      @default(0)
   grandTotal    Int
   paymentMethod String? // cash | credit | pos | transfer | paystack
   offlineId     String?
@@ -753,9 +760,30 @@ model OrderLine {
   qty       Float
   unitPrice Int
   lineTotal Int
+  // This line's own transport cost (a combined cement+aggregate sale prices transport per item, not
+  // once for the whole order — see Order.transportFee above) — 0 everywhere else.
+  transportFee Int @default(0)
+  costs        OrderLineCost[]
 
   @@index([orderId])
   @@index([productId])
+}
+
+// A repeatable labour/other cost entered against one item of a combined materials sale (e.g. the
+// cement item paid loaders, the aggregate item didn't) — each with its own amount and a free-text
+// detail of what it was for. Transport stays its own OrderLine.transportFee field (always present,
+// same as before) rather than living here, since every item has at most one transport cost but can
+// have any number of labour/other ones.
+model OrderLineCost {
+  id          String    @id @default(cuid())
+  orderLineId String
+  orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  type        String // labour | other
+  amount      Int
+  detail      String?
+  createdAt   DateTime  @default(now())
+
+  @@index([orderLineId])
 }
 
 // The stock ledger (core-algorithms skill §4) — there is no mutable quantity field anyone writes
