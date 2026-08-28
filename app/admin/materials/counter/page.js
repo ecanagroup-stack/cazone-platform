@@ -76,13 +76,15 @@ function useProducts(serviceId, branchId) {
   return [products, load];
 }
 
-function InventoryTab({ serviceId, branchId }) {
-  const [products, load] = useProducts(serviceId, branchId);
-  const [showStockIn, setShowStockIn] = useState(false);
-  const [form, setForm] = useState({ productId: '', quantity: '', description: '' });
+// Shared by the Inventory tab's "Add Stock In" and Manage Products' "Add Stock" — same manual,
+// no-supplier receipt (any source: a supplier delivery, a stocktake correction, whatever the
+// Description note says), just opened from two different places. A plain StockMove, same as either
+// call site always did (see app/api/admin/materials/products/[id]/stock-in).
+function StockInModal({ open, onClose, products, branchId, onAdded, initialProductId = '' }) {
+  const [form, setForm] = useState({ productId: initialProductId, quantity: '', description: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  const openStockIn = () => { setForm({ productId: '', quantity: '', description: '' }); setShowStockIn(true); };
+  useEffect(() => { if (open) setForm({ productId: initialProductId, quantity: '', description: '' }); }, [open, initialProductId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,12 +95,39 @@ function InventoryTab({ serviceId, branchId }) {
         body: JSON.stringify({ branchId, quantity: Number(form.quantity), description: form.description }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Stock added'); setShowStockIn(false); load(); }
+      if (d.success) { toast.success('Stock added'); onAdded(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
     }
   };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Stock In">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Product" required>
+          <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} className={inputCls} required>
+            <option value="">Choose product...</option>
+            {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Quantity" required>
+            <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
+          </Field>
+          <Field label="Description">
+            <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputCls} placeholder="Source / supplier / note" />
+          </Field>
+        </div>
+        <FormButtons onCancel={onClose} submitting={submitting} submitLabel="Add Stock" />
+      </form>
+    </Modal>
+  );
+}
+
+function InventoryTab({ serviceId, branchId }) {
+  const [products, load] = useProducts(serviceId, branchId);
+  const [showStockIn, setShowStockIn] = useState(false);
 
   if (!products) return <Loader />;
   const totalStock = products.reduce((s, p) => s + (p.onHand || 0), 0);
@@ -111,7 +140,7 @@ function InventoryTab({ serviceId, branchId }) {
           <p className="text-2xl font-bold mt-1">{totalStock.toLocaleString()}</p>
         </Card>
         <div className="flex items-center">
-          <button onClick={openStockIn} className={btnPrimaryCls}>Add Stock In</button>
+          <button onClick={() => setShowStockIn(true)} className={btnPrimaryCls}>Add Stock In</button>
         </div>
       </div>
 
@@ -139,25 +168,7 @@ function InventoryTab({ serviceId, branchId }) {
         </div>
       </Card>
 
-      <Modal open={showStockIn} onClose={() => setShowStockIn(false)} title="Add Stock In">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="Product" required>
-            <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} className={inputCls} required>
-              <option value="">Choose product...</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
-            </select>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantity" required>
-              <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
-            </Field>
-            <Field label="Description">
-              <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputCls} />
-            </Field>
-          </div>
-          <FormButtons onCancel={() => setShowStockIn(false)} submitting={submitting} submitLabel="Add Stock" />
-        </form>
-      </Modal>
+      <StockInModal open={showStockIn} onClose={() => setShowStockIn(false)} products={products} branchId={branchId} onAdded={() => { setShowStockIn(false); load(); }} />
     </div>
   );
 }
@@ -555,6 +566,7 @@ function ManageProductsTab({ serviceId, branchId }) {
   const [submitting, setSubmitting] = useState(false);
   const [priceFor, setPriceFor] = useState(null);
   const [newPrice, setNewPrice] = useState('');
+  const [showStockIn, setShowStockIn] = useState(false);
 
   const openCreate = () => { setForm({ name: '', unit: 'bag', price: '' }); setShowModal(true); };
 
@@ -601,7 +613,8 @@ function ManageProductsTab({ serviceId, branchId }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end mb-4 gap-3">
+        <button onClick={() => setShowStockIn(true)} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Add Stock</button>
         <button onClick={openCreate} className={btnPrimaryCls}>Add Product</button>
       </div>
       <Card className="overflow-hidden">
@@ -655,6 +668,8 @@ function ManageProductsTab({ serviceId, branchId }) {
           <FormButtons onCancel={() => setPriceFor(null)} submitting={submitting} submitLabel="Save" />
         </form>
       </Modal>
+
+      <StockInModal open={showStockIn} onClose={() => setShowStockIn(false)} products={products} branchId={branchId} onAdded={() => { setShowStockIn(false); load(); }} />
     </div>
   );
 }
