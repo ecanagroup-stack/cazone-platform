@@ -8,7 +8,9 @@ import { STAFF_ROLES } from '@/lib/permissions';
  * - `/platform/*` — the super_admin (Cazone operator) only, spans every organization.
  * - `/admin/*` — any staff role (owner/manager/staff) within their own organization.
  * - `/portal/*` — a `customer`-role login (fuel credit client / shop registered customer) only.
- * - `/api/*` mirrors the same three gates for `/api/platform/*`, `/api/admin/*`, `/api/portal/*`.
+ * - `/api/*` mirrors the same three gates for `/api/platform/*`, `/api/admin/*`, `/api/portal/*`,
+ *   plus `/api/account/*` (any signed-in role — self-service password change). `/api/auth/*` is
+ *   NextAuth's own routes plus the public forgot/reset-password endpoints — never gated here.
  */
 export default async function middleware(request) {
   const { pathname } = request.nextUrl;
@@ -50,6 +52,15 @@ export default async function middleware(request) {
     }
     if (pathname.startsWith('/api/portal')) {
       if (!token || token.role !== 'customer') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      return NextResponse.next();
+    }
+    // Self-service password change — any signed-in role (owner/manager/staff/customer/super_admin
+    // alike), unlike the three gates above which are each one specific tier. The route itself
+    // re-checks the session regardless (defense-in-depth, same as everywhere else).
+    if (pathname.startsWith('/api/account')) {
+      if (!token) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
       return NextResponse.next();

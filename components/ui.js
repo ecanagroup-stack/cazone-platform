@@ -467,3 +467,51 @@ export function OtpField({ purpose, value, onChange }) {
     </div>
   );
 }
+
+// Self-service password change, shared by the admin TopBar's "Change Password" modal and the
+// portal's Account page — same form either way (app/api/account/change-password), just embedded
+// differently. Requires the current password, unlike an admin resetting someone else's directly.
+export function ChangePasswordForm({ onDone }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (next.length < 8) return toast.error('New password must be at least 8 characters');
+    if (next !== confirm) return toast.error('New passwords do not match');
+    setSubmitting(true);
+    try {
+      const r = await fetch('/api/account/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success('Password changed');
+        setCurrent(''); setNext(''); setConfirm('');
+        onDone?.();
+      } else toast.error(d.error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Current password" required>
+        <PasswordInput value={current} onChange={(e) => setCurrent(e.target.value)} required autoFocus />
+      </Field>
+      <Field label="New password" required>
+        <PasswordInput value={next} onChange={(e) => setNext(e.target.value)} required minLength={8} />
+      </Field>
+      <Field label="Confirm new password" required>
+        <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} />
+      </Field>
+      <button type="submit" disabled={submitting} className={`w-full ${btnPrimaryCls}`}>
+        {submitting ? 'Saving...' : 'Change Password'}
+      </button>
+    </form>
+  );
+}

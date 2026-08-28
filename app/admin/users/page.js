@@ -36,6 +36,9 @@ export default function UsersPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [form, setForm] = useState(blankInvite);
   const [submitting, setSubmitting] = useState(false);
+  const [resetFor, setResetFor] = useState(null); // the user being password-reset, or null
+  const [newPassword, setNewPassword] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   const load = async () => {
     const [ur, sr] = await Promise.all([fetch('/api/admin/users'), fetch('/api/admin/services')]);
@@ -74,6 +77,21 @@ export default function UsersPage() {
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetting(true);
+    try {
+      const r = await fetch(`/api/admin/users/${resetFor.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(`${resetFor.name}'s password was reset`); setResetFor(null); setNewPassword(''); }
+      else toast.error(d.error);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -149,6 +167,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3"><StatusPill status={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} /></td>
                   <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setResetFor(u); setNewPassword(''); }} className={`${tableActionCls} mr-3`}>Reset Password</button>
                     {u.role !== 'owner' && (
                       <button onClick={() => toggleActive(u)} className={tableActionCls}>
                         {u.isActive ? 'Deactivate' : 'Reactivate'}
@@ -193,6 +212,16 @@ export default function UsersPage() {
             </Field>
           </div>
           <FormButtons onCancel={() => setShowInvite(false)} submitting={submitting} submitLabel="Invite User" />
+        </form>
+      </Modal>
+
+      <Modal open={!!resetFor} onClose={() => setResetFor(null)} title={`Reset Password — ${resetFor?.name || ''}`}>
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <p className="text-sm text-gray-500">This sets their password directly — they won&apos;t need the old one. Tell them the new one yourself, or point them to Forgot Password on the sign-in page instead.</p>
+          <Field label="New password" required>
+            <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setResetFor(null)} submitting={resetting} submitLabel="Reset Password" />
         </form>
       </Modal>
     </div>

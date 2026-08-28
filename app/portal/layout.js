@@ -42,6 +42,7 @@ export default async function PortalLayout({ children }) {
           <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
           <PortalMessagesLink className="hover:text-gray-900" />
+          <Link href="/portal/account" className="hover:text-gray-900">Account</Link>
         </nav>
         <div className="flex-1" />
         <span className="text-sm text-gray-500">{session.user.name}</span>

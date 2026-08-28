@@ -312,6 +312,7 @@ model User {
 
   branchAccess UserBranchAccess[]
   customer     Customer?
+  resetTokens  PasswordResetToken[]
 
   @@index([organizationId])
 }
@@ -609,6 +610,26 @@ model OtpCode {
   createdAt DateTime @default(now())
 
   @@index([organizationId, userId, purpose])
+}
+
+// A "forgot password" email link — unlike OtpCode this is requested before the requester is
+// authenticated (we don't yet know their org), same unauthenticated shape as the login lookup itself
+// (lib/auth.js), so it deliberately carries no organizationId and isn't in tenantScope.js's
+// TENANT_SCOPED_MODELS — every access goes through runUnscoped, reached only via the already-unique
+// tokenHash or an already-resolved User. `tokenHash` is a plain sha256 (not bcrypt, unlike OtpCode's
+// codeHash/User.passwordHash) — the raw token is a 256-bit random value, not a low-entropy secret a
+// human chose, so it doesn't need bcrypt's slow, salted comparison; a direct unique lookup is enough
+// and lets the request stay a single query instead of scanning+comparing every live token for a user.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // Best-effort in-app notification — see lib/notify.js. Never blocks the action that triggered it.

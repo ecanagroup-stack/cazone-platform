@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { OrgLogo } from '@/components/ui';
+import { OrgLogo, Modal, ChangePasswordForm } from '@/components/ui';
 import ServiceBranchSwitcher from './ServiceBranchSwitcher';
 import NotificationBell from './NotificationBell';
 
@@ -11,6 +11,7 @@ import NotificationBell from './NotificationBell';
 // belongs to more than one organization yet, so a dropdown would be premature.
 export default function TopBar({ org, services, user }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   return (
     <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4 shrink-0">
@@ -47,6 +48,13 @@ export default function TopBar({ org, services, user }) {
             <div className="absolute right-0 mt-2 w-44 bg-white border rounded-lg shadow-lg py-1 z-20">
               <button
                 type="button"
+                onClick={() => { setMenuOpen(false); setShowChangePassword(true); }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Change Password
+              </button>
+              <button
+                type="button"
                 onClick={() => signOut({ callbackUrl: '/login' })}
                 className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
@@ -56,6 +64,10 @@ export default function TopBar({ org, services, user }) {
           </>
         )}
       </div>
+
+      <Modal open={showChangePassword} onClose={() => setShowChangePassword(false)} title="Change Password">
+        <ChangePasswordForm onDone={() => setShowChangePassword(false)} />
+      </Modal>
     </header>
   );
 }
