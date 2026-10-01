@@ -25,7 +25,7 @@ export const GET = withOrg(async (request) => {
       : { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) };
 
     const shiftIds = shifts.map((s) => s.id);
-    const [assignments, readings, deliveries, reconciliations, deposits, tankDips, collections] = await Promise.all([
+    const [assignments, readings, deliveries, reconciliations, deposits, tankDips, collections, auditComments] = await Promise.all([
       prisma.attendantAssignment.findMany({
         where: { shiftId: { in: shiftIds } },
         include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
@@ -50,7 +50,10 @@ export const GET = withOrg(async (request) => {
       }),
       prisma.fuelTankDip.findMany({ where: { shiftId: { in: shiftIds } }, include: { tank: { include: { product: true } } }, orderBy: { createdAt: 'asc' } }),
       prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'asc' } }),
+      prisma.flag.findMany({ where: { branchId, targetType: 'FuelDay', targetId: date }, orderBy: { createdAt: 'desc' } }),
     ]);
+    const authors = await prisma.user.findMany({ where: { id: { in: [...new Set(auditComments.map((comment) => comment.raisedBy))] } }, select: { id: true, name: true } });
+    const authorById = Object.fromEntries(authors.map((author) => [author.id, author.name]));
 
     const byShift = shifts.map((shift) => ({
       shift,
@@ -64,7 +67,10 @@ export const GET = withOrg(async (request) => {
       deposits: deposits.filter((d) => d.shiftId === shift.id),
     }));
 
-    return NextResponse.json({ success: true, data: { shifts: byShift, deliveries, reconciliations, tankDips } });
+    return NextResponse.json({ success: true, data: {
+      shifts: byShift, deliveries, reconciliations, tankDips,
+      auditComments: auditComments.map((comment) => ({ ...comment, auditorName: authorById[comment.raisedBy] || 'Auditor' })),
+    } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, StatusPill, Modal, FormButtons, Field,
@@ -160,6 +161,7 @@ const SECTIONS = [
 ];
 
 function DayDetail({ branchId, date, onBack }) {
+  const { data: session } = useSession();
   const [data, setData] = useState(null);
   const [section, setSection] = useState('supervisor');
   const [correctingDelivery, setCorrectingDelivery] = useState(null);
@@ -169,6 +171,8 @@ function DayDetail({ branchId, date, onBack }) {
   const [correctingDeposit, setCorrectingDeposit] = useState(null);
   const [correctDepositForm, setCorrectDepositForm] = useState({ amount: '', bankName: '', accountNumber: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [auditComment, setAuditComment] = useState('');
+  const [auditClassification, setAuditClassification] = useState('observation');
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/fuel/day-detail?branchId=${branchId}&date=${date}`);
@@ -248,9 +252,26 @@ function DayDetail({ branchId, date, onBack }) {
     }
   };
 
+  const submitAuditComment = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/admin/fuel/audit-comments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchId, date, comment: auditComment, classification: auditClassification }),
+      });
+      const result = await response.json();
+      if (result.success) { toast.success('Audit comment saved'); setAuditComment(''); load(); }
+      else toast.error(result.error || 'Could not save comment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (!data) return <Loader />;
 
-  const { shifts, deliveries, reconciliations, tankDips = [] } = data;
+  const { shifts, deliveries, reconciliations, tankDips = [], auditComments = [] } = data;
+  const canComment = ['auditor', 'daily_auditor', 'external_auditor'].includes(session?.user?.role);
 
   return (
     <div>
@@ -259,6 +280,34 @@ function DayDetail({ branchId, date, onBack }) {
         subtitle={shifts.length === 0 ? 'No shift activity this day' : `${shifts.length} shift${shifts.length === 1 ? '' : 's'}`}
         action={<button onClick={onBack} className="text-sm font-medium text-brand-600 hover:text-brand-700">← Back to Summary Book</button>}
       />
+
+      <Card className="p-4 mb-4">
+        <h3 className="font-semibold text-sm mb-3">Auditor Comments</h3>
+        {auditComments.length === 0 && <p className="text-sm text-gray-500">No comments for this operating day.</p>}
+        <div className="space-y-3">
+          {auditComments.map((comment) => (
+            <div key={comment.id} className="border-t pt-3 text-sm">
+              <p className="font-medium">{comment.auditorName} · {comment.classification || 'observation'} · {comment.status}</p>
+              <p className="whitespace-pre-wrap">{comment.reason}</p>
+              <p className="text-xs text-gray-500">{new Date(comment.createdAt).toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+        {canComment && (
+          <form onSubmit={submitAuditComment} className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <select value={auditClassification} onChange={(e) => setAuditClassification(e.target.value)} className={inputCls}>
+                <option value="observation">Observation</option>
+                <option value="concern">Concern</option>
+                <option value="issue">Issue</option>
+                <option value="recommendation">Recommendation</option>
+              </select>
+              <button type="submit" disabled={submitting || !auditComment.trim()} className="rounded bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save comment</button>
+            </div>
+            <textarea value={auditComment} onChange={(e) => setAuditComment(e.target.value)} maxLength={2000} required rows={3} className={`${inputCls} w-full`} placeholder="Record your finding for this operating day" />
+          </form>
+        )}
+      </Card>
 
       {shifts.length === 0 ? (
         <Card><EmptyState title="No shift activity" subtitle="No shift was opened at this branch on this date." /></Card>
@@ -316,8 +365,7 @@ function DayDetail({ branchId, date, onBack }) {
                   <table className="w-full text-sm">
                     <thead className={theadCls}>
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">Pump / Attendant</th>
-                        <th className="px-4 py-2 text-left font-medium">Handover</th>
+                        <th className="px-4 py-2 text-left font-medium">Pump</th>
                         <th className="px-4 py-2 text-right font-medium">Opening</th>
                         <th className="px-4 py-2 text-right font-medium">Closing</th>
                         <th className="px-4 py-2 text-right font-medium">RTT</th>
@@ -432,7 +480,8 @@ function DayDetail({ branchId, date, onBack }) {
                   <table className="w-full text-sm">
                     <thead className={theadCls}>
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">Pump</th>
+                        <th className="px-4 py-2 text-left font-medium">Pump / Attendant</th>
+                        <th className="px-4 py-2 text-left font-medium">Handover</th>
                         <th className="px-4 py-2 text-right font-medium">Cash</th>
                         <th className="px-4 py-2 text-right font-medium">POS</th>
                         <th className="px-4 py-2 text-right font-medium">Total</th>
