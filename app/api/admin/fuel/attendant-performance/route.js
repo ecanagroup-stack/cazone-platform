@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // Ported from petrol-station-app's /api/attendant-performance + Staff Performance Heatmap — per
 // attendant, per day: which pumps they worked, meter sales value vs. cash+POS actually collected,
@@ -19,47 +20,55 @@ export const GET = withOrg(async (request) => {
     if (!from) throw new ApiError('from is required', 400);
 
     const shifts = await prisma.shift.findMany({
-      where: { branchId, openedAt: { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) } },
-      select: { id: true, openedAt: true },
+      where: { branchId, operatingDate: { gte: from, lte: to } },
+      select: { id: true, operatingDate: true },
     });
     if (shifts.length === 0) return NextResponse.json({ success: true, data: { rows: [], byDay: [] } });
     const shiftIds = shifts.map((s) => s.id);
-    const dateByShiftId = Object.fromEntries(shifts.map((s) => [s.id, s.openedAt.toISOString().slice(0, 10)]));
+    const dateByShiftId = Object.fromEntries(shifts.map((s) => [s.id, s.operatingDate]));
 
-    const [assignments, readings] = await Promise.all([
+    const [assignments, readings, collections] = await Promise.all([
       prisma.attendantAssignment.findMany({
         where: { shiftId: { in: shiftIds } },
         include: { attendant: true, dispenser: true },
       }),
       prisma.meterReading.findMany({
         where: { shiftId: { in: shiftIds } },
-        include: { posPayments: true },
       }),
+      prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'asc' } }),
     ]);
 
     const readingByKey = Object.fromEntries(readings.map((r) => [`${r.shiftId}|${r.dispenserId}`, r]));
 
     const dayMap = new Map(); // `${attendantId}|${date}` -> row
-    for (const a of assignments) {
+    const assignedPumps = new Set();
+    for (const a of assignments.sort((left, right) => right.assignedAt - left.assignedAt)) {
+      const pumpKey = `${a.shiftId}|${a.dispenserId}`;
+      if (assignedPumps.has(pumpKey)) continue;
+      assignedPumps.add(pumpKey);
+      const pumpCollections = collections.filter((c) => c.shiftId === a.shiftId && c.dispenserId === a.dispenserId);
+      const initialAttendant = pumpCollections.find((c) => !c.voidedAt && c.collectionType === 'initial')?.attendantId;
+      const owner = initialAttendant ? assignments.find((candidate) => candidate.attendantId === initialAttendant && candidate.shiftId === a.shiftId && candidate.dispenserId === a.dispenserId) || a : a;
       const date = dateByShiftId[a.shiftId];
-      const key = `${a.attendantId}|${date}`;
+      const key = `${owner.attendantId}|${date}`;
       const row = dayMap.get(key) || {
-        attendantId: a.attendantId, attendantName: a.attendant.name, attendantStaffNumber: a.attendant.staffNumber,
-        date, pumps: new Set(), meterSales: 0, collected: 0,
+        attendantId: owner.attendantId, attendantName: owner.attendant.name, attendantStaffNumber: owner.attendant.staffNumber,
+        date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0,
       };
       row.pumps.add(a.dispenser.label);
       const reading = readingByKey[`${a.shiftId}|${a.dispenserId}`];
       if (reading && reading.closing != null) {
-        row.meterSales += reading.expectedAmount || 0;
-        row.collected += (reading.cashCollected || 0) + reading.posPayments.reduce((s, p) => s + p.amount, 0);
+        const pump = summarizePumpCollection(reading.expectedAmount, pumpCollections);
+        row.meterSales += pump.expected;
+        row.collected += pump.collected;
+        row.shortage += pump.outstanding;
+        row.overage += pump.overage;
       }
       dayMap.set(key, row);
     }
 
     const byDay = [...dayMap.values()].map((row) => {
-      const shortage = Math.max(0, row.meterSales - row.collected);
-      const overage = Math.max(0, row.collected - row.meterSales);
-      return { ...row, pumps: [...row.pumps], shortage, overage };
+      return { ...row, pumps: [...row.pumps] };
     }).sort((a, b) => b.date.localeCompare(a.date));
 
     const attendantMap = new Map();

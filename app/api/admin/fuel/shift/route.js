@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { getOnHandByProduct } from '@/lib/stock';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // Returns either the branch's open Shift (fully populated for the pump-grid view) or, if none is
 // open, the setup data (active dispensers/attendants/current prices) the Begin Shift form needs.
@@ -20,12 +21,13 @@ export const GET = withOrg(async (request) => {
     });
 
     if (openShift) {
-      const [assignments, meterReadings, attendants, posTerminals, tanks, dispensers] = await Promise.all([
+      const [assignments, meterReadings, collections, attendants, posTerminals, tanks, dispensers] = await Promise.all([
         prisma.attendantAssignment.findMany({
           where: { shiftId: openShift.id, endedAt: null },
           include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
         }),
         prisma.meterReading.findMany({ where: { shiftId: openShift.id }, include: { posPayments: { include: { terminal: true } } } }),
+        prisma.fuelCollection.findMany({ where: { shiftId: openShift.id }, orderBy: { createdAt: 'asc' } }),
         prisma.attendant.findMany({ where: { branchId, isActive: true }, orderBy: { name: 'asc' } }),
         prisma.posTerminal.findMany({ where: { branchId, isActive: true }, orderBy: { label: 'asc' } }),
         // Closing tank stock (ecana's End Day "every tank needs a closing reading") — a tank counts as
@@ -44,6 +46,9 @@ export const GET = withOrg(async (request) => {
         attendantId: a.attendantId,
         attendantName: a.attendant.name,
         reading: readingByDispenser[a.dispenserId] || null,
+        collections: collections.filter((c) => c.dispenserId === a.dispenserId),
+        collectionSummary: summarizePumpCollection(readingByDispenser[a.dispenserId]?.expectedAmount,
+          collections.filter((c) => c.dispenserId === a.dispenserId)),
       }));
 
       // Reconciliation is keyed by (branchId, productId) — same grain the stock ledger uses, not by

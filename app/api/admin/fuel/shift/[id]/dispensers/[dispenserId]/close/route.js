@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 
 // D5 of the fuel port: this used to close the loop by itself (create the Order immediately). Now
@@ -11,7 +10,7 @@ import { ApiError } from '@/lib/apiError';
 // between (see .../payment/route.js). Re-submittable while reviewStatus is 'queried', not just once.
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'fuel.readings.submit')) {
+  if (session.user.role !== 'supervisor') {
     return NextResponse.json({ error: 'You do not have permission to submit pump readings' }, { status: 403 });
   }
   try {

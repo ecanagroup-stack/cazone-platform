@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServiceCatalog } from '@/lib/services';
 
+export const dynamic = 'force-dynamic';
+
 // Public — signup needs the available catalog before any session exists, and the in-app "add
 // another service" picker (app/admin/services/page.js) reuses the same endpoint rather than
 // duplicating it behind auth.

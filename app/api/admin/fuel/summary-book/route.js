@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { computePeriod } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // Ported from petrol-station-app's Summary Book (lib/summaryBookRows.js) — one row per shift per
 // product: opening/stock-in/sales/closing stock, price, revenue, and any shortage (sales value vs.
@@ -20,7 +21,7 @@ export const GET = withOrg(async (request) => {
     if (!from || !to) throw new ApiError('from and to are required', 400);
 
     const shifts = await prisma.shift.findMany({
-      where: { branchId, openedAt: { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) } },
+      where: { branchId, operatingDate: { gte: from, lte: to } },
       orderBy: { openedAt: 'asc' },
     });
     if (shifts.length === 0) return NextResponse.json({ success: true, data: [] });
@@ -28,8 +29,9 @@ export const GET = withOrg(async (request) => {
     const shiftIds = shifts.map((s) => s.id);
     const readings = await prisma.meterReading.findMany({
       where: { shiftId: { in: shiftIds }, reviewStatus: 'approved' },
-      include: { dispenser: { include: { tank: { include: { product: true } } } }, posPayments: true },
+      include: { dispenser: { include: { tank: { include: { product: true } } } } },
     });
+    const collections = await prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } } });
 
     const rows = [];
     for (const shift of shifts) {
@@ -40,10 +42,12 @@ export const GET = withOrg(async (request) => {
       for (const r of shiftReadings) {
         const product = r.dispenser.tank?.product;
         if (!product) continue;
-        const row = byProduct.get(product.id) || { product, sales: 0, amount: 0, collected: 0 };
+        const row = byProduct.get(product.id) || { product, sales: 0, amount: 0, collected: 0, salesShortage: 0 };
+        const pump = summarizePumpCollection(r.expectedAmount, collections.filter((c) => c.meterReadingId === r.id));
         row.sales += r.litres || 0;
         row.amount += r.expectedAmount || 0;
-        row.collected += (r.cashCollected || 0) + r.posPayments.reduce((s, p) => s + p.amount, 0);
+        row.collected += pump.collected;
+        row.salesShortage += pump.outstanding;
         byProduct.set(product.id, row);
       }
 
@@ -62,10 +66,10 @@ export const GET = withOrg(async (request) => {
         const deliveryExcess = deliveries.reduce((s, d) => s + (d.offloadVariance > 0 ? d.offloadVariance : 0), 0);
 
         const price = agg.sales > 0 ? Math.round(agg.amount / agg.sales) : 0;
-        const salesShortage = Math.max(0, agg.amount - agg.collected);
+        const salesShortage = agg.salesShortage;
 
         rows.push({
-          date: shift.openedAt, shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
+          date: `${shift.operatingDate}T12:00:00.000Z`, shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
           product: agg.product.name, productId,
           openingStock: opening, stockIn: receipts, book, sales: agg.sales, price,
           totalAmount: agg.amount, collected: agg.collected,

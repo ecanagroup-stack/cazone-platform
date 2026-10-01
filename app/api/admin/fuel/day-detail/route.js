@@ -16,12 +16,13 @@ export const GET = withOrg(async (request) => {
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (!date) throw new ApiError('date is required', 400);
 
-    const range = { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) };
-
     const shifts = await prisma.shift.findMany({
-      where: { branchId, openedAt: range },
+      where: { branchId, operatingDate: date },
       orderBy: { openedAt: 'asc' },
     });
+    const range = shifts.length
+      ? { gte: shifts[0].openedAt, lte: shifts.reduce((latest, shift) => shift.closedAt && shift.closedAt > latest ? shift.closedAt : latest, shifts[shifts.length - 1].closedAt || new Date()) }
+      : { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) };
 
     const shiftIds = shifts.map((s) => s.id);
     const [assignments, readings, deliveries, reconciliations, deposits] = await Promise.all([

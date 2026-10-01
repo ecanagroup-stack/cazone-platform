@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 const CASH_TOLERANCE_PCT = 0.01; // flat 1% for v1 — per-product tolerance is a later refinement
 
@@ -24,13 +26,22 @@ export const POST = withOrg(async (request, { params }) => {
     const shift = await prisma.shift.findUnique({ where: { id } });
     if (!shift) throw new ApiError('Shift not found', 404);
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
+    const access = await getAccessibleBranchIds(session);
+    if (!canAccessBranch(access, shift.branchId)) throw new ApiError('Access denied to this branch', 403);
 
-    const readings = await prisma.meterReading.findMany({ where: { shiftId: id, orderId: { not: null } } });
+    const readings = await prisma.meterReading.findMany({ where: { shiftId: id }, include: { dispenser: true } });
     if (readings.length === 0) throw new ApiError('No dispenser has been closed for this shift yet', 400);
+    const incomplete = readings.filter((r) => r.closing == null || r.reviewStatus !== 'approved');
+    if (incomplete.length) throw new ApiError(`Submit and approve every pump before ending this shift: ${incomplete.map((r) => r.dispenser.label).join(', ')}`, 400);
+    const collections = await prisma.fuelCollection.findMany({ where: { shiftId: id } });
+    const missing = readings.filter((r) => r.litres > 0 && !collections.some((c) => c.dispenserId === r.dispenserId && !c.voidedAt && c.collectionType === 'initial' && c.totalAmount > 0));
+    if (missing.length) throw new ApiError(`Initial collection missing for: ${missing.map((r) => r.dispenser.label).join(', ')}`, 400);
+    const perPump = readings.map((r) => ({ reading: r, totals: summarizePumpCollection(r.expectedAmount, collections.filter((c) => c.dispenserId === r.dispenserId)) }));
+    const outstanding = perPump.reduce((sum, p) => sum + p.totals.outstanding, 0);
 
-    const orders = await prisma.order.findMany({ where: { id: { in: readings.map((r) => r.orderId) } } });
+    const orders = await prisma.order.findMany({ where: { id: { in: readings.map((r) => r.orderId).filter(Boolean) } } });
     const salesTotal = orders.reduce((sum, o) => sum + o.grandTotal, 0);
-    const expectedCash = shift.openingFloat + salesTotal;
+    const expectedCash = shift.openingFloat + perPump.reduce((sum, p) => sum + p.totals.cash, 0);
     const difference = countedCash - expectedCash;
 
     const tolerance = Math.round(Math.abs(expectedCash) * CASH_TOLERANCE_PCT);
@@ -57,7 +68,7 @@ export const POST = withOrg(async (request, { params }) => {
       return closedShift;
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
-    return NextResponse.json({ success: true, data: { shift: updated, salesTotal, flagged: outsideTolerance } });
+    return NextResponse.json({ success: true, data: { shift: updated, salesTotal, outstanding, flagged: outsideTolerance } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

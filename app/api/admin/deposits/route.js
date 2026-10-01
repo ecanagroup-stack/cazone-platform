@@ -17,7 +17,7 @@ export const GET = withOrg(async () => {
 
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'sales.record')) {
+  if (!can(session.user.role, 'sales.record') && !can(session.user.role, 'deposits.record')) {
     return NextResponse.json({ error: 'You do not have permission to record a deposit' }, { status: 403 });
   }
   try {
@@ -31,9 +31,11 @@ export const POST = withOrg(async (request) => {
     if (!branchId) throw new ApiError('Branch is required', 400);
     if (!Number.isFinite(amount) || amount <= 0) throw new ApiError('Amount must be positive', 400);
     if (!bankName || !accountNumber) throw new ApiError('Bank name and account number are required', 400);
+    const shift = shiftId ? await prisma.shift.findUnique({ where: { id: shiftId } }) : null;
+    if (shiftId && (!shift || shift.branchId !== branchId)) throw new ApiError('Shift does not belong to this branch', 400);
 
     const deposit = await prisma.cashDeposit.create({
-      data: { branchId, shiftId, amount, bankName, accountNumber, initiatedBy: session.user.id, status: 'pending' },
+      data: { branchId, shiftId, operatingDate: shift?.operatingDate || null, amount, bankName, accountNumber, initiatedBy: session.user.id, status: 'pending' },
       include: { branch: true },
     });
 

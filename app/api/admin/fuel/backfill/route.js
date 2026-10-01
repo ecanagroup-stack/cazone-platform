@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
+import { summarizePumpCollection, validateCollectionInput } from '@/lib/fuelCollections.mjs';
 
 // Ported from petrol-station-app's Backfill wizard — entering historical data for dates before an org
 // subscribed to cazone, one step per call (Date & Branch -> Shift -> Pump Readings -> Deliveries ->
@@ -41,7 +42,7 @@ export const POST = withOrg(async (request) => {
       return await handleShift(session, body, date);
     }
     if (type === 'reading') return await handleReading(session, body);
-    if (type === 'payment') return await handlePayment(body);
+    if (type === 'payment') return await handlePayment(session, body);
     if (type === 'delivery') return await handleDelivery(session, body);
     if (type === 'dip') return await handleDip(session, body);
     if (type === 'deposit') return await handleDeposit(session, body);
@@ -84,7 +85,7 @@ async function handleShift(session, body, date) {
 
   const shift = await prisma.$transaction(async (tx) => {
     const created = await tx.shift.create({
-      data: { branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt, isBackfill: true, shiftLabel, shiftOrder },
+      data: { branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt, operatingDate: date, isBackfill: true, shiftLabel, shiftOrder },
     });
     for (const a of assignments) {
       if (!a.dispenserId || !a.attendantId || !Number.isFinite(Number(a.opening))) {
@@ -160,26 +161,42 @@ async function handleReading(session, body) {
   return NextResponse.json({ success: true, data: { litres, expectedAmount, reading: result } }, { status: 201 });
 }
 
-async function handlePayment(body) {
+async function handlePayment(session, body) {
   const shiftId = body.shiftId;
   const dispenserId = body.dispenserId;
-  const cashCollected = Math.round(Number(body.cashCollected) || 0);
-  const posEntries = Array.isArray(body.posEntries) ? body.posEntries : []; // [{terminalId, amount}]
-  if (cashCollected < 0) throw new ApiError('Cash collected cannot be negative', 400);
+  const cashCollected = Number(body.cashCollected);
+  const posEntries = Array.isArray(body.posEntries) ? body.posEntries.map((p) => ({ terminalId: p.terminalId, amount: Number(p.amount) })) : [];
+  let amounts;
+  try { amounts = validateCollectionInput(cashCollected, posEntries); }
+  catch (error) { throw new ApiError(error.message, 400); }
 
   const shift = await loadBackfillShift(shiftId);
   const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });
-  if (!reading) throw new ApiError('No reading found for this dispenser on this shift', 404);
+  if (!reading || !(reading.litres > 0)) throw new ApiError('A positive pump sale is required before collection', 400);
+  const existing = await prisma.fuelCollection.findMany({ where: { shiftId, dispenserId } });
+  if (existing.length) throw new ApiError('This pump already has a backfilled collection', 409);
+  const terminalIds = [...new Set(posEntries.map((p) => p.terminalId))];
+  if (terminalIds.length) {
+    const terminals = await prisma.posTerminal.findMany({ where: { id: { in: terminalIds }, branchId: shift.branchId } });
+    if (terminals.length !== terminalIds.length) throw new ApiError('Invalid POS terminal for this branch', 400);
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.posPayment.deleteMany({ where: { meterReadingId: reading.id } });
+    const assignment = await tx.attendantAssignment.findFirst({ where: { shiftId, dispenserId }, orderBy: { assignedAt: 'desc' } });
+    await tx.fuelCollection.create({ data: {
+      branchId: shift.branchId, shiftId, meterReadingId: reading.id, dispenserId,
+      attendantId: assignment?.attendantId || null, operatingDate: shift.operatingDate,
+      ...amounts, posEntries, expectedAmount: reading.expectedAmount,
+      outstandingAfter: summarizePumpCollection(reading.expectedAmount, [{ cashAmount: amounts.cashAmount, posAmount: amounts.posAmount }]).outstanding,
+      collectionType: 'initial', recordedBy: session.user.id, createdAt: shift.closedAt,
+    } });
     if (posEntries.length > 0) {
       await tx.posPayment.createMany({
-        data: posEntries.filter((p) => p.terminalId && Number(p.amount) > 0).map((p) => ({ meterReadingId: reading.id, terminalId: p.terminalId, amount: Math.round(Number(p.amount)) })),
+        data: posEntries.map((p) => ({ meterReadingId: reading.id, terminalId: p.terminalId, amount: p.amount })),
       });
     }
     return tx.meterReading.update({
-      where: { id: reading.id }, data: { cashCollected, paymentRecordedAt: shift.closedAt },
+      where: { id: reading.id }, data: { cashCollected, paymentRecordedAt: shift.closedAt, paymentRecordedBy: session.user.id },
       include: { posPayments: true },
     });
   });
@@ -264,7 +281,7 @@ async function handleDeposit(session, body) {
 
   const created = await prisma.cashDeposit.create({
     data: {
-      branchId, shiftId, amount, bankName: (body.bankName || '').trim() || null, accountNumber: (body.accountNumber || '').trim() || null,
+      branchId, shiftId, operatingDate: shift.operatingDate, amount, bankName: (body.bankName || '').trim() || null, accountNumber: (body.accountNumber || '').trim() || null,
       initiatedBy: session.user.id, status: 'approved', approvedBy: session.user.id, note: body.note || null, createdAt: shift.closedAt, isBackfill: true,
     },
   });

@@ -27,6 +27,10 @@ export const POST = withOrg(async (request, { params }) => {
     if (reading.reviewStatus !== 'approved') throw new ApiError('Only an approved reading can be corrected this way', 400);
 
     const changingLitres = body.closing !== undefined || body.rtt !== undefined;
+    if (body.cashCollected !== undefined) {
+      throw new ApiError('Collections are permanent records. Add a supplemental collection or correct the specific collection through an audited adjustment.', 400);
+    }
+    if (!changingLitres) throw new ApiError('Enter a corrected closing reading or return-to-tank amount', 400);
     const newCashCollected = body.cashCollected !== undefined && body.cashCollected !== ''
       ? Math.round(Number(body.cashCollected))
       : reading.cashCollected;

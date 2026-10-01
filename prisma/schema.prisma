@@ -21,6 +21,8 @@ enum Role {
   materials_manager
   atc_manager
   auditor
+  daily_auditor
+  external_auditor
   staff
   customer
 }
@@ -176,6 +178,7 @@ model Organization {
   attendantAssignments AttendantAssignment[]
   posTerminals         PosTerminal[]
   posPayments          PosPayment[]
+  fuelCollections      FuelCollection[]
 
   provisioningRequests ProvisioningRequest[]
 }
@@ -277,6 +280,7 @@ model Branch {
   attendants           Attendant[]
   attendantAssignments AttendantAssignment[]
   posTerminals         PosTerminal[]
+  fuelCollections      FuelCollection[]
 
   @@unique([organizationId, code])
   @@index([serviceId])
@@ -962,6 +966,7 @@ model Shift {
   note         String?
 
   openedAt   DateTime  @default(now())
+  operatingDate String? // YYYY-MM-DD in the station's operating timezone; retained across midnight
   closedAt   DateTime?
   reopenedBy String?
   reopenedAt DateTime?
@@ -985,9 +990,11 @@ model Shift {
   // Fuel pack
   meterReadings        MeterReading[]
   attendantAssignments AttendantAssignment[]
+  fuelCollections      FuelCollection[]
 
   @@index([organizationId])
   @@index([branchId])
+  @@index([branchId, operatingDate])
 }
 
 // Nothing fuel-specific about "cashier deposits cash to the bank, admin approves" — used by every
@@ -1000,6 +1007,7 @@ model CashDeposit {
   branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   shiftId        String?
   shift          Shift?       @relation(fields: [shiftId], references: [id])
+  operatingDate  String?
 
   amount        Int
   bankName      String?
@@ -1215,6 +1223,7 @@ model MeterReading {
   paymentRecordedAt DateTime?
 
   posPayments PosPayment[]
+  fuelCollections FuelCollection[]
 
   @@unique([shiftId, dispenserId])
   @@index([organizationId])
@@ -1257,6 +1266,42 @@ model PosPayment {
 
   @@index([organizationId])
   @@index([meterReadingId])
+}
+
+// Each cashier handover is immutable. Later payments against a short collection create another
+// row, including after a shift closes; no pump's overpayment offsets another pump's balance.
+model FuelCollection {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  meterReadingId String
+  meterReading   MeterReading @relation(fields: [meterReadingId], references: [id], onDelete: Cascade)
+  dispenserId    String
+  attendantId    String?
+  operatingDate  String
+  cashAmount     Int
+  posAmount      Int
+  totalAmount    Int
+  posEntries     Json
+  expectedAmount Int
+  outstandingAfter Int
+  collectionType String // initial | supplemental | post_close_settlement
+  recordedBy     String
+  requestId      String?
+  note           String?
+  voidedAt       DateTime?
+  voidedBy       String?
+  voidReason     String?
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, requestId])
+  @@index([organizationId, shiftId, dispenserId])
+  @@index([branchId, operatingDate])
+  @@index([meterReadingId, createdAt])
 }
 
 // Non-login HR record — most pump attendants don't get a User account, just a staff record for

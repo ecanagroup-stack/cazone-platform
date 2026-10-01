@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
 import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 // Transaction: applies any price changes (closing the old effective-dated PriceRule, opening a new
 // one — core-algorithms skill §1, "changing a price never mutates a row"), creates the Shift, and
@@ -35,9 +36,8 @@ export const POST = withOrg(async (request) => {
     // Multi-shift-per-day (optional — see prisma/schema.prisma Shift comment). totalShiftsPlanned is
     // set once at the day's first Begin Shift and inherited by every later shift that day;
     // shiftOrder is this branch's Nth shift opened since local midnight.
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const todaysShifts = await prisma.shift.findMany({ where: { branchId, openedAt: { gte: startOfToday } }, orderBy: { openedAt: 'desc' }, take: 1 });
+    const operatingDate = operatingDateAt();
+    const todaysShifts = await prisma.shift.findMany({ where: { branchId, operatingDate }, orderBy: { openedAt: 'desc' } });
     const shiftOrder = todaysShifts.length + 1;
     const totalShiftsPlanned = Number.isFinite(Number(body.totalShiftsPlanned)) && Number(body.totalShiftsPlanned) > 0
       ? Number(body.totalShiftsPlanned)
@@ -54,7 +54,7 @@ export const POST = withOrg(async (request) => {
       }
 
       const createdShift = await tx.shift.create({
-        data: { branchId, openedBy: session.user.id, openingFloat, shiftLabel, shiftOrder: totalShiftsPlanned ? shiftOrder : null, totalShiftsPlanned },
+        data: { branchId, openedBy: session.user.id, openingFloat, operatingDate, shiftLabel, shiftOrder: totalShiftsPlanned ? shiftOrder : null, totalShiftsPlanned },
       });
 
       for (const a of assignments) {

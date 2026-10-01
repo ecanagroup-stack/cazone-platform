@@ -1,9 +1,8 @@
 # Cazone GS&M Platform
 
-The multi-tenant SaaS core: organizations, services (fuel station / shop / warehouse / hotel / ...),
-branches per service, users, roles, and billing skeleton. No vertical business logic lives here —
-this is the layer that `petrol-station-app`, `ecana_shop-app`, and a future hotel app get imported
-against as vertical packs.
+The multi-tenant SaaS platform: organizations, services, branches, users, roles, billing, and
+business modules. The petrol station module includes pumps, attendants, shift readings,
+append-only pump collections, stock reconciliation, and reports.
 
 ## Setup
 
@@ -14,6 +13,11 @@ against as vertical packs.
 4. `npm run seed:super-admin` — creates the first `super_admin` login from the `SEED_SUPER_ADMIN_*`
    env vars.
 5. `npm run dev`, log in at `/login`, create the first organization from `/platform/organizations`.
+
+For an existing database, run `npx prisma migrate deploy` before starting a new version. The
+fuel collection migration preserves previously recorded pump payments and assigns an operating
+date to existing shifts. `node scripts/verify-fuel-migration.mjs` checks those records after
+migration; `node --test tests/fuelCollections.test.mjs` checks the collection rules.
 
 See `C:\Users\mail2\.claude\plans\federated-booping-sifakis.md` for the full design/decisions behind
 this repo (why Postgres/Prisma over Mongo, the Organization → Service → Branch model, tenant scoping).

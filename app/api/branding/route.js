@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 // Public, deliberately — login/signup render Cazone's own logo before any session exists.
 // PlatformSettings isn't in TENANT_SCOPED_MODELS, so this reads unscoped without any wrapper.
 export async function GET() {

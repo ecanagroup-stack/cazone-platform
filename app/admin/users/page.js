@@ -6,7 +6,7 @@ import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls
 
 const ROLE_LABELS = {
   owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier',
-  materials_manager: 'Materials Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', staff: 'Staff',
+  materials_manager: 'Materials Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', daily_auditor: 'Daily Auditor', external_auditor: 'External Auditor', staff: 'Staff',
 };
 
 // Plain-language, not a permission-key matrix — platform-ui skill, section 5.
@@ -18,13 +18,15 @@ const ROLE_DESCRIPTIONS = [
   { role: 'Materials Manager', can: 'Construction Material only — sales, customers, stock and catalog upkeep, no branch/user admin.' },
   { role: 'ATC Manager', can: 'Construction Material only — ATC allocation lifecycle (assign/loading/arrive) only.' },
   { role: 'Auditor', can: 'Raises flags on discrepancies; otherwise read-only.' },
+  { role: 'Daily Auditor', can: 'Reviews fuel records and raises discrepancy flags.' },
+  { role: 'External Auditor', can: 'Read-only access to fuel reports and audit history.' },
   { role: 'Staff', can: 'Day-to-day work on the branches they are assigned to.' },
 ];
 
 // Roles scoped to a specific pack only show once a branch of that pack's type is selected —
 // same idea Sidebar.js already uses for currentServiceType, just applied to the invite form's role
 // picker instead of nav items.
-const ROLES_FOR_SERVICE_TYPE = { fuel_station: ['supervisor', 'cashier'], shop: ['materials_manager', 'atc_manager'] };
+const ROLES_FOR_SERVICE_TYPE = { fuel_station: ['supervisor', 'cashier', 'daily_auditor', 'external_auditor'], shop: ['materials_manager', 'atc_manager'] };
 const UNIVERSAL_ROLES = ['manager', 'staff', 'auditor'];
 const ROLE_OPTION_LABELS = { ...ROLE_LABELS, supervisor: 'Supervisor (fuel)', cashier: 'Cashier (fuel)', materials_manager: 'Materials Manager', atc_manager: 'ATC Manager' };
 

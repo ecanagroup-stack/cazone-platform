@@ -8,13 +8,14 @@ import {
   inputCls, tableActionCls, theadCls, tableScrollCls, ReportToolbar, NumberInput,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return operatingDateAt();
 }
 function daysAgoIso(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
+  const d = new Date(`${operatingDateAt()}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 }
 
@@ -164,7 +165,7 @@ function DayDetail({ branchId, date, onBack }) {
   const [correctingDelivery, setCorrectingDelivery] = useState(null);
   const [correctForm, setCorrectForm] = useState({ quantity: '', costPerUnit: '', reason: '' });
   const [correctingReading, setCorrectingReading] = useState(null);
-  const [correctReadingForm, setCorrectReadingForm] = useState({ closing: '', rtt: '', cashCollected: '', reason: '' });
+  const [correctReadingForm, setCorrectReadingForm] = useState({ closing: '', rtt: '', reason: '' });
   const [correctingDeposit, setCorrectingDeposit] = useState(null);
   const [correctDepositForm, setCorrectDepositForm] = useState({ amount: '', bankName: '', accountNumber: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -201,7 +202,7 @@ function DayDetail({ branchId, date, onBack }) {
 
   const openCorrectReading = (r) => {
     setCorrectingReading(r);
-    setCorrectReadingForm({ closing: r.closing.toString(), rtt: r.rtt.toString(), cashCollected: r.cashCollected != null ? (r.cashCollected / 100).toString() : '', reason: '' });
+    setCorrectReadingForm({ closing: r.closing.toString(), rtt: r.rtt.toString(), reason: '' });
   };
 
   const submitCorrectReading = async (e) => {
@@ -212,7 +213,6 @@ function DayDetail({ branchId, date, onBack }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           closing: Number(correctReadingForm.closing), rtt: Number(correctReadingForm.rtt),
-          cashCollected: correctReadingForm.cashCollected === '' ? undefined : Math.round(Number(correctReadingForm.cashCollected) * 100),
           reason: correctReadingForm.reason,
         }),
       });
@@ -502,7 +502,7 @@ function DayDetail({ branchId, date, onBack }) {
 
       <Modal open={!!correctingReading} onClose={() => setCorrectingReading(null)} title="Correct Pump Reading">
         <form onSubmit={submitCorrectReading} className="space-y-4">
-          <p className="text-sm text-gray-500">Adjusts the recorded litres/cash and appends an offsetting stock entry for the difference — the original sale isn't erased, just corrected.</p>
+          <p className="text-sm text-gray-500">Corrects the recorded litres and appends an offsetting stock entry. Collection handovers remain permanent records.</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Closing reading" required>
               <NumberInput value={correctReadingForm.closing} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, closing: e.target.value })} required />
@@ -511,9 +511,6 @@ function DayDetail({ branchId, date, onBack }) {
               <NumberInput value={correctReadingForm.rtt} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, rtt: e.target.value })} required />
             </Field>
           </div>
-          <Field label="Cash collected">
-            <NumberInput value={correctReadingForm.cashCollected} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, cashCollected: e.target.value })} />
-          </Field>
           <Field label="Reason" required>
             <input type="text" value={correctReadingForm.reason} onChange={(e) => setCorrectReadingForm({ ...correctReadingForm, reason: e.target.value })} className={inputCls} required placeholder="Why is this being corrected?" />
           </Field>

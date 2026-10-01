@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/apiError';
 // scope for this form entirely (platform operator and, in v1, a role with no screens to use yet).
 // supervisor/cashier/auditor are fuel's review-chain tier, materials_manager/atc_manager are
 // Construction Material's (lib/permissions.js) — all invitable like any other staff-side role.
-const INVITABLE_ROLES = ['manager', 'supervisor', 'cashier', 'materials_manager', 'atc_manager', 'auditor', 'staff'];
+const INVITABLE_ROLES = ['manager', 'supervisor', 'cashier', 'materials_manager', 'atc_manager', 'auditor', 'daily_auditor', 'external_auditor', 'staff'];
 
 export const GET = withOrg(async () => {
   const users = await prisma.user.findMany({

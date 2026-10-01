@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // The manager's half of D5's review chain — the only step that actually creates the Order/StockMove.
 // Sees the supervisor's reading and the cashier's payment side by side (both already recorded, this
@@ -23,6 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
     if (!shift) throw new ApiError('Shift not found', 404);
+    if (shift.status !== 'open') throw new ApiError('Only an open shift can be reviewed', 400);
 
     const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });
     if (!reading) throw new ApiError('No reading found for this dispenser on this shift', 404);
@@ -40,6 +42,12 @@ export const POST = withOrg(async (request, { params }) => {
     const dispenser = await prisma.dispenser.findUnique({ where: { id: dispenserId }, include: { tank: true } });
     if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);
     const productId = dispenser.tank.productId;
+    const collections = await prisma.fuelCollection.findMany({ where: { shiftId, dispenserId } });
+    const collection = summarizePumpCollection(reading.expectedAmount, collections);
+    if (reading.litres > 0 && !collections.some((row) => !row.voidedAt && row.collectionType === 'initial' && row.totalAmount > 0)) {
+      throw new ApiError('An initial positive cashier collection is required for this selling pump', 400);
+    }
+    const paymentMethod = collection.cash > 0 && collection.pos > 0 ? 'mixed' : collection.pos > 0 ? 'pos' : 'cash';
 
     const result = await prisma.$transaction(async (tx) => {
       const counterKey = { organizationId_key: { organizationId: session.user.organizationId, key: 'order' } };
@@ -51,7 +59,7 @@ export const POST = withOrg(async (request, { params }) => {
       const order = await tx.order.create({
         data: {
           branchId: shift.branchId, orderNumber, subtotal: reading.expectedAmount, grandTotal: reading.expectedAmount,
-          paymentMethod: 'cash', createdBy: session.user.id,
+          paymentMethod, createdBy: session.user.id,
           lines: { create: [{ productId, qty: reading.litres, unitPrice: reading.litres > 0 ? Math.round(reading.expectedAmount / reading.litres) : 0, lineTotal: reading.expectedAmount }] },
         },
         include: { lines: true },

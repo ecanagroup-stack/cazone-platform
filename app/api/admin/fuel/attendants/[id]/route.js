@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // One attendant's full scorecard: every shift they've ever worked, meter sales vs. what was
 // actually collected, and the resulting shortage/overage — same computation shape as
@@ -17,36 +18,47 @@ export const GET = withOrg(async (request, { params }) => {
     const [assignments, notes] = await Promise.all([
       prisma.attendantAssignment.findMany({
         where: { attendantId: id },
-        include: { dispenser: true, shift: { select: { id: true, openedAt: true } } },
+        include: { dispenser: true, shift: { select: { id: true, openedAt: true, operatingDate: true } } },
         orderBy: { assignedAt: 'asc' },
       }),
       prisma.attendantNote.findMany({ where: { attendantId: id }, orderBy: { createdAt: 'desc' } }),
     ]);
 
     const shiftIds = [...new Set(assignments.map((a) => a.shiftId))];
-    const readings = shiftIds.length
-      ? await prisma.meterReading.findMany({ where: { shiftId: { in: shiftIds } }, include: { posPayments: true } })
-      : [];
+    const [readings, collections, allAssignments] = shiftIds.length ? await Promise.all([
+      prisma.meterReading.findMany({ where: { shiftId: { in: shiftIds } } }),
+      prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'asc' } }),
+      prisma.attendantAssignment.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { assignedAt: 'desc' } }),
+    ]) : [[], [], []];
     const readingByKey = Object.fromEntries(readings.map((r) => [`${r.shiftId}|${r.dispenserId}`, r]));
 
     const dayMap = new Map(); // date -> row
+    const accountedPumps = new Set();
     for (const a of assignments) {
-      const date = a.shift.openedAt.toISOString().slice(0, 10);
-      const row = dayMap.get(date) || { date, pumps: new Set(), meterSales: 0, collected: 0 };
+      const pumpKey = `${a.shiftId}|${a.dispenserId}`;
+      if (accountedPumps.has(pumpKey)) continue;
+      const pumpCollections = collections.filter((c) => c.shiftId === a.shiftId && c.dispenserId === a.dispenserId);
+      const latestAssignment = allAssignments.find((candidate) => candidate.shiftId === a.shiftId && candidate.dispenserId === a.dispenserId);
+      const accountableId = pumpCollections.find((c) => !c.voidedAt && c.collectionType === 'initial')?.attendantId || latestAssignment?.attendantId;
+      if (accountableId !== id) continue;
+      accountedPumps.add(pumpKey);
+      const date = a.shift.operatingDate || a.shift.openedAt.toISOString().slice(0, 10);
+      const row = dayMap.get(date) || { date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0 };
       row.pumps.add(a.dispenser.label);
       const reading = readingByKey[`${a.shiftId}|${a.dispenserId}`];
       if (reading && reading.closing != null) {
-        row.meterSales += reading.expectedAmount || 0;
-        row.collected += (reading.cashCollected || 0) + reading.posPayments.reduce((s, p) => s + p.amount, 0);
+        const pump = summarizePumpCollection(reading.expectedAmount, pumpCollections);
+        row.meterSales += pump.expected;
+        row.collected += pump.collected;
+        row.shortage += pump.outstanding;
+        row.overage += pump.overage;
       }
       dayMap.set(date, row);
     }
 
     const byDay = [...dayMap.values()]
       .map((row) => {
-        const shortage = Math.max(0, row.meterSales - row.collected);
-        const overage = Math.max(0, row.collected - row.meterSales);
-        return { ...row, pumps: [...row.pumps], shortage, overage };
+        return { ...row, pumps: [...row.pumps] };
       })
       .sort((a, b) => b.date.localeCompare(a.date));
 

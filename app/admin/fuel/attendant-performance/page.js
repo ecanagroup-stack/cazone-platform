@@ -5,9 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, inputCls, tableScrollCls } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return operatingDateAt();
 }
 function addDays(dateStr, n) {
   const d = new Date(`${dateStr}T12:00:00`);

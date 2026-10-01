@@ -12,9 +12,10 @@ export default function ShiftPage() {
   const branchId = searchParams.get('branch') || '';
   const { data: authSession } = useSession();
   const role = authSession?.user?.role;
-  const canSubmit = ['supervisor', 'manager', 'owner'].includes(role);
+  const canSubmit = role === 'supervisor';
   const canRecordPayment = ['cashier', 'manager', 'owner'].includes(role);
   const canApprove = ['manager', 'owner'].includes(role);
+  const canRunShift = ['manager', 'owner', 'staff'].includes(role);
 
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState({}); // { [dispenserId]: { attendantId, opening } }
@@ -49,6 +50,7 @@ export default function ShiftPage() {
 
   const [paymentFor, setPaymentFor] = useState(null); // dispenserId
   const [paymentForm, setPaymentForm] = useState({ cashCollected: '', posEntries: [] }); // posEntries: [{terminalId, amount}]
+  const [paymentRequestId, setPaymentRequestId] = useState(null);
 
   const [approveFor, setApproveFor] = useState(null); // dispenserId
   const [approveNote, setApproveNote] = useState('');
@@ -219,10 +221,8 @@ export default function ShiftPage() {
 
   const openPaymentModal = (p) => {
     setPaymentFor(p.dispenserId);
-    setPaymentForm({
-      cashCollected: p.reading?.cashCollected != null ? (p.reading.cashCollected / 100).toString() : '',
-      posEntries: (p.reading?.posPayments || []).map((pp) => ({ terminalId: pp.terminalId, amount: (pp.amount / 100).toString() })),
-    });
+    setPaymentForm({ cashCollected: '', posEntries: [] });
+    setPaymentRequestId(crypto.randomUUID());
   };
 
   const handleRecordPayment = async (e) => {
@@ -234,10 +234,11 @@ export default function ShiftPage() {
         body: JSON.stringify({
           cashCollected: Math.round(Number(paymentForm.cashCollected || 0) * 100),
           posEntries: paymentForm.posEntries.filter((p) => p.terminalId && p.amount !== '').map((p) => ({ terminalId: p.terminalId, amount: Math.round(Number(p.amount) * 100) })),
+          requestId: paymentRequestId,
         }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Payment recorded'); setPaymentFor(null); load(); }
+      if (d.success) { toast.success('Collection recorded'); setPaymentFor(null); setPaymentRequestId(null); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -320,7 +321,7 @@ export default function ShiftPage() {
     const allApproved = data.pumps.every((p) => p.reading?.reviewStatus === 'approved');
     const tanks = data.tanks || [];
     const allTanksDipped = tanks.every((t) => t.dippedThisShift);
-    const canEndShift = allApproved && allTanksDipped;
+    const canEndShift = canRunShift && allApproved && allTanksDipped;
     const approvingPump = data.pumps.find((p) => p.dispenserId === approveFor);
 
     // Day Summary (ecana's End Day summary) — sales by product from the same pump readings already
@@ -345,9 +346,9 @@ export default function ShiftPage() {
           subtitle={`${data.shift.shiftLabel ? `${data.shift.shiftLabel} — ` : ''}Open since ${new Date(data.shift.openedAt).toLocaleTimeString()}${data.shift.totalShiftsPlanned ? ` (shift ${data.shift.shiftOrder} of ${data.shift.totalShiftsPlanned} today)` : ''}`}
           action={
             <div className="flex items-center gap-4">
-              <button onClick={() => setShowAddPump(true)} className="text-sm font-medium text-gray-500 hover:text-gray-700">Add Pump</button>
+              {canRunShift && <button onClick={() => setShowAddPump(true)} className="text-sm font-medium text-gray-500 hover:text-gray-700">Add Pump</button>}
               <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
-              {allApproved && <button onClick={() => setShowEndModal(true)} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
+              {canRunShift && allApproved && <button onClick={() => setShowEndModal(true)} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
             </div>
           }
         />
@@ -391,7 +392,7 @@ export default function ShiftPage() {
             const submitted = p.reading?.closing != null;
             const status = p.reading?.reviewStatus || 'pending';
             const litres = submitted ? p.reading.litres ?? (p.reading.closing - p.reading.opening - p.reading.rtt) : null;
-            const paid = p.reading?.paymentRecordedAt != null;
+            const paid = (p.collections || []).length > 0;
             const statusLabel = !submitted ? 'Running' : status === 'approved' ? 'Approved' : status === 'queried' ? 'Queried' : 'Pending Review';
             const statusColor = !submitted ? 'green' : status === 'approved' ? 'gray' : status === 'queried' ? 'amber' : 'blue';
             return (
@@ -412,7 +413,7 @@ export default function ShiftPage() {
                 )}
                 {submitted && (
                   <p className="text-xs text-gray-500">
-                    {paid ? `Payment recorded: ₦${(p.reading.cashCollected / 100).toLocaleString()} cash${p.reading.posPayments?.length ? ` + ${p.reading.posPayments.length} POS entr${p.reading.posPayments.length === 1 ? 'y' : 'ies'}` : ''}` : 'Payment not yet recorded'}
+                    {paid ? `Collected ₦${(p.collectionSummary.collected / 100).toLocaleString()} in ${p.collections.length} handover(s) · Outstanding ₦${(p.collectionSummary.outstanding / 100).toLocaleString()}` : 'Collection not yet recorded'}
                   </p>
                 )}
                 {status === 'queried' && p.reading?.discrepancyNote && (
@@ -428,9 +429,9 @@ export default function ShiftPage() {
                       {status === 'queried' ? 'Resubmit reading' : 'Record closing reading'}
                     </button>
                   )}
-                  {submitted && status !== 'approved' && canRecordPayment && (
+                  {submitted && (p.reading?.litres || 0) > 0 && canRecordPayment && (
                     <button onClick={() => openPaymentModal(p)} className="text-sm font-medium text-brand-600 hover:text-brand-700">
-                      {paid ? 'Edit payment' : 'Record payment'}
+                      {paid ? 'Add collection' : 'Record collection'}
                     </button>
                   )}
                   {submitted && status !== 'approved' && canApprove && (
@@ -443,7 +444,7 @@ export default function ShiftPage() {
                       Receipt
                     </Link>
                   )}
-                  {!submitted && (
+                  {!submitted && canRunShift && (
                     <>
                       <button
                         onClick={() => setCreditFillFor(p.dispenserId)}
@@ -487,7 +488,7 @@ export default function ShiftPage() {
 
         <Modal open={!!paymentFor} onClose={() => setPaymentFor(null)} title="Record Payment">
           <form onSubmit={handleRecordPayment} className="space-y-4">
-            <p className="text-sm text-gray-500">Cash collected plus any card/transfer entries against a registered POS terminal.</p>
+            <p className="text-sm text-gray-500">Collecting from {data.pumps.find((p) => p.dispenserId === paymentFor)?.attendantName} on {data.pumps.find((p) => p.dispenserId === paymentFor)?.dispenserLabel}. Each handover is kept separately.</p>
             <Field label="Cash collected" required>
               <NumberInput value={paymentForm.cashCollected} onChange={(e) => setPaymentForm({ ...paymentForm, cashCollected: e.target.value })} required autoFocus />
             </Field>
@@ -520,7 +521,7 @@ export default function ShiftPage() {
                 </button>
               </div>
             </Field>
-            <FormButtons onCancel={() => setPaymentFor(null)} submitting={submitting} submitLabel="Save Payment" />
+            <FormButtons onCancel={() => setPaymentFor(null)} submitting={submitting} submitLabel="Record Collection" />
           </form>
         </Modal>
 
@@ -531,6 +532,7 @@ export default function ShiftPage() {
                 <p><span className="text-gray-500">Litres sold:</span> {approvingPump.reading.litres?.toLocaleString()} L</p>
                 <p><span className="text-gray-500">Expected amount:</span> ₦{(approvingPump.reading.expectedAmount / 100).toLocaleString()}</p>
                 <p><span className="text-gray-500">Cash collected:</span> {approvingPump.reading.cashCollected != null ? `₦${(approvingPump.reading.cashCollected / 100).toLocaleString()}` : 'Not recorded'}</p>
+                <p><span className="text-gray-500">Pump outstanding:</span> ₦{(approvingPump.collectionSummary.outstanding / 100).toLocaleString()}</p>
                 {(approvingPump.reading.posPayments || []).map((pp) => (
                   <p key={pp.id}><span className="text-gray-500">POS ({pp.terminal.label}):</span> ₦{(pp.amount / 100).toLocaleString()}</p>
                 ))}
@@ -775,7 +777,7 @@ export default function ShiftPage() {
             </div>
           </Card>
 
-          <button type="submit" disabled={beginning} className={btnPrimaryCls}>
+          <button type="submit" disabled={beginning || !canRunShift} className={btnPrimaryCls}>
             {beginning ? 'Starting...' : 'Begin Shift'}
           </button>
         </form>
