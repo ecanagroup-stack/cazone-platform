@@ -2,7 +2,7 @@
 
 The multi-tenant SaaS platform: organizations, services, branches, users, roles, billing, and
 business modules. The petrol station module includes pumps, attendants, shift readings,
-append-only pump collections, stock reconciliation, and reports.
+per-tank dips, auditable pump collections, stock reconciliation, and reports.
 
 ## Setup
 
@@ -18,6 +18,10 @@ For an existing database, run `npx prisma migrate deploy` before starting a new 
 fuel collection migration preserves previously recorded pump payments and assigns an operating
 date to existing shifts. `node scripts/verify-fuel-migration.mjs` checks those records after
 migration; `node --test tests/fuelCollections.test.mjs` checks the collection rules.
+
+For scheduled fuel shift closure on Vercel, set `CRON_SECRET` in the project environment. The
+daily 11:00 UTC job closes only overdue shifts with approved pump readings, an initial collection
+for every selling pump, and a closing dip for every active tank. Incomplete shifts stay open.
 
 See `C:\Users\mail2\.claude\plans\federated-booping-sifakis.md` for the full design/decisions behind
 this repo (why Postgres/Prisma over Mongo, the Organization → Service → Branch model, tenant scoping).

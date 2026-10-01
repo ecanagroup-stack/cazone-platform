@@ -179,6 +179,7 @@ model Organization {
   posTerminals         PosTerminal[]
   posPayments          PosPayment[]
   fuelCollections      FuelCollection[]
+  fuelTankDips         FuelTankDip[]
 
   provisioningRequests ProvisioningRequest[]
 }
@@ -281,6 +282,7 @@ model Branch {
   attendantAssignments AttendantAssignment[]
   posTerminals         PosTerminal[]
   fuelCollections      FuelCollection[]
+  fuelTankDips         FuelTankDip[]
 
   @@unique([organizationId, code])
   @@index([serviceId])
@@ -991,6 +993,7 @@ model Shift {
   meterReadings        MeterReading[]
   attendantAssignments AttendantAssignment[]
   fuelCollections      FuelCollection[]
+  fuelTankDips         FuelTankDip[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -1144,6 +1147,7 @@ model Tank {
 
   dispensers Dispenser[]
   deliveries Delivery[]
+  fuelTankDips FuelTankDip[]
 
   @@unique([branchId, label])
   @@index([organizationId])
@@ -1302,6 +1306,28 @@ model FuelCollection {
   @@index([organizationId, shiftId, dispenserId])
   @@index([branchId, operatingDate])
   @@index([meterReadingId, createdAt])
+}
+
+// Physical opening/closing dip for one tank and one shift. Product-level reconciliation is
+// generated only after all active tanks carrying that product have a closing dip.
+model FuelTankDip {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shiftId        String
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  tankId         String
+  tank           Tank         @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  operatingDate  String
+  period         String // opening | closing
+  measured       Float
+  recordedBy     String
+  createdAt      DateTime @default(now())
+
+  @@unique([shiftId, tankId, period])
+  @@index([organizationId, branchId, operatingDate])
 }
 
 // Non-login HR record — most pump attendants don't get a User account, just a staff record for

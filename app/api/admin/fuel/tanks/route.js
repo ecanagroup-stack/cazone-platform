@@ -29,8 +29,12 @@ export const GET = withOrg(async (request) => {
         where: { branchId, productId }, orderBy: { periodEnd: 'desc' },
       });
     }
+    const dips = await prisma.fuelTankDip.findMany({ where: { tankId: { in: tanks.map((t) => t.id) }, period: 'closing' }, orderBy: { createdAt: 'desc' } });
+    const lastDipByTank = {};
+    for (const dip of dips) if (!lastDipByTank[dip.tankId]) lastDipByTank[dip.tankId] = dip;
     const tanksWithStock = tanks.map((t) => ({
       ...t, onHand: onHand[t.productId] || 0, lastReconciliation: lastReconByProduct[t.productId] || null,
+      lastPhysicalDip: lastDipByTank[t.id] || null,
     }));
 
     return NextResponse.json({ success: true, data: { tanks: tanksWithStock, products } });

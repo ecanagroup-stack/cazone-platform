@@ -25,7 +25,7 @@ export const GET = withOrg(async (request) => {
       : { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) };
 
     const shiftIds = shifts.map((s) => s.id);
-    const [assignments, readings, deliveries, reconciliations, deposits] = await Promise.all([
+    const [assignments, readings, deliveries, reconciliations, deposits, tankDips, collections] = await Promise.all([
       prisma.attendantAssignment.findMany({
         where: { shiftId: { in: shiftIds } },
         include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
@@ -48,16 +48,23 @@ export const GET = withOrg(async (request) => {
         where: { shiftId: { in: shiftIds } },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.fuelTankDip.findMany({ where: { shiftId: { in: shiftIds } }, include: { tank: { include: { product: true } } }, orderBy: { createdAt: 'asc' } }),
+      prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'asc' } }),
     ]);
 
     const byShift = shifts.map((shift) => ({
       shift,
       assignments: assignments.filter((a) => a.shiftId === shift.id),
       readings: readings.filter((r) => r.shiftId === shift.id),
+      collections: collections.filter((c) => c.shiftId === shift.id).map((collection) => ({
+        ...collection,
+        dispenserLabel: readings.find((reading) => reading.dispenserId === collection.dispenserId)?.dispenser?.label || 'Pump',
+        attendantName: assignments.find((assignment) => assignment.attendantId === collection.attendantId)?.attendant?.name || 'Unassigned',
+      })),
       deposits: deposits.filter((d) => d.shiftId === shift.id),
     }));
 
-    return NextResponse.json({ success: true, data: { shifts: byShift, deliveries, reconciliations } });
+    return NextResponse.json({ success: true, data: { shifts: byShift, deliveries, reconciliations, tankDips } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

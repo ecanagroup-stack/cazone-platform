@@ -20,6 +20,7 @@ export default function ShiftPage() {
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState({}); // { [dispenserId]: { attendantId, opening } }
   const [prices, setPrices] = useState({}); // { [productId]: price in Naira, display units }
+  const [tankOpenings, setTankOpenings] = useState({}); // { [tankId]: measured litres }
   const [openingFloat, setOpeningFloat] = useState(''); // Naira, display units
   const [totalShiftsPlanned, setTotalShiftsPlanned] = useState(''); // optional multi-shift-per-day
   const [beginning, setBeginning] = useState(false);
@@ -89,6 +90,7 @@ export default function ShiftPage() {
     const assignments = Object.entries(selected).map(([dispenserId, v]) => ({ dispenserId, attendantId: v.attendantId, opening: v.opening }));
     if (assignments.length === 0) return toast.error('Select at least one dispenser to open');
     if (assignments.some((a) => !a.attendantId || a.opening === '')) return toast.error('Every selected dispenser needs an attendant and an opening reading');
+    if ((data.tanks || []).some((tank) => tankOpenings[tank.id] === '' || tankOpenings[tank.id] == null)) return toast.error('Enter an opening dip for every tank');
 
     const zeroStockDispensers = data.dispensers.filter((d) => selected[d.id] && d.tank && (data.onHandByProduct?.[d.tank.productId] || 0) <= 0);
     if (zeroStockDispensers.length > 0) {
@@ -103,11 +105,12 @@ export default function ShiftPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branchId, openingFloat: Math.round(Number(openingFloat || 0) * 100), assignments, prices: priceEntries,
+          tankOpenings: (data.tanks || []).map((tank) => ({ tankId: tank.id, measured: Number(tankOpenings[tank.id]) })),
           totalShiftsPlanned: totalShiftsPlanned || undefined,
         }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(d.message || 'Shift started'); setSelected({}); setOpeningFloat(''); setTotalShiftsPlanned(''); load(); }
+      if (d.success) { toast.success(d.message || 'Shift started'); setSelected({}); setOpeningFloat(''); setTankOpenings({}); setTotalShiftsPlanned(''); load(); }
       else toast.error(d.error);
     } finally {
       setBeginning(false);
@@ -378,9 +381,9 @@ export default function ShiftPage() {
                   <p className="text-sm font-medium">{t.label} <span className="text-xs text-gray-500 font-normal">— {t.product?.name}</span></p>
                   {t.dippedThisShift ? (
                     <StatusPill status="Recorded" color="green" />
-                  ) : (
+                  ) : canSubmit ? (
                     <button onClick={() => { setDipFor(t); setDipMeasured(''); }} className="text-sm font-medium text-amber-700 hover:text-amber-900">Record Dip</button>
-                  )}
+                  ) : <span className="text-xs text-amber-700">Waiting for supervisor</span>}
                 </div>
               ))}
             </div>
@@ -734,6 +737,14 @@ export default function ShiftPage() {
                 );
               })}
             </div>
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="font-semibold text-sm mb-2">Opening Tank Stock</h3>
+            <p className="text-xs text-gray-500 mb-4">Record the measured opening litres for each physical tank.</p>
+            <div className="grid sm:grid-cols-2 gap-3">{(data.tanks || []).map((tank) => <Field key={tank.id} label={`${tank.label} — ${tank.product?.name || 'Fuel'}`} required>
+              <NumberInput value={tankOpenings[tank.id] ?? ''} onChange={(e) => setTankOpenings({ ...tankOpenings, [tank.id]: e.target.value })} required />
+            </Field>)}</div>
           </Card>
 
           <Card className="overflow-hidden">

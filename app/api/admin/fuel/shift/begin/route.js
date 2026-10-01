@@ -21,6 +21,7 @@ export const POST = withOrg(async (request) => {
     const openingFloat = Math.round(Number(body.openingFloat) || 0);
     const assignments = Array.isArray(body.assignments) ? body.assignments : []; // [{dispenserId, attendantId, opening}]
     const prices = Array.isArray(body.prices) ? body.prices : []; // [{productId, price}]
+    const tankOpenings = Array.isArray(body.tankOpenings) ? body.tankOpenings : [];
 
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (assignments.length === 0) throw new ApiError('Assign at least one dispenser to open a shift', 400);
@@ -32,6 +33,13 @@ export const POST = withOrg(async (request) => {
 
     const existing = await prisma.shift.findFirst({ where: { branchId, status: 'open' } });
     if (existing) throw new ApiError('A shift is already open for this branch', 400);
+    const tanks = await prisma.tank.findMany({ where: { branchId, isActive: true } });
+    if (tanks.some((tank) => !tankOpenings.some((entry) => entry.tankId === tank.id && Number.isFinite(Number(entry.measured)) && Number(entry.measured) >= 0))) {
+      throw new ApiError('Enter an opening dip for every active tank', 400);
+    }
+    if (new Set(tankOpenings.map((entry) => entry.tankId)).size !== tankOpenings.length || tankOpenings.some((entry) => !tanks.some((tank) => tank.id === entry.tankId))) {
+      throw new ApiError('Opening dips must match active tanks at this branch', 400);
+    }
 
     // Multi-shift-per-day (optional — see prisma/schema.prisma Shift comment). totalShiftsPlanned is
     // set once at the day's first Begin Shift and inherited by every later shift that day;
@@ -56,6 +64,11 @@ export const POST = withOrg(async (request) => {
       const createdShift = await tx.shift.create({
         data: { branchId, openedBy: session.user.id, openingFloat, operatingDate, shiftLabel, shiftOrder: totalShiftsPlanned ? shiftOrder : null, totalShiftsPlanned },
       });
+
+      if (tankOpenings.length) await tx.fuelTankDip.createMany({ data: tankOpenings.map((entry) => ({
+        branchId, shiftId: createdShift.id, tankId: entry.tankId, operatingDate,
+        period: 'opening', measured: Number(entry.measured), recordedBy: session.user.id,
+      })) });
 
       for (const a of assignments) {
         await tx.attendantAssignment.create({

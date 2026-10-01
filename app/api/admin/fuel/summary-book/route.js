@@ -62,10 +62,10 @@ export const GET = withOrg(async (request) => {
         const deliveries = await prisma.delivery.findMany({
           where: { branchId, productId, offloadVariance: { not: null }, createdAt: { gte: shift.openedAt, lte: periodEnd } },
         });
-        const deliveryShortage = deliveries.reduce((s, d) => s + (d.offloadVariance < 0 ? -d.offloadVariance : 0), 0);
-        const deliveryExcess = deliveries.reduce((s, d) => s + (d.offloadVariance > 0 ? d.offloadVariance : 0), 0);
-
         const price = agg.sales > 0 ? Math.round(agg.amount / agg.sales) : 0;
+        // Offload variance is in litres; report shortages in kobo alongside pump balances.
+        const deliveryShortage = Math.round(deliveries.reduce((s, d) => s + Math.max(0, -d.offloadVariance), 0) * price);
+        const deliveryExcess = Math.round(deliveries.reduce((s, d) => s + Math.max(0, d.offloadVariance), 0) * price);
         const salesShortage = agg.salesShortage;
 
         rows.push({

@@ -3,7 +3,8 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
-import { summarizePumpCollection, validateCollectionInput } from '@/lib/fuelCollections.mjs';
+import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput } from '@/lib/fuelCollections.mjs';
+import { evaluateVariance } from '@/lib/reconciliation';
 
 // Ported from petrol-station-app's Backfill wizard — entering historical data for dates before an org
 // subscribed to cazone, one step per call (Date & Branch -> Shift -> Pump Readings -> Deliveries ->
@@ -243,28 +244,53 @@ async function handleDelivery(session, body) {
 
 async function handleDip(session, body) {
   const shiftId = body.shiftId;
-  const productId = body.productId;
+  const tankId = body.tankId;
   const measured = Number(body.measured);
-  if (!shiftId || !productId) throw new ApiError('Shift and product are required', 400);
+  if (!shiftId || !tankId) throw new ApiError('Shift and tank are required', 400);
   if (!Number.isFinite(measured) || measured < 0) throw new ApiError('Measured litres must be a non-negative number', 400);
 
   const shift = await loadBackfillShift(shiftId);
   const branchId = shift.branchId;
+  const tank = await prisma.tank.findUnique({ where: { id: tankId } });
+  if (!tank || tank.branchId !== branchId) throw new ApiError('Tank does not belong to this branch', 400);
+  const productId = tank.productId;
   // A closing dip is taken at end of shift — periodEnd must land inside [openedAt, closedAt] for
   // Summary Book/Reports' closing-stock lookup to find it.
   const periodEnd = shift.closedAt;
 
-  const dup = await prisma.reconciliation.findFirst({ where: { branchId, productId, measured, isBackfill: true, periodEnd } });
-  if (dup) return NextResponse.json({ success: true, data: dup, reused: true });
-
-  const created = await prisma.reconciliation.create({
-    data: {
-      branchId, productId, periodStart: shift.openedAt, periodEnd,
-      opening: 0, receipts: 0, sales: 0, book: measured, measured, variance: 0, variancePct: 0, tolerance: 0,
-      status: 'within_tolerance', isBackfill: true,
-    },
-  });
-  return NextResponse.json({ success: true, data: created }, { status: 201 });
+  const result = await prisma.$transaction(async (tx) => {
+    const dup = await tx.fuelTankDip.findUnique({ where: { shiftId_tankId_period: { shiftId, tankId, period: 'closing' } } });
+    if (dup) return { dip: dup, reused: true };
+    const dip = await tx.fuelTankDip.create({ data: {
+      branchId, shiftId, tankId, operatingDate: shift.operatingDate, period: 'closing', measured,
+      recordedBy: session.user.id, createdAt: periodEnd,
+    } });
+    const tanks = await tx.tank.findMany({ where: { branchId, productId, isActive: true } });
+    const dips = await tx.fuelTankDip.findMany({ where: { shiftId, period: 'closing', tankId: { in: tanks.map((item) => item.id) } } });
+    if (tanks.length && dips.length === tanks.length) {
+      const existing = await tx.reconciliation.findFirst({ where: { branchId, productId, isBackfill: true, periodEnd } });
+      if (!existing) {
+        const [readings, purchases, openingStock, branch] = await Promise.all([
+          tx.meterReading.findMany({ where: { shiftId }, include: { dispenser: { include: { tank: true } } } }),
+          tx.stockMove.findMany({ where: { branchId, productId, reason: 'purchase', at: { gte: shift.openedAt, lte: periodEnd } } }),
+          tx.stockMove.aggregate({ where: { branchId, productId, at: { lt: shift.openedAt } }, _sum: { qty: true } }),
+          tx.branch.findUnique({ where: { id: branchId } }),
+        ]);
+        const { opening, receipts, sales, book, measured: totalMeasured } = summarizeTankProduct(
+          productId, tanks, [], dips, readings, purchases, openingStock._sum.qty || 0,
+        );
+        const tolerance = Number(branch?.config?.reconciliationTolerancePct) || 0.5;
+        const { variance, variancePct, status } = evaluateVariance(book, totalMeasured, receipts, tolerance);
+        await tx.reconciliation.create({ data: {
+          branchId, productId, periodStart: shift.openedAt, periodEnd,
+          opening, receipts, sales, book, measured: totalMeasured,
+          variance, variancePct, tolerance, status, isBackfill: true,
+        } });
+      }
+    }
+    return { dip, reused: false };
+  }, { timeout: 30000 });
+  return NextResponse.json({ success: true, data: result.dip, reused: result.reused }, { status: result.reused ? 200 : 201 });
 }
 
 async function handleDeposit(session, body) {

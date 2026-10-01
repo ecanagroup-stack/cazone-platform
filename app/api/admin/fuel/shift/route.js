@@ -21,7 +21,7 @@ export const GET = withOrg(async (request) => {
     });
 
     if (openShift) {
-      const [assignments, meterReadings, collections, attendants, posTerminals, tanks, dispensers] = await Promise.all([
+      const [assignments, meterReadings, collections, attendants, posTerminals, tanks, dispensers, closingDips] = await Promise.all([
         prisma.attendantAssignment.findMany({
           where: { shiftId: openShift.id, endedAt: null },
           include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
@@ -36,6 +36,7 @@ export const GET = withOrg(async (request) => {
         // Every active dispenser at the branch, not just the ones already on this shift — lets the UI
         // offer "Add Pump" for one that was opened late (not part of the original Begin Shift batch).
         prisma.dispenser.findMany({ where: { branchId, isActive: true }, include: { tank: { include: { product: true } } } }),
+        prisma.fuelTankDip.findMany({ where: { shiftId: openShift.id, period: 'closing' } }),
       ]);
       const readingByDispenser = Object.fromEntries(meterReadings.map((r) => [r.dispenserId, r]));
       const pumps = assignments.map((a) => ({
@@ -51,21 +52,17 @@ export const GET = withOrg(async (request) => {
           collections.filter((c) => c.dispenserId === a.dispenserId)),
       }));
 
-      // Reconciliation is keyed by (branchId, productId) — same grain the stock ledger uses, not by
-      // the physical tank (see the tank-dip route's own note on this).
-      const dipsSinceOpen = await prisma.reconciliation.findMany({
-        where: { branchId, productId: { in: tanks.map((t) => t.productId) }, periodEnd: { gte: openShift.openedAt } },
-        select: { productId: true },
-      });
-      const dippedProductIds = new Set(dipsSinceOpen.map((d) => d.productId));
-      const tanksWithDipStatus = tanks.map((t) => ({ ...t, dippedThisShift: dippedProductIds.has(t.productId) }));
+      const dippedTankIds = new Set(closingDips.map((dip) => dip.tankId));
+      const tanksWithDipStatus = tanks.map((t) => ({ ...t, dippedThisShift: dippedTankIds.has(t.id) }));
 
-      return NextResponse.json({ success: true, data: { shift: openShift, pumps, attendants, posTerminals, tanks: tanksWithDipStatus, dispensers } });
+      const products = [...new Map(tanks.map((tank) => [tank.product.id, tank.product])).values()];
+      return NextResponse.json({ success: true, data: { shift: openShift, pumps, attendants, posTerminals, tanks: tanksWithDipStatus, dispensers, products } });
     }
 
-    const [dispensers, attendants] = await Promise.all([
+    const [dispensers, attendants, tanks] = await Promise.all([
       prisma.dispenser.findMany({ where: { branchId, isActive: true }, include: { tank: { include: { product: true } } } }),
       prisma.attendant.findMany({ where: { branchId, isActive: true }, orderBy: { name: 'asc' } }),
+      prisma.tank.findMany({ where: { branchId, isActive: true }, include: { product: true }, orderBy: { label: 'asc' } }),
     ]);
 
     const productIds = [...new Set(dispensers.map((d) => d.tank?.productId).filter(Boolean))];
@@ -78,7 +75,7 @@ export const GET = withOrg(async (request) => {
 
     return NextResponse.json({
       success: true,
-      data: { shift: null, dispensers, attendants, products, priceByProduct, onHandByProduct },
+      data: { shift: null, dispensers, attendants, tanks, products, priceByProduct, onHandByProduct },
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { computePeriod, evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 // Fuel typically runs well under 1% variance (core-algorithms skill §5) — this default applies
 // whenever a branch hasn't set its own tolerance via Fuel Setup > Station Config (F1).
@@ -15,9 +16,6 @@ const DEFAULT_FUEL_TOLERANCE_PCT = 0.5;
 // them for stock purposes (established in the fuel shift pass), and this doesn't change that.
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'stock.receive')) {
-    return NextResponse.json({ error: 'You do not have permission to record a tank dip' }, { status: 403 });
-  }
   try {
     const { id: tankId } = await params;
     const body = await request.json();
@@ -26,6 +24,19 @@ export const POST = withOrg(async (request, { params }) => {
 
     const tank = await prisma.tank.findUnique({ where: { id: tankId }, include: { branch: { select: { config: true } } } });
     if (!tank) throw new ApiError('Tank not found', 404);
+    if (!tank.isActive) throw new ApiError('This tank is inactive', 400);
+    const openShift = await prisma.shift.findFirst({ where: { branchId: tank.branchId, status: 'open' } });
+    if (openShift) {
+      if (session.user.role !== 'supervisor') throw new ApiError('Only a supervisor can enter closing tank stock for an open shift', 403);
+      const prior = await prisma.fuelTankDip.findUnique({ where: { shiftId_tankId_period: { shiftId: openShift.id, tankId, period: 'closing' } } });
+      if (prior) throw new ApiError('Closing stock was already recorded for this tank and shift', 409);
+      const result = await prisma.fuelTankDip.create({ data: {
+          branchId: tank.branchId, shiftId: openShift.id, tankId,
+          operatingDate: openShift.operatingDate || operatingDateAt(openShift.openedAt), period: 'closing', measured, recordedBy: session.user.id,
+      } });
+      return NextResponse.json({ success: true, data: { ...result, status: 'recorded' } }, { status: 201 });
+    }
+    if (!can(session.user.role, 'stock.receive')) throw new ApiError('You do not have permission to record a tank dip', 403);
     const tolerancePct = Number(tank.branch.config?.reconciliationTolerancePct) || DEFAULT_FUEL_TOLERANCE_PCT;
 
     const lastRecon = await prisma.reconciliation.findFirst({

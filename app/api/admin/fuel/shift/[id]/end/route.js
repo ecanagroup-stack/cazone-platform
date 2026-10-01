@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
+import { createShiftTankReconciliations } from '@/lib/fuelTankReconciliation';
 
 const CASH_TOLERANCE_PCT = 0.01; // flat 1% for v1 — per-product tolerance is a later refinement
 
@@ -29,10 +30,18 @@ export const POST = withOrg(async (request, { params }) => {
     const access = await getAccessibleBranchIds(session);
     if (!canAccessBranch(access, shift.branchId)) throw new ApiError('Access denied to this branch', 403);
 
-    const readings = await prisma.meterReading.findMany({ where: { shiftId: id }, include: { dispenser: true } });
+    const readings = await prisma.meterReading.findMany({ where: { shiftId: id }, include: { dispenser: { include: { tank: true } } } });
     if (readings.length === 0) throw new ApiError('No dispenser has been closed for this shift yet', 400);
     const incomplete = readings.filter((r) => r.closing == null || r.reviewStatus !== 'approved');
     if (incomplete.length) throw new ApiError(`Submit and approve every pump before ending this shift: ${incomplete.map((r) => r.dispenser.label).join(', ')}`, 400);
+    const [tanks, closingDips, openingDips, branch] = await Promise.all([
+      prisma.tank.findMany({ where: { branchId: shift.branchId, isActive: true } }),
+      prisma.fuelTankDip.findMany({ where: { shiftId: id, period: 'closing' } }),
+      prisma.fuelTankDip.findMany({ where: { shiftId: id, period: 'opening' } }),
+      prisma.branch.findUnique({ where: { id: shift.branchId } }),
+    ]);
+    const undipped = tanks.filter((tank) => !closingDips.some((dip) => dip.tankId === tank.id));
+    if (undipped.length) throw new ApiError(`Closing stock missing for: ${undipped.map((tank) => tank.label).join(', ')}`, 400);
     const collections = await prisma.fuelCollection.findMany({ where: { shiftId: id } });
     const missing = readings.filter((r) => r.litres > 0 && !collections.some((c) => c.dispenserId === r.dispenserId && !c.voidedAt && c.collectionType === 'initial' && c.totalAmount > 0));
     if (missing.length) throw new ApiError(`Initial collection missing for: ${missing.map((r) => r.dispenser.label).join(', ')}`, 400);
@@ -51,6 +60,8 @@ export const POST = withOrg(async (request, { params }) => {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const periodEnd = new Date();
+      await createShiftTankReconciliations(tx, { shift, readings, tanks, openingDips, closingDips, branch, actorId: session.user.id, periodEnd });
       const closedShift = await tx.shift.update({
         where: { id },
         data: { countedCash, countedFloat, expectedCash, difference, status: 'closed', closedAt: new Date(), note: note || null },
@@ -66,7 +77,7 @@ export const POST = withOrg(async (request, { params }) => {
       }
 
       return closedShift;
-    }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
+    }, { timeout: 30000 }); // closing all tank products can take several Neon round trips
 
     return NextResponse.json({ success: true, data: { shift: updated, salesTotal, outstanding, flagged: outsideTolerance } });
   } catch (e) {

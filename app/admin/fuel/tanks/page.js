@@ -179,11 +179,12 @@ function TanksTab({ branchId }) {
                   {tank.label} <span className="text-xs text-gray-400 font-normal">— {tank.product.name}, {tank.capacity.toLocaleString()} L capacity</span>
                 </p>
                 <p className="text-xs text-gray-500">
-                  {tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'} · <span className="font-medium text-gray-700">{tank.onHand.toLocaleString()} L on hand (book)</span>
+                  {tank.dispensers.length} dispenser{tank.dispensers.length === 1 ? '' : 's'} · <span className="font-medium text-gray-700">{tank.onHand.toLocaleString()} L product ledger (all {tank.product.name} tanks)</span>
                 </p>
+                {tank.lastPhysicalDip && <p className="text-xs text-gray-500">This tank last measured: {tank.lastPhysicalDip.measured.toLocaleString()} L on {formatDate(tank.lastPhysicalDip.createdAt)}</p>}
                 {tank.lastReconciliation && (
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Last dip {formatDate(tank.lastReconciliation.periodEnd)}: {tank.lastReconciliation.measured.toLocaleString()} L
+                    Product reconciliation {formatDate(tank.lastReconciliation.periodEnd)}: {tank.lastReconciliation.measured.toLocaleString()} L combined
                     {tank.lastReconciliation.status === 'exception' && <span className="text-amber-700 font-medium"> — variance flagged</span>}
                   </p>
                 )}

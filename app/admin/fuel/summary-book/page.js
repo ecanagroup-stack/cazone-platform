@@ -250,7 +250,7 @@ function DayDetail({ branchId, date, onBack }) {
 
   if (!data) return <Loader />;
 
-  const { shifts, deliveries, reconciliations } = data;
+  const { shifts, deliveries, reconciliations, tankDips = [] } = data;
 
   return (
     <div>
@@ -316,7 +316,8 @@ function DayDetail({ branchId, date, onBack }) {
                   <table className="w-full text-sm">
                     <thead className={theadCls}>
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">Pump</th>
+                        <th className="px-4 py-2 text-left font-medium">Pump / Attendant</th>
+                        <th className="px-4 py-2 text-left font-medium">Handover</th>
                         <th className="px-4 py-2 text-right font-medium">Opening</th>
                         <th className="px-4 py-2 text-right font-medium">Closing</th>
                         <th className="px-4 py-2 text-right font-medium">RTT</th>
@@ -350,6 +351,12 @@ function DayDetail({ branchId, date, onBack }) {
 
               <Card className="overflow-hidden">
                 <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">Tank Dips</h3></div>
+                {tankDips.length > 0 && <div className="p-4 border-b">
+                  <h4 className="font-medium text-sm mb-2">Physical tanks</h4>
+                  <div className="grid sm:grid-cols-2 gap-2 text-sm">{tankDips.map((dip) => <p key={dip.id}>
+                    {dip.tank.label} · {dip.tank.product.name} · {dip.period}: {dip.measured.toLocaleString()} L
+                  </p>)}</div>
+                </div>}
                 <div className={tableScrollCls}>
                   <table className="w-full text-sm">
                     <thead className={theadCls}>
@@ -432,15 +439,15 @@ function DayDetail({ branchId, date, onBack }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {shifts.flatMap((s) => s.readings.filter((r) => r.cashCollected != null)).length === 0 && <EmptyRow colSpan={4} text="No collections" />}
-                      {shifts.flatMap((s) => s.readings.filter((r) => r.cashCollected != null)).map((r) => {
-                        const pos = r.posPayments.reduce((sum, p) => sum + p.amount, 0);
+                      {shifts.flatMap((s) => s.collections).length === 0 && <EmptyRow colSpan={5} text="No collections" />}
+                      {shifts.flatMap((s) => s.collections).map((collection) => {
                         return (
-                          <tr key={r.id}>
-                            <td className="px-4 py-2 font-medium">{r.dispenser.label}</td>
-                            <td className="px-4 py-2 text-right">{formatMoney(r.cashCollected / 100)}</td>
-                            <td className="px-4 py-2 text-right">{formatMoney(pos / 100)}</td>
-                            <td className="px-4 py-2 text-right font-medium">{formatMoney((r.cashCollected + pos) / 100)}</td>
+                          <tr key={collection.id} className={collection.voidedAt ? 'text-gray-400 line-through' : ''}>
+                            <td className="px-4 py-2 font-medium">{collection.dispenserLabel} / {collection.attendantName}</td>
+                            <td className="px-4 py-2">{collection.collectionType}{collection.voidedAt ? ' (voided)' : ''}</td>
+                            <td className="px-4 py-2 text-right">{formatMoney(collection.cashAmount / 100)}</td>
+                            <td className="px-4 py-2 text-right">{formatMoney(collection.posAmount / 100)}</td>
+                            <td className="px-4 py-2 text-right font-medium">{formatMoney(collection.totalAmount / 100)}</td>
                           </tr>
                         );
                       })}

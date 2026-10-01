@@ -54,7 +54,7 @@ export default function BackfillPage() {
   const [deliveryForm, setDeliveryForm] = useState({ productId: '', quantity: '', costPerUnit: '', supplierName: '' });
   const [deliveriesDone, setDeliveriesDone] = useState([]);
 
-  const [dipForm, setDipForm] = useState({ productId: '', measured: '' });
+  const [dipForm, setDipForm] = useState({ tankId: '', measured: '' });
   const [dipsDone, setDipsDone] = useState([]);
 
   const [paymentForm, setPaymentForm] = useState({ dispenserId: '', cashCollected: '' });
@@ -66,7 +66,7 @@ export default function BackfillPage() {
   useEffect(() => {
     if (!branchId) { setReference(null); return; }
     fetch(`/api/admin/fuel/shift?branchId=${branchId}`).then((r) => r.json()).then((d) => {
-      if (d.success) setReference({ dispensers: d.data.dispensers || [], attendants: d.data.attendants || [], products: d.data.products || [] });
+      if (d.success) setReference({ dispensers: d.data.dispensers || [], attendants: d.data.attendants || [], products: d.data.products || [], tanks: d.data.tanks || [] });
     });
   }, [branchId]);
 
@@ -130,8 +130,8 @@ export default function BackfillPage() {
 
   const handleDip = async (e) => {
     e.preventDefault();
-    const data = await submitStep({ type: 'dip', shiftId: activeShift.id, productId: dipForm.productId, measured: dipForm.measured });
-    if (data) { toast.success('Dip added'); setDipsDone((d) => [...d, { ...dipForm }]); setDipForm({ productId: '', measured: '' }); }
+    const data = await submitStep({ type: 'dip', shiftId: activeShift.id, tankId: dipForm.tankId, measured: dipForm.measured });
+    if (data) { toast.success('Dip added'); setDipsDone((d) => [...d, { ...dipForm }]); setDipForm({ tankId: '', measured: '' }); }
   };
 
   const handlePayment = async (e) => {
@@ -311,10 +311,10 @@ export default function BackfillPage() {
         <Card className="p-5 max-w-lg">
           <p className="text-sm text-gray-500 mb-4">{dipsDone.length} dip(s) added for this shift. Optional — skip if none.</p>
           <form onSubmit={handleDip} className="space-y-4">
-            <Field label="Product" required>
-              <select value={dipForm.productId} onChange={(e) => setDipForm({ ...dipForm, productId: e.target.value })} className={inputCls} required>
+            <Field label="Tank" required>
+              <select value={dipForm.tankId} onChange={(e) => setDipForm({ ...dipForm, tankId: e.target.value })} className={inputCls} required>
                 <option value="">Select...</option>
-                {reference.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {(reference.tanks || []).map((tank) => <option key={tank.id} value={tank.id}>{tank.label} — {tank.product?.name}</option>)}
               </select>
             </Field>
             <Field label="Measured (litres)" required><NumberInput value={dipForm.measured} onChange={(e) => setDipForm({ ...dipForm, measured: e.target.value })} required /></Field>

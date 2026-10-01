@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { operatingDateAt, summarizePumpCollection, validateCollectionInput } from '../lib/fuelCollections.mjs';
+import { operatingDateAt, overdueShiftBlockers, summarizePumpCollection, summarizeTankProduct, validateCollectionInput } from '../lib/fuelCollections.mjs';
 
 test('each selling pump keeps its own shortfall despite another pump overpaying', () => {
   const pumpA = summarizePumpCollection(10000, [{ cashAmount: 3000, posAmount: 2000 }]);
@@ -38,4 +38,22 @@ test('zero and malformed handovers cannot satisfy an initial collection', () => 
   assert.throws(() => validateCollectionInput(0, [{ terminalId: 't1', amount: 12.5 }]), /kobo/);
   assert.deepEqual(validateCollectionInput(100, [{ terminalId: 't1', amount: 200 }]),
     { cashAmount: 100, posAmount: 200, totalAmount: 300 });
+});
+
+test('the noon job leaves a shift open until every physical tank and selling pump is complete', () => {
+  const readings = [{ id: 'r1', closing: 50, reviewStatus: 'approved', litres: 20 }];
+  const tanks = [{ id: 't1' }, { id: 't2' }];
+  const collections = [{ meterReadingId: 'r1', collectionType: 'initial', totalAmount: 1000 }];
+  assert.deepEqual(overdueShiftBlockers(readings, tanks, [{ tankId: 't1' }], collections), ['closing tank stock missing']);
+  assert.deepEqual(overdueShiftBlockers(readings, tanks, [{ tankId: 't1' }, { tankId: 't2' }], collections), []);
+  assert.match(overdueShiftBlockers(readings, tanks, [{ tankId: 't1' }, { tankId: 't2' }], [])[0], /collection/);
+});
+
+test('two tanks of one product reconcile against their combined opening and closing dips', () => {
+  const tanks = [{ id: 't1', productId: 'pms' }, { id: 't2', productId: 'pms' }];
+  const opening = [{ tankId: 't1', measured: 1000 }, { tankId: 't2', measured: 500 }];
+  const closing = [{ tankId: 't1', measured: 900 }, { tankId: 't2', measured: 450 }];
+  const readings = [{ dispenser: { tank: { productId: 'pms' } }, opening: 100, closing: 260, rtt: 10 }];
+  assert.deepEqual(summarizeTankProduct('pms', tanks, opening, closing, readings, [], 0),
+    { opening: 1500, receipts: 0, sales: 150, book: 1350, measured: 1350 });
 });

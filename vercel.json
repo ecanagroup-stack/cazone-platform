@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/auto-close-fuel-shifts", "schedule": "0 11 * * *" }
+  ]
+}
