@@ -17,7 +17,7 @@ export default function FuelCollectionsPage() {
   const branchId = searchParams.get('branch') || '';
   const { data: session } = useSession();
   const canCollect = ['cashier', 'manager', 'owner'].includes(session?.user?.role);
-  const [date, setDate] = useState(todayInLagos);
+  const [date, setDate] = useState('');
   const [data, setData] = useState(null);
   const [target, setTarget] = useState(null);
   const [cash, setCash] = useState('');
@@ -27,13 +27,19 @@ export default function FuelCollectionsPage() {
   const [deposit, setDeposit] = useState({ shiftId: '', amount: '', bankName: '', accountNumber: '' });
   const [voiding, setVoiding] = useState(null);
   const [voidReason, setVoidReason] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => { setDate(''); setData(null); }, [branchId]);
 
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
-    const response = await fetch(`/api/admin/fuel/collections?branchId=${encodeURIComponent(branchId)}&date=${date}`);
-    const result = await response.json();
-    if (result.success) setData(result.data);
-    else toast.error(result.error || 'Could not load collections');
+    try {
+      setError('');
+      const response = await fetch(`/api/admin/fuel/collections?branchId=${encodeURIComponent(branchId)}${date ? `&date=${date}` : ''}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not load collections');
+      setData(result.data);
+    } catch (e) { setError(e.message); }
   }, [branchId, date]);
   useEffect(() => { load(); }, [load]);
 
@@ -81,7 +87,8 @@ export default function FuelCollectionsPage() {
   if (!branchId) return <Card><EmptyState title="Choose a fuel branch" subtitle="Select a branch in the switcher to see its pump collections." /></Card>;
   return <div className="space-y-5">
     <PageHeader title="Pump Collections" subtitle="Supervisor sales, cashier handovers, and outstanding balances by pump" />
-    <Card className="p-4"><Field label="Operating date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field></Card>
+    <Card className="p-4"><Field label="Operating date"><input type="date" value={date || data?.date || todayInLagos()} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field></Card>
+    {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {!data ? <Loader /> : <>
       {data.byProduct.length > 0 && <Card className="p-4">
         <h2 className="font-semibold mb-2">Supervisor sales</h2>
@@ -89,6 +96,15 @@ export default function FuelCollectionsPage() {
           <p className="text-sm text-gray-500">{p.product}</p>
           <p className="font-medium">{p.litres.toLocaleString()} L · ₦{(p.expectedAmount / 100).toLocaleString()}</p>
         </div>)}</div>
+      </Card>}
+      {data.rows.some((row) => row.collections.length) && <Card className="p-4">
+        <h2 className="font-semibold mb-2">Recent collections · {data.date}</h2>
+        <div className="divide-y text-sm">{data.rows.flatMap((row) => row.collections.map((collection) => ({ ...collection, dispenserLabel: row.dispenserLabel, attendantName: row.attendantName })))
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5).map((collection) =>
+            <div key={collection.id} className={`flex justify-between gap-3 py-2 ${collection.voidedAt ? 'text-gray-400 line-through' : ''}`}>
+              <span>{collection.dispenserLabel} · {collection.attendantName || 'Unassigned'} · Cash ₦{(collection.cashAmount / 100).toLocaleString()} · POS ₦{(collection.posAmount / 100).toLocaleString()}</span>
+              <strong>₦{(collection.totalAmount / 100).toLocaleString()}</strong>
+            </div>)}</div>
       </Card>}
       <Card className="overflow-x-auto"><table className="w-full text-sm">
         <thead><tr className="border-b text-left"><th className="p-3">Pump / attendant</th><th className="p-3">Sale</th><th className="p-3">Collected</th><th className="p-3">Outstanding</th><th className="p-3">Handover history</th><th className="p-3" /></tr></thead>
@@ -105,7 +121,7 @@ export default function FuelCollectionsPage() {
         </tr>)}</tbody>
       </table>{data.rows.length === 0 && <p className="p-4 text-gray-500">No shifts for this operating date.</p>}</Card>
       {canCollect && data.shifts.length > 0 && <Card className="p-4">
-        <h2 className="font-semibold mb-1">Bank deposit for {date}</h2>
+        <h2 className="font-semibold mb-1">Bank deposit for {data.date}</h2>
         <p className="text-sm text-gray-500 mb-4">Link a later deposit to its original operating shift. It will be reviewed by the owner.</p>
         <form onSubmit={saveDeposit} className="grid sm:grid-cols-5 gap-3 items-end">
           <Field label="Shift"><select required className={inputCls} value={deposit.shiftId} onChange={(e) => setDeposit({ ...deposit, shiftId: e.target.value })}>

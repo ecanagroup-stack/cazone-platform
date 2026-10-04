@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
+import { exactMeterSale } from '@/lib/fuelCollections.mjs';
 
 // Fix a mistake in an already-approved pump reading — petrol-station-app's Reports day-detail
 // correction, generalized from the one existing precedent in this codebase
@@ -49,8 +50,6 @@ export const POST = withOrg(async (request, { params }) => {
     const newClosing = body.closing !== undefined ? Number(body.closing) : reading.closing;
     const newRtt = body.rtt !== undefined ? Number(body.rtt) : reading.rtt;
     if (!Number.isFinite(newClosing) || newClosing < reading.opening) throw new ApiError('Closing reading cannot be less than the opening reading', 400);
-    const newLitres = newClosing - reading.opening - newRtt - reading.creditLitres;
-    if (newLitres < 0) throw new ApiError('Recorded credit fills exceed the total litres dispensed', 400);
 
     if (!reading.orderId) throw new ApiError('This reading has no linked sale to correct', 400);
     const order = await prisma.order.findUnique({ where: { id: reading.orderId }, include: { lines: true } });
@@ -59,8 +58,13 @@ export const POST = withOrg(async (request, { params }) => {
     // The price actually charged at approval time, never today's price — an old sale reprices
     // identically forever (core-algorithms skill §1), a correction only changes the quantity.
     const unitPrice = line.unitPrice;
-    const newExpectedAmount = Math.round(newLitres * unitPrice);
-    const litresDelta = newLitres - reading.litres;
+    let newLitres, newExpectedAmount;
+    try { ({ litres: newLitres, expectedAmount: newExpectedAmount } = exactMeterSale({
+      opening: reading.opening, closing: newClosing, rtt: newRtt,
+      creditLitres: reading.creditLitres, priceKobo: unitPrice,
+    })); }
+    catch (error) { throw new ApiError(error.message, 400); }
+    const litresDelta = Math.round((newLitres - reading.litres) * 1000) / 1000;
 
     const result = await prisma.$transaction(async (tx) => {
       if (litresDelta !== 0) {

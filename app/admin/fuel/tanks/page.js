@@ -64,6 +64,8 @@ function TanksTab({ branchId }) {
   const [addDispenserFor, setAddDispenserFor] = useState(null); // tank object
   const [dispenserForm, setDispenserForm] = useState(blankDispenser);
   const [submitting, setSubmitting] = useState(false);
+  const [statusChange, setStatusChange] = useState(null);
+  const [statusReason, setStatusReason] = useState('');
 
   const [dipFor, setDipFor] = useState(null); // tank object
   const [measured, setMeasured] = useState('');
@@ -113,20 +115,20 @@ function TanksTab({ branchId }) {
     }
   };
 
-  const toggleTank = async (tank) => {
-    const r = await fetch(`/api/admin/fuel/tanks/${tank.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !tank.isActive }),
-    });
-    const d = await r.json();
-    if (d.success) load(); else toast.error(d.error);
-  };
-
-  const toggleDispenser = async (dispenser) => {
-    const r = await fetch(`/api/admin/fuel/dispensers/${dispenser.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !dispenser.isActive }),
-    });
-    const d = await r.json();
-    if (d.success) load(); else toast.error(d.error);
+  const changeStatus = async (event) => {
+    event.preventDefault();
+    if (statusReason.trim().length < 5) return toast.error('Provide a reason (at least 5 characters)');
+    setSubmitting(true);
+    try {
+      const { kind, item } = statusChange;
+      const r = await fetch(`/api/admin/fuel/${kind}/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !item.isActive, editReason: statusReason.trim() }),
+      });
+      const d = await r.json();
+      if (d.success) { setStatusChange(null); setStatusReason(''); load(); }
+      else toast.error(d.error);
+    } finally { setSubmitting(false); }
   };
 
   const handleRecordDip = async (e) => {
@@ -193,7 +195,7 @@ function TanksTab({ branchId }) {
                 <StatusPill status={tank.isActive ? 'Active' : 'Inactive'} color={tank.isActive ? 'green' : 'gray'} />
                 <button onClick={() => { setDipFor(tank); setMeasured(''); setDipResult(null); }} className={tableActionCls}>Record Dip</button>
                 <button onClick={() => openHistory(tank)} className={tableActionCls}>Closing Stock History</button>
-                <button onClick={() => toggleTank(tank)} className={tableActionCls}>{tank.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                <button onClick={() => { setStatusChange({ kind: 'tanks', item: tank }); setStatusReason(''); }} className={tableActionCls}>{tank.isActive ? 'Deactivate' : 'Reactivate'}</button>
                 <button onClick={() => { setAddDispenserFor(tank); setDispenserForm(blankDispenser); }} className={tableActionCls}>+ Add Dispenser</button>
               </div>
             </div>
@@ -204,7 +206,7 @@ function TanksTab({ branchId }) {
                   <p className="text-sm font-medium">{d.label}</p>
                   <div className="flex items-center gap-3">
                     <StatusPill status={d.isActive ? 'Active' : 'Inactive'} color={d.isActive ? 'green' : 'gray'} />
-                    <button onClick={() => toggleDispenser(d)} className={tableActionCls}>{d.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                    <button onClick={() => { setStatusChange({ kind: 'dispensers', item: d }); setStatusReason(''); }} className={tableActionCls}>{d.isActive ? 'Deactivate' : 'Reactivate'}</button>
                   </div>
                 </div>
               ))}
@@ -212,6 +214,15 @@ function TanksTab({ branchId }) {
           </Card>
         ))}
       </div>
+
+      <Modal open={!!statusChange} onClose={() => setStatusChange(null)} title={`${statusChange?.item?.isActive ? 'Deactivate' : 'Reactivate'} ${statusChange?.item?.label || ''}`}>
+        <form onSubmit={changeStatus} className="space-y-4">
+          <Field label="Reason for change" required>
+            <input value={statusReason} onChange={(e) => setStatusReason(e.target.value)} className={inputCls} required minLength={5} autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setStatusChange(null)} submitting={submitting} submitLabel="Save Change" />
+        </form>
+      </Modal>
 
       <Modal open={showTankModal} onClose={() => setShowTankModal(false)} title="Add Tank">
         <form onSubmit={handleAddTank} className="space-y-4">
@@ -558,6 +569,7 @@ const DEFAULT_TOLERANCE_PCT = 0.5;
 function ConfigTab({ branchId }) {
   const [branch, setBranch] = useState(null);
   const [tolerance, setTolerance] = useState('');
+  const [editReason, setEditReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -571,14 +583,17 @@ function ConfigTab({ branchId }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (Number(tolerance) !== Number(branch.config?.reconciliationTolerancePct ?? DEFAULT_TOLERANCE_PCT) && editReason.trim().length < 5) {
+      toast.error('Provide a reason for the change (at least 5 characters)'); return;
+    }
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/branches/${branchId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: { reconciliationTolerancePct: Number(tolerance) } }),
+        body: JSON.stringify({ config: { reconciliationTolerancePct: Number(tolerance) }, editReason: editReason.trim() }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Station config saved'); load(); }
+      if (d.success) { toast.success('Station config saved'); setEditReason(''); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -596,6 +611,9 @@ function ConfigTab({ branchId }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Tolerance (%)" required>
           <NumberInput value={tolerance} onChange={(e) => setTolerance(e.target.value)} required />
+        </Field>
+        <Field label="Reason for change" required>
+          <input value={editReason} onChange={(e) => setEditReason(e.target.value)} className={inputCls} placeholder="Explain the tolerance change" />
         </Field>
         <button type="submit" disabled={submitting} className={btnPrimaryCls}>{submitting ? 'Saving...' : 'Save'}</button>
       </form>

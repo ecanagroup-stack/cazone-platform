@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { operatingDateAt, overdueShiftBlockers, summarizePumpCollection, summarizeTankProduct, validateCollectionInput } from '../lib/fuelCollections.mjs';
+import { operatingDateAt, displayedFuelOperatingDate, exactMeterSale, overdueShiftBlockers, summarizePumpCollection, summarizeTankProduct, validateCollectionInput } from '../lib/fuelCollections.mjs';
+
+test('meter sale uses millilitres and rounds money once in kobo', () => {
+  assert.deepEqual(exactMeterSale({ opening: 12.1, closing: 13.105, priceKobo: 100000 }),
+    { litres: 1.005, expectedAmount: 100500 });
+  assert.deepEqual(exactMeterSale({ opening: 0, closing: 0.001, priceKobo: 5 }),
+    { litres: 0.001, expectedAmount: 0 });
+  assert.throws(() => exactMeterSale({ opening: 10, closing: 9, priceKobo: 100 }), /exceed/);
+});
+
+test('collections follow an overnight open shift and a shift closed today', () => {
+  const now = new Date('2026-10-04T10:00:00.000Z');
+  const overnight = { status: 'open', operatingDate: '2026-10-03', openedAt: '2026-10-03T19:00:00.000Z' };
+  assert.equal(displayedFuelOperatingDate([overnight], now), '2026-10-03');
+  assert.equal(displayedFuelOperatingDate([{ ...overnight, status: 'closed', closedAt: '2026-10-04T07:00:00.000Z' }], now), '2026-10-03');
+  assert.equal(displayedFuelOperatingDate([], now), '2026-10-04');
+});
 
 test('each selling pump keeps its own shortfall despite another pump overpaying', () => {
   const pumpA = summarizePumpCollection(10000, [{ cashAmount: 3000, posAmount: 2000 }]);

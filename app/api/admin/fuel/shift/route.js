@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { getOnHandByProduct } from '@/lib/stock';
-import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
+import { summarizePumpCollection, displayedFuelOperatingDate } from '@/lib/fuelCollections.mjs';
 
 // Returns either the branch's open Shift (fully populated for the pump-grid view) or, if none is
 // open, the setup data (active dispensers/attendants/current prices) the Begin Shift form needs.
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    const access = await getAccessibleBranchIds(session);
+    if (!canAccessBranch(access, branchId)) throw new ApiError('Access denied to this branch', 403);
 
     const openShift = await prisma.shift.findFirst({
       where: { branchId, status: 'open' },
@@ -73,9 +77,20 @@ export const GET = withOrg(async (request) => {
     // rather than only discovering it once a sale fails.
     const onHandByProduct = await getOnHandByProduct(branchId, productIds);
 
+    const recent = await prisma.shift.findFirst({ where: { branchId }, orderBy: { openedAt: 'desc' },
+      select: { operatingDate: true, openedAt: true, closedAt: true, status: true } });
+    const displayDate = displayedFuelOperatingDate(recent ? [recent] : []);
+    const dayShifts = await prisma.shift.findMany({ where: { branchId, operatingDate: displayDate }, select: { id: true } });
+    const recentSales = dayShifts.length ? await prisma.meterReading.findMany({
+      where: { shiftId: { in: dayShifts.map((shift) => shift.id) }, closing: { not: null },
+        ...(session.user.role === 'supervisor' ? { recordedBy: session.user.id } : {}) },
+      include: { dispenser: { include: { tank: { include: { product: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    }) : [];
+
     return NextResponse.json({
       success: true,
-      data: { shift: null, dispensers, attendants, tanks, products, priceByProduct, onHandByProduct },
+      data: { shift: null, dispensers, attendants, tanks, products, priceByProduct, onHandByProduct, displayDate, recentSales },
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

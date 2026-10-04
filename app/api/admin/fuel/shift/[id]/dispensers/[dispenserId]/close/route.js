@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { exactMeterSale } from '@/lib/fuelCollections.mjs';
 
 // D5 of the fuel port: this used to close the loop by itself (create the Order immediately). Now
 // it's just the supervisor's half — records closing/rtt, computes litres/expectedAmount at today's
@@ -33,8 +34,6 @@ export const POST = withOrg(async (request, { params }) => {
 
     // Litres already sold to named credit customers this shift (see credit-fill route) are excluded
     // from this aggregate cash sale — they were already invoiced individually.
-    const litres = closing - reading.opening - rtt - reading.creditLitres;
-    if (litres < 0) throw new ApiError('Recorded credit fills exceed the total litres dispensed — check the credit fills for this pump', 400);
 
     const dispenser = await prisma.dispenser.findUnique({ where: { id: dispenserId }, include: { tank: true } });
     if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);
@@ -43,7 +42,10 @@ export const POST = withOrg(async (request, { params }) => {
     const priceRule = await prisma.priceRule.findFirst({ where: { productId, validTo: null }, orderBy: { validFrom: 'desc' } });
     if (!priceRule) throw new ApiError('No price is set for this product — set one from Begin Shift', 400);
 
-    const expectedAmount = Math.round(litres * priceRule.price);
+    let litres, expectedAmount;
+    try { ({ litres, expectedAmount } = exactMeterSale({ opening: reading.opening, closing, rtt,
+      creditLitres: reading.creditLitres, priceKobo: priceRule.price })); }
+    catch (error) { throw new ApiError(error.message, 400); }
 
     const updated = await prisma.meterReading.update({
       where: { id: reading.id },

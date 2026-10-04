@@ -69,7 +69,8 @@ export const GET = withOrg(async (request) => {
         const salesShortage = agg.salesShortage;
 
         rows.push({
-          date: `${shift.operatingDate}T12:00:00.000Z`, shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
+          date: `${shift.operatingDate}T12:00:00.000Z`, openedAt: shift.openedAt,
+          shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
           product: agg.product.name, productId,
           openingStock: opening, stockIn: receipts, book, sales: agg.sales, price,
           totalAmount: agg.amount, collected: agg.collected,
@@ -80,7 +81,7 @@ export const GET = withOrg(async (request) => {
       }
     }
 
-    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    rows.sort((a, b) => new Date(b.date) - new Date(a.date) || new Date(b.openedAt) - new Date(a.openedAt));
     return NextResponse.json({ success: true, data: rows });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

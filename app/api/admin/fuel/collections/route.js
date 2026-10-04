@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
-import { summarizePumpCollection, operatingDateAt } from '@/lib/fuelCollections.mjs';
+import { summarizePumpCollection, displayedFuelOperatingDate } from '@/lib/fuelCollections.mjs';
 import { ApiError } from '@/lib/apiError';
 
 // Daily supervisor sales and each pump's collection history, including balances on closed shifts.
@@ -11,10 +11,20 @@ export const GET = withOrg(async (request) => {
   try {
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
-    const date = url.searchParams.get('date') || operatingDateAt();
-    if (!branchId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError('Branch and YYYY-MM-DD date are required', 400);
+    const requestedDate = url.searchParams.get('date');
+    if (!branchId || (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate))) throw new ApiError('Branch and valid YYYY-MM-DD date are required', 400);
     const access = await getAccessibleBranchIds(session);
     if (!canAccessBranch(access, branchId)) throw new ApiError('Access denied to this branch', 403);
+    let date = requestedDate;
+    if (!date) {
+      const [open, recent] = await Promise.all([
+        prisma.shift.findFirst({ where: { branchId, status: 'open' }, orderBy: { openedAt: 'desc' },
+          select: { operatingDate: true, openedAt: true, closedAt: true, status: true } }),
+        prisma.shift.findFirst({ where: { branchId }, orderBy: { openedAt: 'desc' },
+          select: { operatingDate: true, openedAt: true, closedAt: true, status: true } }),
+      ]);
+      date = displayedFuelOperatingDate([open, recent].filter(Boolean));
+    }
     const shifts = await prisma.shift.findMany({ where: { branchId, operatingDate: date }, orderBy: { openedAt: 'asc' } });
     if (!shifts.length) return NextResponse.json({ success: true, data: { date, rows: [], byProduct: [], shifts: [], deposits: [] } });
     const shiftIds = shifts.map((shift) => shift.id);

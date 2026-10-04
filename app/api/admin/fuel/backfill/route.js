@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
-import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput } from '@/lib/fuelCollections.mjs';
+import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput, exactMeterSale } from '@/lib/fuelCollections.mjs';
 import { evaluateVariance } from '@/lib/reconciliation';
 
 // Ported from petrol-station-app's Backfill wizard — entering historical data for dates before an org
@@ -122,16 +122,20 @@ async function handleReading(session, body) {
   if (!reading) throw new ApiError('No opening reading found — add this pump in the Shift step first', 404);
   if (closing < reading.opening) throw new ApiError('Closing reading cannot be less than the opening reading', 400);
 
-  const litres = closing - reading.opening - rtt;
-  if (litres < 0) throw new ApiError('RTT exceeds litres dispensed', 400);
-  const expectedAmount = Math.round(litres * price);
+  let litres, expectedAmount;
+  try { ({ litres, expectedAmount } = exactMeterSale({ opening: reading.opening, closing, rtt, priceKobo: price })); }
+  catch (error) { throw new ApiError(error.message, 400); }
 
   const dispenser = await prisma.dispenser.findUnique({ where: { id: dispenserId }, include: { tank: true } });
   if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);
   const productId = dispenser.tank.productId;
 
   if (reading.orderId) {
-    // Re-submitting the same reading (idempotent) — nothing new to create.
+    // Reuse only the exact original submission. A different value needs the
+    // audited correction path, not a silent successful replay.
+    if (reading.closing !== closing || reading.rtt !== rtt || reading.expectedAmount !== expectedAmount) {
+      throw new ApiError('This historical pump already has a different saved reading; use its correction action', 409);
+    }
     return NextResponse.json({ success: true, data: { litres, expectedAmount, reading }, reused: true });
   }
 

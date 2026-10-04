@@ -326,6 +326,10 @@ export default function ShiftPage() {
     const allTanksDipped = tanks.every((t) => t.dippedThisShift);
     const canEndShift = canRunShift && allApproved && allTanksDipped;
     const approvingPump = data.pumps.find((p) => p.dispenserId === approveFor);
+    const mySales = canSubmit ? data.pumps.filter((p) => p.reading?.closing != null &&
+      p.reading.recordedBy === authSession?.user?.id) : [];
+    const myLitres = mySales.reduce((sum, p) => sum + (p.reading.litres || 0), 0);
+    const myExpected = mySales.reduce((sum, p) => sum + (p.reading.expectedAmount || 0), 0);
 
     // Day Summary (ecana's End Day summary) — sales by product from the same pump readings already
     // on screen, no separate report call needed.
@@ -355,6 +359,21 @@ export default function ShiftPage() {
             </div>
           }
         />
+
+        {canSubmit && <Card className="p-4 mb-4">
+          <h2 className="font-semibold text-sm mb-3">My recorded sales · {data.shift.operatingDate}</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
+            <div><p className="text-gray-500">Litres recorded</p><strong>{myLitres.toLocaleString()} L</strong></div>
+            <div><p className="text-gray-500">Expected sales</p><strong>₦{(myExpected / 100).toLocaleString()}</strong></div>
+            <div><p className="text-gray-500">Sales entries</p><strong>{mySales.length}</strong></div>
+            <div><p className="text-gray-500">Pumps recorded</p><strong>{new Set(mySales.map((p) => p.dispenserId)).size}</strong></div>
+          </div>
+          {mySales.length > 0 && <div className="divide-y text-sm">{mySales.slice(0, 5).map((p) =>
+            <div key={p.dispenserId} className="flex justify-between gap-3 py-2">
+              <span>{p.dispenserLabel} · {p.productName} · {(p.reading.litres || 0).toLocaleString()} L</span>
+              <strong>₦{((p.reading.expectedAmount || 0) / 100).toLocaleString()}</strong>
+            </div>)}</div>}
+        </Card>}
 
         {allApproved && tanks.length > 0 && (
           <Card className="p-4 mb-4">
@@ -699,10 +718,23 @@ export default function ShiftPage() {
 
   // --- No shift open: Begin Shift form ---
   const productIds = [...new Set(data.dispensers.map((d) => d.tank?.productId).filter(Boolean))];
+  const recentSales = data.recentSales || [];
+  const recentLitres = recentSales.reduce((sum, reading) => sum + (reading.litres || 0), 0);
+  const recentExpected = recentSales.reduce((sum, reading) => sum + (reading.expectedAmount || 0), 0);
 
   return (
     <div>
       <PageHeader title="Pumps" subtitle="No shift is open — begin one to start recording sales" />
+
+      {recentSales.length > 0 && <Card className="p-5 mb-5">
+        <h2 className="font-semibold text-sm mb-1">Sales recorded for {data.displayDate}</h2>
+        <p className="text-sm text-gray-600 mb-3">{recentLitres.toLocaleString()} L · ₦{(recentExpected / 100).toLocaleString()} expected · {recentSales.length} pump entries</p>
+        <div className="divide-y text-sm">{recentSales.slice(0, 5).map((reading) =>
+          <div key={reading.id} className="flex justify-between gap-3 py-2">
+            <span>{reading.dispenser.label} · {reading.dispenser.tank?.product?.name || 'Fuel'} · {(reading.litres || 0).toLocaleString()} L</span>
+            <strong>₦{((reading.expectedAmount || 0) / 100).toLocaleString()}</strong>
+          </div>)}</div>
+      </Card>}
 
       {data.dispensers.length === 0 ? (
         <Card><EmptyState title="No dispensers set up yet" subtitle="Add a tank and dispenser from Manage → Tanks & Dispensers first." /></Card>

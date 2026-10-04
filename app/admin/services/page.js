@@ -23,6 +23,8 @@ export default function ServicesPage() {
   const [addBranchFor, setAddBranchFor] = useState(null); // service object
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchNote, setNewBranchNote] = useState('');
+  const [fuelBranchChange, setFuelBranchChange] = useState(null);
+  const [fuelBranchReason, setFuelBranchReason] = useState('');
 
   const load = async () => {
     const [sr, rr] = await Promise.all([
@@ -70,12 +72,12 @@ export default function ServicesPage() {
     }
   };
 
-  const toggleBranch = async (branch) => {
+  const toggleBranch = async (branch, reason = '') => {
     const r = await fetch(`/api/admin/branches/${branch.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !branch.isActive }),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !branch.isActive, editReason: reason }),
     });
     const d = await r.json();
-    if (d.success) load();
+    if (d.success) { setFuelBranchChange(null); setFuelBranchReason(''); load(); }
     else toast.error(d.error);
   };
 
@@ -133,7 +135,7 @@ export default function ServicesPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <StatusPill status={b.isActive ? 'Active' : 'Inactive'} color={b.isActive ? 'green' : 'gray'} />
-                    <button onClick={() => toggleBranch(b)} className={tableActionCls}>
+                    <button onClick={() => s.type === 'fuel_station' ? (setFuelBranchChange(b), setFuelBranchReason('')) : toggleBranch(b)} className={tableActionCls}>
                       {b.isActive ? 'Deactivate' : 'Reactivate'}
                     </button>
                   </div>
@@ -161,6 +163,15 @@ export default function ServicesPage() {
           </div>
         </Card>
       )}
+
+      <Modal open={!!fuelBranchChange} onClose={() => setFuelBranchChange(null)} title={`${fuelBranchChange?.isActive ? 'Deactivate' : 'Reactivate'} ${fuelBranchChange?.name || ''}`}>
+        <form onSubmit={(event) => { event.preventDefault(); toggleBranch(fuelBranchChange, fuelBranchReason.trim()); }} className="space-y-4">
+          <Field label="Reason for change" required>
+            <input className={inputCls} value={fuelBranchReason} onChange={(event) => setFuelBranchReason(event.target.value)} required minLength={5} autoFocus />
+          </Field>
+          <FormButtons onCancel={() => setFuelBranchChange(null)} submitting={false} submitLabel="Save Change" />
+        </form>
+      </Modal>
 
       <Modal open={!!enableModal} onClose={() => setEnableModal(null)} title={`Request ${enableModal?.name || ''}`}>
         <form onSubmit={handleRequestService} className="space-y-4">
