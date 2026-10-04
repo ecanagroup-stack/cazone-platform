@@ -71,8 +71,9 @@ export const GET = withOrg(async (request) => {
 
     const productIds = [...new Set(dispensers.map((d) => d.tank?.productId).filter(Boolean))];
     const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
-    const priceRules = await prisma.priceRule.findMany({ where: { productId: { in: productIds }, validTo: null } });
-    const priceByProduct = Object.fromEntries(priceRules.map((r) => [r.productId, r.price]));
+    const priceRules = await prisma.priceRule.findMany({ where: { productId: { in: productIds }, branchId, validTo: null }, orderBy: { validFrom: 'asc' } });
+    const legacyRules = await prisma.priceRule.findMany({ where: { productId: { in: productIds }, branchId: null, validTo: null }, orderBy: { validFrom: 'asc' } });
+    const priceByProduct = Object.fromEntries([...legacyRules, ...priceRules].map((r) => [r.productId, r.price]));
     // Zero-stock warning (ecana's Begin Day) — lets Begin Shift flag a pump whose tank is already empty
     // rather than only discovering it once a sale fails.
     const onHandByProduct = await getOnHandByProduct(branchId, productIds);

@@ -103,6 +103,7 @@ export default function SummaryBookPage() {
                 { key: 'price', label: 'Price', value: (r) => (r.price / 100).toFixed(2) },
                 { key: 'totalAmount', label: 'Revenue', value: (r) => (r.totalAmount / 100).toFixed(2) },
                 { key: 'shortage', label: 'Shortage', value: (r) => (r.shortage / 100).toFixed(2) },
+                { key: 'unknownCollections', label: 'Unknown Collections' },
               ]}
             />
           </div>
@@ -135,11 +136,11 @@ export default function SummaryBookPage() {
                         <td className="px-4 py-3 text-right">{r.openingStock.toLocaleString()} L</td>
                         <td className="px-4 py-3 text-right">{r.stockIn.toLocaleString()} L</td>
                         <td className="px-4 py-3 text-right">{r.sales.toLocaleString()} L</td>
-                        <td className="px-4 py-3 text-right">{r.closingStock != null ? `${r.closingStock.toLocaleString()} L` : '—'}</td>
+                        <td className="px-4 py-3 text-right">{r.closingStock != null ? `${r.closingStock.toLocaleString()} L${r.closingStockSource === 'recorded_dips' ? ' (dip)' : ''}` : '—'}</td>
                         <td className="px-4 py-3 text-right">{formatMoney(r.price / 100)}</td>
                         <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalAmount / 100)}</td>
                         <td className={`px-4 py-3 text-right ${r.shortage > 0 ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>
-                          {r.shortage > 0 ? formatMoney(r.shortage / 100) : '—'}
+                          {r.shortage > 0 ? formatMoney(r.shortage / 100) : r.unknownCollections > 0 ? 'Unknown collection' : '—'}
                         </td>
                       </tr>
                     );

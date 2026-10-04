@@ -38,16 +38,21 @@ export const GET = withOrg(async (request) => {
       prisma.cashDeposit.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'desc' } }),
     ]);
     const shiftById = Object.fromEntries(shifts.map((shift) => [shift.id, shift]));
+    const historicalProductIds = [...new Set(readings.map((reading) => reading.productIdAtShift).filter(Boolean))];
+    const historicalProducts = await prisma.product.findMany({ where: { id: { in: historicalProductIds } }, select: { id: true, name: true } });
+    const historicalProductById = Object.fromEntries(historicalProducts.map((product) => [product.id, product]));
     const rows = readings.map((reading) => {
       const history = collections.filter((collection) => collection.meterReadingId === reading.id);
       const assignment = assignments.find((a) => a.shiftId === reading.shiftId && a.dispenserId === reading.dispenserId);
       return {
         shiftId: reading.shiftId, shiftStatus: shiftById[reading.shiftId].status,
         shiftLabel: shiftById[reading.shiftId].shiftLabel, dispenserId: reading.dispenserId,
-        dispenserLabel: reading.dispenser.label, productName: reading.dispenser.tank?.product?.name || 'Unknown',
+        dispenserLabel: reading.dispenser.label, productName: historicalProductById[reading.productIdAtShift]?.name || reading.dispenser.tank?.product?.name || 'Unknown',
         attendantName: assignment?.attendant.name || null, readingStatus: reading.reviewStatus,
         litres: reading.closing == null ? null : reading.litres, expectedAmount: reading.expectedAmount,
         ...summarizePumpCollection(reading.expectedAmount, history), collections: history,
+        collectionCoverage: reading.collectionCoverage,
+        ...(reading.collectionCoverage === 'unknown' ? { outstanding: null } : {}),
       };
     });
     const byProduct = Object.values(rows.filter((row) => row.litres != null).reduce((acc, row) => {

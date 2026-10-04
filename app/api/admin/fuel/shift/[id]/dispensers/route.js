@@ -36,7 +36,8 @@ export const POST = withOrg(async (request, { params }) => {
         include: { attendant: true, dispenser: { include: { tank: { include: { product: true } } } } },
       });
       const reading = await tx.meterReading.create({
-        data: { branchId: shift.branchId, dispenserId, shiftId, opening, recordedBy: session.user.id },
+        data: { branchId: shift.branchId, dispenserId, shiftId, opening, recordedBy: session.user.id,
+          tankIdAtShift: assignment.dispenser.tankId, productIdAtShift: assignment.dispenser.tank?.productId },
       });
       return { assignment, reading };
     });

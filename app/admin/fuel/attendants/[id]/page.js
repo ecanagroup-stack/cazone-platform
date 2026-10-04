@@ -117,7 +117,7 @@ export default function AttendantDetailPage() {
         <Card className="p-4">
           <p className="text-xs text-gray-500">Total Shortage</p>
           <p className={`text-2xl font-bold mt-1 ${summary.totalShortage > 0 ? 'text-red-600' : 'text-green-700'}`}>
-            {summary.totalShortage > 0 ? formatMoney(summary.totalShortage / 100) : 'Clean'}
+            {summary.totalShortage > 0 ? formatMoney(summary.totalShortage / 100) : summary.unknownCollections > 0 ? 'Unknown' : 'Clean'}
           </p>
         </Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Longest Clean Streak</p><p className="text-2xl font-bold mt-1">{summary.longestCleanStreak}d</p></Card>
@@ -145,7 +145,7 @@ export default function AttendantDetailPage() {
                   <td className="px-4 py-2 text-right">{formatMoney(row.meterSales / 100)}</td>
                   <td className="px-4 py-2 text-right">{formatMoney(row.collected / 100)}</td>
                   <td className={`px-4 py-2 text-right ${row.shortage > 0 ? 'text-red-600 font-medium' : row.overage > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                    {row.shortage > 0 ? `-${formatMoney(row.shortage / 100)}` : row.overage > 0 ? `+${formatMoney(row.overage / 100)}` : '—'}
+                    {row.shortage > 0 ? `-${formatMoney(row.shortage / 100)}` : row.overage > 0 ? `+${formatMoney(row.overage / 100)}` : row.unknownCollections > 0 ? 'Unknown' : '—'}
                   </td>
                 </tr>
               ))}

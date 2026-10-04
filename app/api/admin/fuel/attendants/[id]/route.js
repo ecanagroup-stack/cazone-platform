@@ -43,15 +43,15 @@ export const GET = withOrg(async (request, { params }) => {
       if (accountableId !== id) continue;
       accountedPumps.add(pumpKey);
       const date = a.shift.operatingDate || a.shift.openedAt.toISOString().slice(0, 10);
-      const row = dayMap.get(date) || { date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0 };
+      const row = dayMap.get(date) || { date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0, unknownCollections: 0 };
       row.pumps.add(a.dispenser.label);
       const reading = readingByKey[`${a.shiftId}|${a.dispenserId}`];
       if (reading && reading.closing != null) {
         const pump = summarizePumpCollection(reading.expectedAmount, pumpCollections);
         row.meterSales += pump.expected;
         row.collected += pump.collected;
-        row.shortage += pump.outstanding;
-        row.overage += pump.overage;
+        if (reading.collectionCoverage === 'unknown') row.unknownCollections += 1;
+        else { row.shortage += pump.outstanding; row.overage += pump.overage; }
       }
       dayMap.set(date, row);
     }
@@ -65,7 +65,7 @@ export const GET = withOrg(async (request, { params }) => {
     let longestCleanStreak = 0;
     let currentStreak = 0;
     for (const row of [...byDay].sort((a, b) => a.date.localeCompare(b.date))) {
-      if (row.shortage === 0) { currentStreak += 1; longestCleanStreak = Math.max(longestCleanStreak, currentStreak); }
+      if (row.shortage === 0 && row.unknownCollections === 0) { currentStreak += 1; longestCleanStreak = Math.max(longestCleanStreak, currentStreak); }
       else currentStreak = 0;
     }
 
@@ -76,9 +76,10 @@ export const GET = withOrg(async (request, { params }) => {
         totalCollected: acc.totalCollected + row.collected,
         totalShortage: acc.totalShortage + row.shortage,
         totalOverage: acc.totalOverage + row.overage,
+        unknownCollections: acc.unknownCollections + row.unknownCollections,
         shortageOccurrences: acc.shortageOccurrences + (row.shortage > 0 ? 1 : 0),
       }),
-      { daysWorked: 0, totalMeterSales: 0, totalCollected: 0, totalShortage: 0, totalOverage: 0, shortageOccurrences: 0 }
+      { daysWorked: 0, totalMeterSales: 0, totalCollected: 0, totalShortage: 0, totalOverage: 0, shortageOccurrences: 0, unknownCollections: 0 }
     );
     summary.longestCleanStreak = longestCleanStreak;
 

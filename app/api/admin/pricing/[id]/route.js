@@ -27,9 +27,9 @@ export const PATCH = withOrg(async (request, { params }) => {
       if (history.status !== 'pending') throw new ApiError('This price change has already been decided', 400);
 
       if (decision === 'approved') {
-        const current = await tx.priceRule.findFirst({ where: { productId: history.productId, validTo: null }, orderBy: { validFrom: 'desc' } });
+        const current = await tx.priceRule.findFirst({ where: { productId: history.productId, branchId: history.branchId, validTo: null }, orderBy: { validFrom: 'desc' } });
         if (current) await tx.priceRule.update({ where: { id: current.id }, data: { validTo: new Date() } });
-        await tx.priceRule.create({ data: { productId: history.productId, price: history.newPrice, createdBy: history.changedBy } });
+        await tx.priceRule.create({ data: { productId: history.productId, branchId: history.branchId, price: history.newPrice, createdBy: history.changedBy } });
       }
 
       return tx.priceHistory.update({

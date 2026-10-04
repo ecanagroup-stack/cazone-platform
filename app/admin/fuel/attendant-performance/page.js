@@ -100,6 +100,7 @@ export default function AttendantPerformancePage() {
       <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap mb-4">
         <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-green-200" /> Worked, no shortage</div>
         <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-amber-200" /> Worked, shortage</div>
+        <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-slate-200" /> Collection unknown</div>
         <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-gray-50 border" /> Not assigned</div>
       </div>
 
@@ -138,10 +139,10 @@ export default function AttendantPerformancePage() {
                             ) : (
                               <button
                                 onClick={() => setPopup({ attendantName: row.attendantName, day: c, data: d })}
-                                className={`w-full h-8 rounded font-medium ${d.shortage > 0 ? 'bg-amber-200 hover:bg-amber-300 text-amber-900' : 'bg-green-200 hover:bg-green-300 text-green-900'}`}
-                                title={`${d.pumps.join(', ')} — Shortage: ${formatMoney(d.shortage / 100)}`}
+                                className={`w-full h-8 rounded font-medium ${d.shortage > 0 ? 'bg-amber-200 hover:bg-amber-300 text-amber-900' : d.unknownCollections > 0 ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-green-200 hover:bg-green-300 text-green-900'}`}
+                                title={`${d.pumps.join(', ')} — ${d.unknownCollections > 0 ? 'Collection unknown' : `Shortage: ${formatMoney(d.shortage / 100)}`}`}
                               >
-                                {d.shortage > 0 ? '₦' : '✓'}
+                                {d.shortage > 0 ? '₦' : d.unknownCollections > 0 ? '?' : '✓'}
                               </button>
                             )}
                           </td>
@@ -152,6 +153,8 @@ export default function AttendantPerformancePage() {
                           <span className="text-gray-600">{row.daysWorked}d</span>
                           {row.totalShortage > 0 ? (
                             <span className="text-amber-700 font-medium">{formatMoney(row.totalShortage / 100)}</span>
+                          ) : row.unknownCollections > 0 ? (
+                            <span className="text-slate-600 font-medium">Unknown</span>
                           ) : row.daysWorked > 0 ? (
                             <span className="text-green-600 font-medium">Clean</span>
                           ) : null}
@@ -176,6 +179,7 @@ export default function AttendantPerformancePage() {
               <div className="flex justify-between"><dt className="text-gray-500">Pump(s)</dt><dd className="font-medium">{popup.data.pumps.join(', ') || '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Meter Sales</dt><dd className="font-medium">{formatMoney(popup.data.meterSales / 100)}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Collected (Cash + POS)</dt><dd className="font-medium">{formatMoney(popup.data.collected / 100)}</dd></div>
+              {popup.data.unknownCollections > 0 && <div className="flex justify-between"><dt className="text-gray-500">Legacy collection status</dt><dd className="font-medium">Unknown on {popup.data.unknownCollections} pump(s)</dd></div>}
               <div className="flex justify-between"><dt className="text-gray-500">Shortage</dt><dd className={`font-semibold ${popup.data.shortage > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{popup.data.shortage > 0 ? formatMoney(popup.data.shortage / 100) : '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Overage</dt><dd className={`font-semibold ${popup.data.overage > 0 ? 'text-green-700' : 'text-gray-400'}`}>{popup.data.overage > 0 ? formatMoney(popup.data.overage / 100) : '—'}</dd></div>
             </dl>

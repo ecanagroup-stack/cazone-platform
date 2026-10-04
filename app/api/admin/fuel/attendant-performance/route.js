@@ -53,7 +53,7 @@ export const GET = withOrg(async (request) => {
       const key = `${owner.attendantId}|${date}`;
       const row = dayMap.get(key) || {
         attendantId: owner.attendantId, attendantName: owner.attendant.name, attendantStaffNumber: owner.attendant.staffNumber,
-        date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0,
+        date, pumps: new Set(), meterSales: 0, collected: 0, shortage: 0, overage: 0, unknownCollections: 0,
       };
       row.pumps.add(a.dispenser.label);
       const reading = readingByKey[`${a.shiftId}|${a.dispenserId}`];
@@ -61,8 +61,8 @@ export const GET = withOrg(async (request) => {
         const pump = summarizePumpCollection(reading.expectedAmount, pumpCollections);
         row.meterSales += pump.expected;
         row.collected += pump.collected;
-        row.shortage += pump.outstanding;
-        row.overage += pump.overage;
+        if (reading.collectionCoverage === 'unknown') row.unknownCollections += 1;
+        else { row.shortage += pump.outstanding; row.overage += pump.overage; }
       }
       dayMap.set(key, row);
     }
@@ -75,13 +75,14 @@ export const GET = withOrg(async (request) => {
     for (const row of byDay) {
       const ag = attendantMap.get(row.attendantId) || {
         attendantId: row.attendantId, attendantName: row.attendantName, attendantStaffNumber: row.attendantStaffNumber,
-        daysWorked: 0, totalMeterSales: 0, totalCollected: 0, totalShortage: 0, totalOverage: 0, shortageOccurrences: 0,
+        daysWorked: 0, totalMeterSales: 0, totalCollected: 0, totalShortage: 0, totalOverage: 0, shortageOccurrences: 0, unknownCollections: 0,
       };
       ag.daysWorked += 1;
       ag.totalMeterSales += row.meterSales;
       ag.totalCollected += row.collected;
       ag.totalShortage += row.shortage;
       ag.totalOverage += row.overage;
+      ag.unknownCollections += row.unknownCollections;
       if (row.shortage > 0) ag.shortageOccurrences += 1;
       attendantMap.set(row.attendantId, ag);
     }

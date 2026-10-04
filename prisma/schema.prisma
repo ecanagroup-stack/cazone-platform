@@ -180,6 +180,7 @@ model Organization {
   posPayments          PosPayment[]
   fuelCollections      FuelCollection[]
   fuelTankDips         FuelTankDip[]
+  legacyFuelRecords    LegacyFuelRecord[]
 
   provisioningRequests ProvisioningRequest[]
 }
@@ -579,6 +580,9 @@ model PriceRule {
 
   productId    String
   product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Fuel stations can have different prices for the same product. Null remains
+  // the organization-wide rule used by the other business services.
+  branchId     String?
   customerId   String?
   customer     Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
   priceGroupId String?
@@ -596,6 +600,7 @@ model PriceRule {
 
   @@index([organizationId])
   @@index([productId])
+  @@index([branchId, productId, validTo])
 }
 
 // One-time email codes gating the highest-stakes actions (credit-limit overrides, price approvals —
@@ -707,6 +712,7 @@ model PriceHistory {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   productId      String
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branchId       String?
 
   oldPrice   Int?
   newPrice   Int
@@ -721,6 +727,7 @@ model PriceHistory {
 
   @@index([organizationId])
   @@index([productId, createdAt])
+  @@index([branchId, productId, createdAt])
 }
 
 // The itemized transaction — an invoice (credit sale) and a cash sale are the same shape, only
@@ -1192,6 +1199,12 @@ model MeterReading {
   // Set when this reading is closed — the Order it produced, so shift-end cash-up can sum exactly
   // this shift's sales instead of approximating by timestamp.
   orderId        String?      @unique
+  // Imported older records can prove the sale without proving a pump-level
+  // collection. Such a row must never be shown as an unpaid attendant debt.
+  collectionCoverage String @default("verified") // verified | unknown
+  legacySourceId String? @unique
+  tankIdAtShift  String?
+  productIdAtShift String?
 
   opening      Float
   closing      Float?
@@ -1328,6 +1341,25 @@ model FuelTankDip {
 
   @@unique([shiftId, tankId, period])
   @@index([organizationId, branchId, operatingDate])
+}
+
+// Source snapshot (excluding authentication secrets) for historical petrol-station-app documents whose
+// fields or relationships do not have a one-to-one CaZone equivalent. It also
+// provides an auditable source ID for every transformed operational record.
+model LegacyFuelRecord {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceCollection String
+  sourceId         String
+  sourceStationId  String?
+  eventAt          DateTime?
+  payload          Json
+  importedAt       DateTime     @default(now())
+
+  @@unique([organizationId, sourceCollection, sourceId])
+  @@index([organizationId, sourceCollection, eventAt])
+  @@index([organizationId, sourceStationId])
 }
 
 // Non-login HR record — most pump attendants don't get a User account, just a staff record for

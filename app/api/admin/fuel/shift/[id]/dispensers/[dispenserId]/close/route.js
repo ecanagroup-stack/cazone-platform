@@ -39,7 +39,8 @@ export const POST = withOrg(async (request, { params }) => {
     if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);
     const productId = dispenser.tank.productId;
 
-    const priceRule = await prisma.priceRule.findFirst({ where: { productId, validTo: null }, orderBy: { validFrom: 'desc' } });
+    const priceRule = await prisma.priceRule.findFirst({ where: { productId, branchId: shift.branchId, validTo: null }, orderBy: { validFrom: 'desc' } }) ||
+      await prisma.priceRule.findFirst({ where: { productId, branchId: null, validTo: null }, orderBy: { validFrom: 'desc' } });
     if (!priceRule) throw new ApiError('No price is set for this product — set one from Begin Shift', 400);
 
     let litres, expectedAmount;

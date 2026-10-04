@@ -83,6 +83,11 @@ async function handleShift(session, body, date) {
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
   const sameDayCount = await prisma.shift.count({ where: { branchId, isBackfill: true, openedAt: { gte: dayStart, lt: dayEnd } } });
   const shiftOrder = sameDayCount + 1;
+  const dispensers = await prisma.dispenser.findMany({ where: { branchId, id: { in: assignments.map((assignment) => assignment.dispenserId) } }, include: { tank: true } });
+  if (dispensers.length !== assignments.length || dispensers.some((dispenser) => !dispenser.tank)) {
+    throw new ApiError('Every pump must be linked to a tank at this branch', 400);
+  }
+  const dispenserById = Object.fromEntries(dispensers.map((dispenser) => [dispenser.id, dispenser]));
 
   const shift = await prisma.$transaction(async (tx) => {
     const created = await tx.shift.create({
@@ -96,7 +101,8 @@ async function handleShift(session, body, date) {
         data: { branchId, dispenserId: a.dispenserId, shiftId: created.id, attendantId: a.attendantId, assignedBy: session.user.id, assignedAt: openedAt },
       });
       await tx.meterReading.create({
-        data: { branchId, dispenserId: a.dispenserId, shiftId: created.id, opening: Number(a.opening), recordedBy: session.user.id },
+        data: { branchId, dispenserId: a.dispenserId, shiftId: created.id, opening: Number(a.opening), recordedBy: session.user.id,
+          tankIdAtShift: dispenserById[a.dispenserId].tankId, productIdAtShift: dispenserById[a.dispenserId].tank.productId },
       });
     }
     return created;

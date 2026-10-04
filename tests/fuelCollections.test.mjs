@@ -73,3 +73,11 @@ test('two tanks of one product reconcile against their combined opening and clos
   assert.deepEqual(summarizeTankProduct('pms', tanks, opening, closing, readings, [], 0),
     { opening: 1500, receipts: 0, sales: 150, book: 1350, measured: 1350 });
 });
+
+test('historical product snapshot and persisted sale survive a later pump reassignment', () => {
+  const tanks = [{ id: 'old-tank', productId: 'pms' }];
+  const readings = [{ productIdAtShift: 'pms', litres: 12.5, creditLitres: 2,
+    dispenser: { tank: { productId: 'ago' } }, opening: 100, closing: 200, rtt: 0 }];
+  assert.equal(summarizeTankProduct('pms', tanks, [], [], readings, [], 0).sales, 14.5);
+  assert.equal(summarizeTankProduct('ago', [], [], [], readings, [], 0).sales, 0);
+});

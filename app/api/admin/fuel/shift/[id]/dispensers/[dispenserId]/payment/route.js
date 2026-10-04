@@ -35,6 +35,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!reading || reading.closing == null || !(reading.litres > 0) || !(reading.expectedAmount > 0)) {
       throw new ApiError('A supervisor must record positive litres sold on this pump first', 400);
     }
+    if (reading.collectionCoverage === 'unknown') throw new ApiError('This legacy pump has no verified collection balance', 409);
     const terminalIds = [...new Set(posEntries.map((entry) => entry.terminalId))];
     if (terminalIds.length) {
       const terminals = await prisma.posTerminal.findMany({ where: { id: { in: terminalIds }, branchId: shift.branchId, isActive: true } });
@@ -47,6 +48,7 @@ export const POST = withOrg(async (request, { params }) => {
       if (!currentShift || !currentReading || currentReading.closing == null || !(currentReading.litres > 0)) {
         throw new ApiError('The shift or supervisor sale changed. Refresh and try again.', 409);
       }
+      if (currentReading.collectionCoverage === 'unknown') throw new ApiError('This legacy pump has no verified collection balance', 409);
       if (requestId) {
         const previous = await tx.fuelCollection.findUnique({ where: { organizationId_requestId: { organizationId: session.user.organizationId, requestId } } });
         if (previous) {

@@ -99,7 +99,9 @@ export const POST = withOrg(async (request, { params }) => {
           await tx.attendantAssignment.create({ data: { branchId: shift.branchId, shiftId: nextShift.id,
             dispenserId: reading.dispenserId, attendantId, assignedBy: session.user.id } });
           await tx.meterReading.create({ data: { branchId: shift.branchId, shiftId: nextShift.id,
-            dispenserId: reading.dispenserId, opening: reading.closing, recordedBy: session.user.id } });
+            dispenserId: reading.dispenserId, opening: reading.closing, recordedBy: session.user.id,
+            tankIdAtShift: reading.tankIdAtShift || reading.dispenser.tankId,
+            productIdAtShift: reading.productIdAtShift || reading.dispenser.tank?.productId } });
         }
       }
 

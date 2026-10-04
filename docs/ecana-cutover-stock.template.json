@@ -1,0 +1,18 @@
+{
+  "measuredAt": null,
+  "approvedAt": null,
+  "approvedBy": null,
+  "tanks": [
+    { "stationCode": "EE1", "tankId": "PMS1", "litres": null },
+    { "stationCode": "EE1", "tankId": "PMS4", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-1", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-2", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-3", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-4", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-5", "litres": null },
+    { "stationCode": "EE3", "tankId": "EE2-TANK-6", "litres": null },
+    { "stationCode": "EE2", "tankId": "EE2-TANK-1", "litres": null },
+    { "stationCode": "EE2", "tankId": "EE2-TANK-2", "litres": null },
+    { "stationCode": "EE2", "tankId": "EE2-TANK-3", "litres": null }
+  ]
+}

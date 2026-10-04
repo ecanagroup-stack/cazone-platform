@@ -30,6 +30,13 @@ export const POST = withOrg(async (request) => {
         throw new ApiError('Every assigned dispenser needs an attendant and an opening reading', 400);
       }
     }
+    const assignedDispensers = await prisma.dispenser.findMany({ where: {
+      branchId, id: { in: assignments.map((a) => a.dispenserId) }, isActive: true,
+    }, include: { tank: true } });
+    if (assignedDispensers.length !== assignments.length || assignedDispensers.some((d) => !d.tank)) {
+      throw new ApiError('Every selected pump must be active and linked to a tank at this branch', 400);
+    }
+    const dispenserById = Object.fromEntries(assignedDispensers.map((d) => [d.id, d]));
 
     const existing = await prisma.shift.findFirst({ where: { branchId, status: 'open' } });
     if (existing) throw new ApiError('A shift is already open for this branch', 400);
@@ -57,7 +64,7 @@ export const POST = withOrg(async (request) => {
       for (const p of prices) {
         const newPrice = Math.round(Number(p.price));
         if (!Number.isFinite(newPrice) || newPrice <= 0) continue;
-        const result = await setPrice(tx, p.productId, newPrice, { id: session.user.id, role: session.user.role });
+        const result = await setPrice(tx, p.productId, newPrice, { id: session.user.id, role: session.user.role }, undefined, branchId);
         if (result.pending) anyPricePending = true;
       }
 
@@ -75,7 +82,8 @@ export const POST = withOrg(async (request) => {
           data: { branchId, dispenserId: a.dispenserId, shiftId: createdShift.id, attendantId: a.attendantId, assignedBy: session.user.id },
         });
         await tx.meterReading.create({
-          data: { branchId, dispenserId: a.dispenserId, shiftId: createdShift.id, opening: Number(a.opening), recordedBy: session.user.id },
+          data: { branchId, dispenserId: a.dispenserId, shiftId: createdShift.id, opening: Number(a.opening), recordedBy: session.user.id,
+            tankIdAtShift: dispenserById[a.dispenserId].tankId, productIdAtShift: dispenserById[a.dispenserId].tank.productId },
         });
       }
 

@@ -112,12 +112,12 @@ export default function FuelCollectionsPage() {
           <td className="p-3"><strong>{row.dispenserLabel}</strong><br />{row.attendantName || 'Unassigned'}<br /><span className="text-gray-500">{row.shiftLabel || 'Shift'} · {row.productName}</span></td>
           <td className="p-3">{row.litres == null ? 'No supervisor entry' : `${row.litres.toLocaleString()} L · ₦${(row.expectedAmount / 100).toLocaleString()}`}</td>
           <td className="p-3">₦{(row.collected / 100).toLocaleString()}</td>
-          <td className="p-3">₦{(row.outstanding / 100).toLocaleString()}</td>
+          <td className="p-3">{row.collectionCoverage === 'unknown' ? 'Unknown (legacy)' : `₦${(row.outstanding / 100).toLocaleString()}`}</td>
           <td className="p-3">{row.collections.length ? row.collections.map((c) => <div key={c.id} className={c.voidedAt ? 'line-through text-gray-400' : ''}>
             {c.collectionType.replaceAll('_', ' ')}: ₦{(c.totalAmount / 100).toLocaleString()}{c.voidedAt ? ' (corrected)' : ''}
             {session?.user?.role === 'owner' && row.shiftStatus === 'open' && !c.voidedAt && <button onClick={() => { setVoiding(c); setVoidReason(''); }} className="ml-2 text-red-600 text-xs">Correct</button>}
           </div>) : 'None'}</td>
-          <td className="p-3">{canCollect && row.litres > 0 && (row.shiftStatus === 'open' || (row.collections.length > 0 && row.outstanding > 0)) && <button onClick={() => openCollection(row)} className="text-brand-600 font-medium">{row.shiftStatus === 'closed' ? 'Settle' : 'Collect'}</button>}</td>
+          <td className="p-3">{canCollect && row.collectionCoverage !== 'unknown' && row.litres > 0 && (row.shiftStatus === 'open' || (row.collections.length > 0 && row.outstanding > 0)) && <button onClick={() => openCollection(row)} className="text-brand-600 font-medium">{row.shiftStatus === 'closed' ? 'Settle' : 'Collect'}</button>}</td>
         </tr>)}</tbody>
       </table>{data.rows.length === 0 && <p className="p-4 text-gray-500">No shifts for this operating date.</p>}</Card>
       {canCollect && data.shifts.length > 0 && <Card className="p-4">

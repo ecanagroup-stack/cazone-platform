@@ -32,6 +32,9 @@ export const GET = withOrg(async (request) => {
       include: { dispenser: { include: { tank: { include: { product: true } } } } },
     });
     const collections = await prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } } });
+    const historicalProductIds = [...new Set(readings.map((reading) => reading.productIdAtShift).filter(Boolean))];
+    const historicalProducts = await prisma.product.findMany({ where: { id: { in: historicalProductIds } } });
+    const historicalProductById = Object.fromEntries(historicalProducts.map((product) => [product.id, product]));
 
     const rows = [];
     for (const shift of shifts) {
@@ -40,14 +43,15 @@ export const GET = withOrg(async (request) => {
 
       const byProduct = new Map();
       for (const r of shiftReadings) {
-        const product = r.dispenser.tank?.product;
+        const product = historicalProductById[r.productIdAtShift] || r.dispenser.tank?.product;
         if (!product) continue;
-        const row = byProduct.get(product.id) || { product, sales: 0, amount: 0, collected: 0, salesShortage: 0 };
+        const row = byProduct.get(product.id) || { product, sales: 0, amount: 0, collected: 0, salesShortage: 0, unknownCollections: 0 };
         const pump = summarizePumpCollection(r.expectedAmount, collections.filter((c) => c.meterReadingId === r.id));
         row.sales += r.litres || 0;
         row.amount += r.expectedAmount || 0;
         row.collected += pump.collected;
-        row.salesShortage += pump.outstanding;
+        if (r.collectionCoverage === 'unknown') row.unknownCollections += 1;
+        else row.salesShortage += pump.outstanding;
         byProduct.set(product.id, row);
       }
 
@@ -57,6 +61,9 @@ export const GET = withOrg(async (request) => {
         const closingRecon = await prisma.reconciliation.findFirst({
           where: { branchId, productId, periodEnd: { gte: shift.openedAt, lte: periodEnd } },
           orderBy: { periodEnd: 'desc' },
+        });
+        const recordedClosingDips = closingRecon ? [] : await prisma.fuelTankDip.findMany({
+          where: { shiftId: shift.id, period: 'closing', tank: { productId } }, select: { measured: true },
         });
 
         const deliveries = await prisma.delivery.findMany({
@@ -74,9 +81,11 @@ export const GET = withOrg(async (request) => {
           product: agg.product.name, productId,
           openingStock: opening, stockIn: receipts, book, sales: agg.sales, price,
           totalAmount: agg.amount, collected: agg.collected,
-          closingStock: closingRecon ? closingRecon.measured : null,
+          closingStock: closingRecon ? closingRecon.measured : recordedClosingDips.length
+            ? recordedClosingDips.reduce((sum, dip) => sum + dip.measured, 0) : null,
+          closingStockSource: closingRecon ? 'reconciliation' : recordedClosingDips.length ? 'recorded_dips' : null,
           salesShortage, deliveryShortage, deliveryExcess,
-          shortage: salesShortage + deliveryShortage,
+          shortage: salesShortage + deliveryShortage, unknownCollections: agg.unknownCollections,
         });
       }
     }
