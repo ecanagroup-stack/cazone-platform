@@ -38,7 +38,7 @@ export default function ShiftPage() {
   const [overridePin, setOverridePin] = useState('');
 
   const [showEndModal, setShowEndModal] = useState(false);
-  const [endForm, setEndForm] = useState({ countedCash: '', countedFloat: '', note: '' });
+  const [endForm, setEndForm] = useState({ countedCash: '', countedFloat: '', note: '', continueToNextShift: false, attendantAssignments: {} });
 
   const [dipFor, setDipFor] = useState(null); // tank object
   const [dipMeasured, setDipMeasured] = useState('');
@@ -177,6 +177,9 @@ export default function ShiftPage() {
 
   const handleEndShift = async (e) => {
     e.preventDefault();
+    if (endForm.continueToNextShift && data.pumps.some((pump) => !endForm.attendantAssignments[pump.dispenserId])) {
+      toast.error('Choose an attendant for every pump in the next shift'); return;
+    }
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/end`, {
@@ -185,12 +188,16 @@ export default function ShiftPage() {
           countedCash: Math.round(Number(endForm.countedCash || 0) * 100),
           countedFloat: endForm.countedFloat === '' ? null : Math.round(Number(endForm.countedFloat) * 100),
           note: endForm.note,
+          continueToNextShift: endForm.continueToNextShift,
+          attendantAssignments: endForm.continueToNextShift ? Object.entries(endForm.attendantAssignments)
+            .map(([dispenserId, attendantId]) => ({ dispenserId, attendantId })) : [],
         }),
       });
       const d = await r.json();
       if (d.success) {
-        toast.success(d.data.flagged ? 'Shift closed — flagged for the difference' : 'Shift closed, cash balanced');
-        setShowEndModal(false); setEndForm({ countedCash: '', countedFloat: '', note: '' }); load();
+        toast.success(d.data.nextShift ? 'Shift closed and next shift started' :
+          d.data.flagged ? 'Shift closed — flagged for the difference' : 'Shift closed, cash balanced');
+        setShowEndModal(false); setEndForm({ countedCash: '', countedFloat: '', note: '', continueToNextShift: false, attendantAssignments: {} }); load();
       } else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -355,7 +362,10 @@ export default function ShiftPage() {
             <div className="flex items-center gap-4">
               {canRunShift && <button onClick={() => setShowAddPump(true)} className="text-sm font-medium text-gray-500 hover:text-gray-700">Add Pump</button>}
               <button onClick={openReassignLog} className="text-sm font-medium text-gray-500 hover:text-gray-700">Reassignment Log</button>
-              {canRunShift && allApproved && <button onClick={() => setShowEndModal(true)} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
+              {canRunShift && allApproved && <button onClick={() => { setEndForm({ countedCash: '', countedFloat: '', note: '',
+                continueToNextShift: !!(data.shift.shiftOrder && data.shift.totalShiftsPlanned && data.shift.shiftOrder < data.shift.totalShiftsPlanned),
+                attendantAssignments: Object.fromEntries(data.pumps.map((pump) => [pump.dispenserId, pump.attendantId])) });
+                setShowEndModal(true); }} disabled={!canEndShift} className={btnPrimaryCls}>End Shift</button>}
             </div>
           }
         />
@@ -635,6 +645,25 @@ export default function ShiftPage() {
             <Field label="Note (required if the difference is large)">
               <textarea value={endForm.note} onChange={(e) => setEndForm({ ...endForm, note: e.target.value })} className={inputCls} rows={2} />
             </Field>
+            {!!(data.shift.shiftOrder && data.shift.totalShiftsPlanned && data.shift.shiftOrder < data.shift.totalShiftsPlanned) && <>
+              <Field label="After this shift">
+                <select className={inputCls} value={endForm.continueToNextShift ? 'continue' : 'finish'}
+                  onChange={(e) => setEndForm({ ...endForm, continueToNextShift: e.target.value === 'continue' })}>
+                  <option value="continue">Start Shift {data.shift.shiftOrder + 1} now</option>
+                  <option value="finish">Finish the day early</option>
+                </select>
+              </Field>
+              {endForm.continueToNextShift && <div className="space-y-2">
+                <p className="text-xs text-gray-500">Closing meter and tank readings become the next shift&apos;s opening readings.</p>
+                {data.pumps.map((pump) => <Field key={pump.dispenserId} label={`${pump.dispenserLabel} attendant`} required>
+                  <select className={inputCls} required value={endForm.attendantAssignments[pump.dispenserId] || ''}
+                    onChange={(e) => setEndForm({ ...endForm, attendantAssignments: { ...endForm.attendantAssignments, [pump.dispenserId]: e.target.value } })}>
+                    <option value="">Select attendant</option>
+                    {data.attendants.map((attendant) => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}
+                  </select>
+                </Field>)}
+              </div>}
+            </>}
             <FormButtons onCancel={() => setShowEndModal(false)} submitting={submitting} submitLabel="Close Shift" />
           </form>
         </Modal>
