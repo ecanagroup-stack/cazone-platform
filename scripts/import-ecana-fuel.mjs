@@ -1,6 +1,7 @@
 // Ecana Energy MongoDB -> a NEW CaZone fuel_station organization.
 // Dry run: node scripts/import-ecana-fuel.mjs
-// Apply after schema migration and source freeze: node scripts/import-ecana-fuel.mjs --apply
+// History-only apply: node scripts/import-ecana-fuel.mjs --apply --history-only
+// Stock cutover/activation: node scripts/import-ecana-fuel.mjs --apply --cutover-file=PATH
 // The source database is always read-only. Re-running --apply resumes by stable source IDs.
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -8,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = path.resolve(process.env.LEGACY_FUEL_APP_DIR || path.join(root, '..', 'petrol-station-app'));
@@ -18,11 +19,16 @@ const mongoUri = process.env.MONGODB_URI_FUEL || sourceEnv.MONGODB_URI_FUEL || s
 if (!mongoUri) throw new Error('Source MongoDB URI is missing');
 const mongoose = createRequire(path.join(sourceRoot, 'package.json'))('mongoose');
 const prisma = new PrismaClient();
-const cutoff = new Date('2025-01-01T00:00:00.000Z');
+// The first genuine operating shift is 4 February 2026. The owner confirmed
+// that all February 2026 operating history, including later February sales,
+// belongs in the import.
+const cutoff = new Date('2026-02-01T00:00:00.000Z');
 const apply = process.argv.includes('--apply');
+const historyOnly = process.argv.includes('--history-only');
 const cutoverFileArg = process.argv.find((arg) => arg.startsWith('--cutover-file='));
 const cutoverFile = cutoverFileArg ? path.resolve(cutoverFileArg.slice('--cutover-file='.length)) : null;
-if (apply && !cutoverFile) throw new Error('Live import requires --cutover-file=PATH with signed per-tank go-live readings');
+if (apply && !cutoverFile && !historyOnly) throw new Error('Use --history-only or provide --cutover-file=PATH with signed per-tank go-live readings');
+if (historyOnly && cutoverFile) throw new Error('--history-only and --cutover-file cannot be combined');
 const slug = 'ecana-energy';
 const id = (kind, value) => `legacy_${kind}_${crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 32)}`;
 const key = (value) => value == null ? '' : String(value);
@@ -74,6 +80,7 @@ try {
     return stationById.has(currentId) ? id('branch', currentId) : null;
   };
   const users = docs.users || [];
+  const validPasswordHashes = users.filter((user) => /^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$/.test(user.password || ''));
   const sourceUserIds = new Set(users.map(src));
   const owner = users.find((user) => user.role === 'admin');
   if (!owner) throw new Error('Source admin account is missing');
@@ -81,14 +88,48 @@ try {
   const userId = (value) => sourceUserIds.has(key(value)) ? id('user', value) : ownerId;
   const shifts = docs.dayshifts || [];
   const sourceShiftById = new Map(shifts.map((shift) => [src(shift), shift]));
-  const sales = docs.salesentries || [];
+  const allSales = docs.salesentries || [];
   const readings = docs.meterreadings || [];
+  const capturedAt = new Date();
+  const matureAt = new Date(capturedAt.getTime() - 72 * 3600000);
+  const isMature = (row) => new Date(row.createdAt || row.date) <= matureAt;
+  const meterByStationDayPump = new Map(readings.map((reading) => [`${reading.stationId}|${day(reading.date)}|${reading.pumpId}`, reading]));
+  const saleMeter = (sale) => meterByStationDayPump.get(`${sale.stationId}|${day(sale.date)}|${sale.dispenserId}`);
+  const saleFaults = (sale) => {
+    const meter = saleMeter(sale);
+    const litres = Number(sale.liters);
+    const price = Number(sale.pricePerLiter);
+    const amount = Number(sale.expectedAmount);
+    const metered = Number(meter?.closing) - Number(meter?.opening) - Number(meter?.rtt || 0);
+    const faults = [];
+    if (!(litres > 0) || !(price > 0) || !(amount > 0) || !Number.isFinite(litres + price + amount))
+      faults.push('non-positive or invalid litres, price, or amount');
+    if (Number.isFinite(metered) && Math.abs(metered - litres) > 0.01)
+      faults.push('meter and saved litres differ');
+    if (Number.isFinite(litres * price) && Math.abs(litres * price - amount) > 1)
+      faults.push('saved amount differs from litres times price');
+    return faults;
+  };
+  const faultySales = allSales.filter((sale) => saleFaults(sale).length);
+  const sales = allSales.filter((sale) => {
+    const meter = saleMeter(sale);
+    return !saleFaults(sale).length && (meter?.managerReviewStatus === 'approved' || (meter && isMature(meter)));
+  });
+  const deferredSales = allSales.filter((sale) => !sales.includes(sale));
+  const sourceSaleByMeter = new Map(allSales.map((sale) => [src(saleMeter(sale)), sale]));
   const payments = docs.paymentrecords || [];
+  const allDips = docs.tankstockentries || [];
+  const dipsToImport = allDips.filter((dip) => dip.period === 'opening' || dip.closingStockManager != null || isMature(dip));
+  const receiptMoves = (docs.stockmovements || []).filter((move) => move.movementType === 'receipt');
+  const safeDeliveryAmount = (move) => [kobo(move.costPerLiter), kobo(move.totalCost)]
+    .every((value) => Number.isInteger(value) && value >= 0 && value <= 2147483647);
+  const oversizedDeliveries = receiptMoves.filter((move) => !safeDeliveryAmount(move));
   const shiftIds = new Set(shifts.map(src));
   const saleByShiftPump = new Map(sales.map((sale) => [`${sale.dayShiftId}|${sale.dispenserId}`, sale]));
-  const meterByStationDayPump = new Map(readings.map((reading) => [`${reading.stationId}|${day(reading.date)}|${reading.pumpId}`, reading]));
   const matchedMeterIds = new Set(sales.map((sale) => src(meterByStationDayPump.get(`${sale.stationId}|${day(sale.date)}|${sale.dispenserId}`))).filter(Boolean));
-  const unmatchedMeters = readings.filter((reading) => !matchedMeterIds.has(src(reading)));
+  const unmatchedMeters = readings.filter((reading) => !matchedMeterIds.has(src(reading)) &&
+    (reading.managerReviewStatus === 'approved' || isMature(reading) || sourceSaleByMeter.has(src(reading))));
+  const recentUnmatchedArchivedOnly = readings.length - matchedMeterIds.size - unmatchedMeters.length;
   const paymentsByShiftPump = new Map();
   const knownPumpKeys = new Set(stations.flatMap((station) => (station.dispensers || []).map((pump) => `${src(station)}|${pump.dispenserId}`)));
   const knownTankKeys = new Set(stations.flatMap((station) => (station.tanks || []).map((tank) => `${src(station)}|${key(tank._id || tank.id)}`)));
@@ -109,21 +150,44 @@ try {
     records.filter((payment) => payment.managerReviewStatus === 'approved' && Number(payment.totalReceived) > 0),
   ]).filter(([, records]) => records.length));
   const blockers = [];
-  for (const sale of sales) {
+  if (validPasswordHashes.length !== users.length) blockers.push(`${users.length - validPasswordHashes.length} source users lack compatible bcrypt password hashes`);
+  if (new Set(users.map((user) => user.loginId?.trim().toLowerCase()).filter(Boolean)).size !== users.filter((user) => user.loginId?.trim()).length)
+    blockers.push('Source login IDs collide after case normalization');
+  if (new Set(users.map((user) => user.email?.trim().toLowerCase()).filter(Boolean)).size !== users.filter((user) => user.email?.trim()).length)
+    blockers.push('Source emails collide after case normalization');
+  for (const user of users) if (user.stationId && !branchOf(user.stationId)) blockers.push(`User ${src(user)} has no branch mapping`);
+  for (const sale of allSales) {
     if (!shiftIds.has(key(sale.dayShiftId))) blockers.push(`Sale ${src(sale)} has no shift`);
     if (!meterByStationDayPump.has(`${sale.stationId}|${day(sale.date)}|${sale.dispenserId}`)) blockers.push(`Sale ${src(sale)} has no meter`);
     if (!branchOf(sale.stationId)) blockers.push(`Sale ${src(sale)} has no branch`);
     if (!knownPumpKeys.has(`${mappedStation(sale.stationId)}|${sale.dispenserId}`)) blockers.push(`Sale ${src(sale)} has no current pump`);
   }
-  for (const payment of payments) if (!saleByShiftPump.has(`${payment.dayShiftId}|${payment.dispenserId}`)) blockers.push(`Payment ${src(payment)} has no sale`);
+  const allSaleShiftPumps = new Set(allSales.map((sale) => `${sale.dayShiftId}|${sale.dispenserId}`));
+  for (const payment of payments) if (!allSaleShiftPumps.has(`${payment.dayShiftId}|${payment.dispenserId}`)) blockers.push(`Payment ${src(payment)} has no sale`);
+  for (const [shiftPump] of approvedPaymentsByShiftPump) if (!saleByShiftPump.has(shiftPump))
+    blockers.push(`Approved payment ${shiftPump} belongs to a deferred sale`);
   for (const shift of shifts) if (!branchOf(shift.stationId)) blockers.push(`Shift ${src(shift)} has no branch`);
   for (const shift of shifts) if (shift.status === 'in_progress') blockers.push(`Shift ${src(shift)} is still open; close it in MongoDB before cutover`);
   for (const reading of readings) if (branchOf(reading.stationId) && !knownPumpKeys.has(`${mappedStation(reading.stationId)}|${reading.pumpId}`)) blockers.push(`Meter ${src(reading)} has no current pump`);
   if (readings.length !== meterByStationDayPump.size) blockers.push('Multiple source meters share a station/date/pump key');
   const sourceSnapshot = {
-    cutoff: cutoff.toISOString(), capturedAt: new Date().toISOString(),
+    cutoff: cutoff.toISOString(), capturedAt: capturedAt.toISOString(), matureAt: matureAt.toISOString(),
     sourceCounts: Object.fromEntries(Object.entries(docs).map(([name, rows]) => [name, rows.length])),
-    branchAliases: alias, salesLinkedToMeters: sales.length - blockers.filter((entry) => entry.includes('no meter')).length,
+    branchAliases: alias, salesLinkedToMeters: allSales.length - blockers.filter((entry) => entry.includes('no meter')).length,
+    matureOrApprovedSalesToImport: sales.length,
+    recentUnapprovedSavedSalesDeferredAsIncomplete: deferredSales.filter((sale) => !saleFaults(sale).length).length,
+    faultySavedSalesDeferredAsIncomplete: faultySales.length,
+    faultySavedSalesByReason: Object.fromEntries([...new Set(faultySales.flatMap(saleFaults))]
+      .map((fault) => [fault, faultySales.filter((sale) => saleFaults(sale).includes(fault)).length])),
+    faultySavedSaleExamples: faultySales.slice(0, 10).map((sale) => ({ sourceId: src(sale), faults: saleFaults(sale) })),
+    recentUnapprovedUnmatchedMetersArchivedOnly: recentUnmatchedArchivedOnly,
+    matureOrApprovedTankDipsToImport: dipsToImport.length,
+    recentUnapprovedTankDipsArchivedOnly: allDips.length - dipsToImport.length,
+    receiptCostsArchivedOnlyDueToIntLimit: oversizedDeliveries.map((move) => src(move)),
+    loginHashesCompatible: validPasswordHashes.length,
+    loginUsers: users.length,
+    loginBranchMappings: users.filter((user) => user.stationId && branchOf(user.stationId)).length,
+    currentBranches: stations.map((station) => ({ code: station.code, name: station.name, sourceId: src(station), targetId: branchOf(station._id) })),
     paymentRecords: payments.length,
     approvedPositivePaymentRecords: [...approvedPaymentsByShiftPump.values()].reduce((sum, records) => sum + records.length, 0),
     pendingOrZeroPaymentsArchivedOnly: payments.length - [...approvedPaymentsByShiftPump.values()].reduce((sum, records) => sum + records.length, 0),
@@ -131,15 +195,15 @@ try {
     historicalTanksToKeepInactive: [...historicalTanks.keys()],
     savedShiftTankMappings: shiftTankMappings.filter(({ assignment }) => assignment.tankId).length,
     unmappedSavedShiftTanks: unmappedSavedTanks.length,
-    unmatchedMeterReadingsPreservedWithoutInventingSales: unmatchedMeters.length,
-    targetSlug: slug, mode: apply ? 'apply' : 'dry-run',
+    incompleteMeterReadingsImportedWithoutSales: unmatchedMeters.length,
+    targetSlug: slug, mode: apply ? historyOnly ? 'history-only-apply' : 'cutover-apply' : 'dry-run',
   };
   const requiredTanks = stations.flatMap((station) => (station.tanks || []).filter((tank) => tank.isActive !== false)
     .map((tank) => ({ stationCode: station.code, tankId: key(tank._id || tank.id), product: tank.product })));
   sourceSnapshot.requiredCutoverTanks = requiredTanks;
   const operationalDates = [
     ...shifts.map((shift) => shift.endTime || shift.startTime || shift.date),
-    ...sales.map((sale) => sale.createdAt || sale.date),
+    ...allSales.map((sale) => sale.createdAt || sale.date),
     ...(docs.stockmovements || []).map((move) => move.createdAt || move.date),
     ...(docs.tankstockentries || []).map((dip) => dip.createdAt || dip.date),
     ...(docs.cashdeposits || []).map((deposit) => deposit.createdAt || deposit.date),
@@ -168,6 +232,7 @@ try {
     }
   }
   sourceSnapshot.cutoverFileValidated = !!cutoverFile && blockers.length === 0;
+  sourceSnapshot.stockCutoverPending = !cutoverFile;
   sourceSnapshot.blockers = blockers.slice(0, 30);
   sourceSnapshot.blockerCount = blockers.length;
   if (blockers.length) throw new Error(JSON.stringify(sourceSnapshot));
@@ -188,7 +253,10 @@ try {
     } });
     const orgId = org.id;
     const serviceId = id('service', orgId);
-    await prisma.service.createMany({ data: [{ id: serviceId, organizationId: orgId, type: 'fuel_station', name: 'Petrol Station' }], skipDuplicates: true });
+    await prisma.service.createMany({ data: [{ id: serviceId, organizationId: orgId, type: 'fuel_station',
+      name: 'Petrol Station', isActive: false, config: { migrationStockPending: true } }], skipDuplicates: true });
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (historyOnly && service.isActive) throw new Error('History-only import cannot run against an active petrol service');
     await insert('branch', stations.map((station) => ({
       id: branchOf(station._id), organizationId: orgId, serviceId, name: station.name,
       code: station.code, address: station.location || null, isActive: station.isActive !== false,
@@ -242,18 +310,26 @@ try {
     await insert('dispenser', pumpRows);
     const attendantMap = new Map();
     const attendantRows = [];
+    const usedStaffNumbers = new Set();
+    let staffNumberCollisions = 0;
     for (const attendant of docs.attendants || []) {
       const branchId = branchOf(attendant.stationId);
       if (!branchId) continue;
       attendantMap.set(src(attendant), id('attendant', src(attendant)));
+      const staffNumberKey = `${branchId}|${attendant.staffNumber}`;
+      const staffNumber = usedStaffNumbers.has(staffNumberKey)
+        ? `${attendant.staffNumber}-legacy-${src(attendant).slice(-8)}` : attendant.staffNumber;
+      if (staffNumber !== attendant.staffNumber) staffNumberCollisions++;
+      usedStaffNumbers.add(`${branchId}|${staffNumber}`);
       attendantRows.push({ id: id('attendant', src(attendant)), organizationId: orgId, branchId,
-        staffNumber: attendant.staffNumber, name: attendant.name, phone: attendant.phone || null,
+        staffNumber, name: attendant.name, phone: attendant.phone || null,
         position: attendant.position || null, employmentType: attendant.employmentType || null,
         dateOfBirth: attendant.dateOfBirth || null, gender: attendant.gender || null,
         photoUrl: attendant.photoUrl || null, employmentDate: attendant.employmentDate || null,
         isActive: attendant.isActive !== false, createdAt: attendant.createdAt || attendant.dateRegistered || new Date() });
     }
     await insert('attendant', attendantRows);
+    summary.staffNumberCollisionsPreservedWithSuffix = staffNumberCollisions;
     const shiftByStationDay = new Map();
     await insert('shift', shifts.map((shift) => {
       const k = `${shift.stationId}|${day(shift.date)}`;
@@ -286,6 +362,7 @@ try {
     // Stable synthetic shifts hold source meters with no saved sale or shift.
     const fallbackShiftRows = [];
     for (const reading of unmatchedMeters) {
+      if (sourceSaleByMeter.has(src(reading))) continue;
       const k = `${reading.stationId}|${day(reading.date)}`;
       if (branchOf(reading.stationId)) {
         const targetId = id('fallbackshift', k);
@@ -318,12 +395,16 @@ try {
     }
     for (const meter of unmatchedMeters) {
       if (!branchOf(meter.stationId)) continue;
+      const deferredSale = sourceSaleByMeter.get(src(meter));
       readingRows.push({ id: id('reading', src(meter)), organizationId: orgId, branchId: branchOf(meter.stationId),
-        shiftId: id('fallbackshift', `${meter.stationId}|${day(meter.date)}`),
+        shiftId: deferredSale ? id('shift', key(deferredSale.dayShiftId)) : id('fallbackshift', `${meter.stationId}|${day(meter.date)}`),
         dispenserId: pumpFor(meter.stationId, meter.pumpId), legacySourceId: src(meter),
         collectionCoverage: 'unknown', opening: Number(meter.opening),
         closing: valid(meter.closing) ? Number(meter.closing) : null, rtt: Number(meter.rtt || 0),
-        reviewStatus: 'pending', recordedBy: userId(meter.supervisorId), createdAt: meter.createdAt || meter.date,
+        reviewStatus: 'pending', discrepancyNote: deferredSale
+          ? `Source sale ${src(deferredSale)} deferred: ${saleFaults(deferredSale).join('; ') || 'recent unapproved meter'}`
+          : 'Source meter has no saved sale',
+        recordedBy: userId(meter.supervisorId), createdAt: meter.createdAt || meter.date,
         productIdAtShift: null, tankIdAtShift: null });
     }
     await insert('meterReading', readingRows.map(({ orderId, ...row }) => row));
@@ -337,7 +418,12 @@ try {
     await insert('stockMove', sales.map((sale) => ({ id: id('salemove', src(sale)), organizationId: orgId,
       branchId: branchOf(sale.stationId), productId: productId(sale.fuelType), qty: -Number(sale.liters),
       reason: 'sale', ref: id('order', src(sale)), at: sale.createdAt || sale.date, userId: userId(sale.enteredBy), channel: 'fuel' })));
-    for (const sale of sales) await prisma.meterReading.update({ where: { id: saleReadingId.get(src(sale)) }, data: { orderId: id('order', src(sale)) } });
+    for (const batch of chunk(sales, 200)) await prisma.$executeRaw(Prisma.sql`
+      UPDATE "MeterReading" AS meter SET "orderId" = links."orderId"
+      FROM (VALUES ${Prisma.join(batch.map((sale) => Prisma.sql`(${saleReadingId.get(src(sale))}, ${id('order', src(sale))})`))})
+        AS links("id", "orderId")
+      WHERE meter."id" = links."id" AND meter."organizationId" = ${orgId}
+    `);
     const collectionRows = [];
     for (const [shiftPump, records] of approvedPaymentsByShiftPump) {
       const sale = saleByShiftPump.get(shiftPump);
@@ -365,21 +451,21 @@ try {
       note: deposit.adminNote || deposit.rejectionReason || null, createdAt: deposit.createdAt || deposit.date,
       isBackfill: true }));
     await insert('cashDeposit', depositRows);
-    const receiptMoves = (docs.stockmovements || []).filter((move) => move.movementType === 'receipt' && branchOf(move.stationId));
-    await insert('delivery', receiptMoves.map((move) => ({ id: id('delivery', src(move)), organizationId: orgId,
+    const branchReceipts = receiptMoves.filter((move) => branchOf(move.stationId));
+    await insert('delivery', branchReceipts.filter(safeDeliveryAmount).map((move) => ({ id: id('delivery', src(move)), organizationId: orgId,
       branchId: branchOf(move.stationId), productId: productId(move.fuelType), quantity: Number(move.quantity),
       costPerUnit: kobo(move.costPerLiter), totalCost: kobo(move.totalCost), status: 'received',
       receivedAt: move.date || move.createdAt, createdAt: move.createdAt || move.date,
       createdBy: userId(move.recordedBy), declaredLoad: valid(move.declaredLoad) ? Number(move.declaredLoad) : null,
       offloadVariance: valid(move.offloadVariance) ? Number(move.offloadVariance) : null,
       notes: move.notes || `Imported MongoDB receipt ${src(move)}`, isBackfill: true })));
-    await insert('stockMove', receiptMoves.map((move) => ({ id: id('receiptmove', src(move)), organizationId: orgId,
+    await insert('stockMove', branchReceipts.map((move) => ({ id: id('receiptmove', src(move)), organizationId: orgId,
       branchId: branchOf(move.stationId), productId: productId(move.fuelType), qty: Number(move.quantity),
       reason: 'purchase', ref: id('delivery', src(move)), at: move.date || move.createdAt,
       userId: userId(move.recordedBy), channel: 'fuel' })));
     const dipRows = [];
     let archivedOnlyDips = 0;
-    for (const dip of docs.tankstockentries || []) {
+    for (const dip of dipsToImport) {
       const candidates = (shiftByStationDay.get(`${dip.stationId}|${day(dip.date)}`) || [])
         .sort((a, b) => new Date(a.startTime || a.date) - new Date(b.startTime || b.date));
       const sourceShift = dip.dayShiftId
@@ -427,7 +513,7 @@ try {
         payload: archivePayload(name, doc) })));
     }
     const measuredByStationProduct = new Map();
-    for (const entry of cutover.tanks) {
+    for (const entry of cutover?.tanks || []) {
       const station = stations.find((item) => item.code === entry.stationCode);
       const tank = station.tanks.find((item) => key(item._id || item.id) === entry.tankId);
       const k = `${src(station)}|${tank.product}`;
@@ -449,6 +535,10 @@ try {
         ref: `signed-cutover-${cutover.measuredAt}`, at: new Date(cutover.measuredAt), userId: ownerId,
         note: `Signed physical cutover stock approved by ${cutover.approvedBy} at ${cutover.approvedAt}` } });
     }
+    if (cutover) await prisma.service.update({ where: { id: serviceId }, data: {
+      isActive: true, config: { migrationStockPending: false, signedStockMeasuredAt: cutover.measuredAt,
+        signedStockApprovedAt: cutover.approvedAt, signedStockApprovedBy: cutover.approvedBy },
+    } });
     console.log(JSON.stringify({ organizationId: orgId, insertedOrAlreadyPresent: summary, archiveSourceCounts: sourceSnapshot.sourceCounts }, null, 2));
   }
 } finally {

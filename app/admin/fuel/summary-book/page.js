@@ -73,6 +73,9 @@ export default function SummaryBookPage() {
   return (
     <div>
       <PageHeader title="Summary Book" subtitle="Shift-by-shift, product-by-product reconciliation" />
+      <a className="inline-block mb-4 text-sm text-brand-600 underline" href={`/admin/fuel/historical-incomplete?branch=${encodeURIComponent(branchId)}`}>
+        Review incomplete historical pump records
+      </a>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
@@ -96,14 +99,15 @@ export default function SummaryBookPage() {
                 { key: 'date', label: 'Date', value: (r) => formatDate(r.date) },
                 { key: 'shiftLabel', label: 'Shift' },
                 { key: 'product', label: 'Product' },
-                { key: 'openingStock', label: 'Opening Stock' },
-                { key: 'stockIn', label: 'Stock In' },
-                { key: 'sales', label: 'Sales (L)' },
+                { key: 'openingStock', label: 'Opening Stock', value: (r) => r.productId ? r.openingStock : '' },
+                { key: 'stockIn', label: 'Stock In', value: (r) => r.productId ? r.stockIn : '' },
+                { key: 'sales', label: 'Sales (L)', value: (r) => r.productId ? r.sales : '' },
                 { key: 'closingStock', label: 'Closing Stock' },
-                { key: 'price', label: 'Price', value: (r) => (r.price / 100).toFixed(2) },
-                { key: 'totalAmount', label: 'Revenue', value: (r) => (r.totalAmount / 100).toFixed(2) },
-                { key: 'shortage', label: 'Shortage', value: (r) => (r.shortage / 100).toFixed(2) },
+                { key: 'price', label: 'Price', value: (r) => r.productId ? (r.price / 100).toFixed(2) : '' },
+                { key: 'totalAmount', label: 'Revenue', value: (r) => r.productId ? (r.totalAmount / 100).toFixed(2) : '' },
+                { key: 'shortage', label: 'Shortage', value: (r) => r.productId ? (r.shortage / 100).toFixed(2) : '' },
                 { key: 'unknownCollections', label: 'Unknown Collections' },
+                { key: 'incompleteReadings', label: 'Incomplete Pump Readings' },
               ]}
             />
           </div>
@@ -122,10 +126,11 @@ export default function SummaryBookPage() {
                     <th className="px-4 py-3 text-right font-medium">Price</th>
                     <th className="px-4 py-3 text-right font-medium">Revenue</th>
                     <th className="px-4 py-3 text-right font-medium">Shortage</th>
+                    <th className="px-4 py-3 text-right font-medium">Incomplete</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {rows.length === 0 && <EmptyRow colSpan={10} text="No shift activity in this range" />}
+                  {rows.length === 0 && <EmptyRow colSpan={11} text="No shift activity in this range" />}
                   {rows.map((r, i) => {
                     const dateStr = r.date.slice(0, 10);
                     return (
@@ -133,15 +138,16 @@ export default function SummaryBookPage() {
                         <td className="px-4 py-3 text-brand-600 hover:underline">{formatDate(r.date)}</td>
                         <td className="px-4 py-3 text-gray-500">{r.shiftLabel || (r.shiftOrder ? `Shift ${r.shiftOrder}` : 'Full Day')}</td>
                         <td className="px-4 py-3 font-medium">{r.product}</td>
-                        <td className="px-4 py-3 text-right">{r.openingStock.toLocaleString()} L</td>
-                        <td className="px-4 py-3 text-right">{r.stockIn.toLocaleString()} L</td>
-                        <td className="px-4 py-3 text-right">{r.sales.toLocaleString()} L</td>
+                        <td className="px-4 py-3 text-right">{r.productId ? `${r.openingStock.toLocaleString()} L` : '—'}</td>
+                        <td className="px-4 py-3 text-right">{r.productId ? `${r.stockIn.toLocaleString()} L` : '—'}</td>
+                        <td className="px-4 py-3 text-right">{r.productId ? `${r.sales.toLocaleString()} L` : '—'}</td>
                         <td className="px-4 py-3 text-right">{r.closingStock != null ? `${r.closingStock.toLocaleString()} L${r.closingStockSource === 'recorded_dips' ? ' (dip)' : ''}` : '—'}</td>
-                        <td className="px-4 py-3 text-right">{formatMoney(r.price / 100)}</td>
-                        <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalAmount / 100)}</td>
+                        <td className="px-4 py-3 text-right">{r.productId ? formatMoney(r.price / 100) : '—'}</td>
+                        <td className="px-4 py-3 text-right font-medium">{r.productId ? formatMoney(r.totalAmount / 100) : '—'}</td>
                         <td className={`px-4 py-3 text-right ${r.shortage > 0 ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>
                           {r.shortage > 0 ? formatMoney(r.shortage / 100) : r.unknownCollections > 0 ? 'Unknown collection' : '—'}
                         </td>
+                        <td className="px-4 py-3 text-right">{r.incompleteReadings > 0 ? `${r.incompleteReadings} pending` : '—'}</td>
                       </tr>
                     );
                   })}

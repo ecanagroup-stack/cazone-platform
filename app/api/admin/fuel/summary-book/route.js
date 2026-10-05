@@ -28,7 +28,7 @@ export const GET = withOrg(async (request) => {
 
     const shiftIds = shifts.map((s) => s.id);
     const readings = await prisma.meterReading.findMany({
-      where: { shiftId: { in: shiftIds }, reviewStatus: 'approved' },
+      where: { shiftId: { in: shiftIds } },
       include: { dispenser: { include: { tank: { include: { product: true } } } } },
     });
     const collections = await prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds } } });
@@ -40,9 +40,11 @@ export const GET = withOrg(async (request) => {
     for (const shift of shifts) {
       const periodEnd = shift.closedAt || new Date();
       const shiftReadings = readings.filter((r) => r.shiftId === shift.id);
+      const incompleteReadings = shiftReadings.filter((r) => r.reviewStatus !== 'approved' || !r.orderId).length;
 
       const byProduct = new Map();
       for (const r of shiftReadings) {
+        if (r.reviewStatus !== 'approved' || !r.orderId) continue;
         const product = historicalProductById[r.productIdAtShift] || r.dispenser.tank?.product;
         if (!product) continue;
         const row = byProduct.get(product.id) || { product, sales: 0, amount: 0, collected: 0, salesShortage: 0, unknownCollections: 0 };
@@ -86,8 +88,18 @@ export const GET = withOrg(async (request) => {
           closingStockSource: closingRecon ? 'reconciliation' : recordedClosingDips.length ? 'recorded_dips' : null,
           salesShortage, deliveryShortage, deliveryExcess,
           shortage: salesShortage + deliveryShortage, unknownCollections: agg.unknownCollections,
+          incompleteReadings: 0,
         });
       }
+      if (incompleteReadings) rows.push({
+        date: `${shift.operatingDate}T12:00:00.000Z`, openedAt: shift.openedAt,
+        shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
+        product: 'Unconfirmed pump readings', productId: null,
+        openingStock: 0, stockIn: 0, book: null, sales: 0, price: 0,
+        totalAmount: 0, collected: 0, closingStock: null, closingStockSource: null,
+        salesShortage: 0, deliveryShortage: 0, deliveryExcess: 0,
+        shortage: 0, unknownCollections: 0, incompleteReadings,
+      });
     }
 
     rows.sort((a, b) => new Date(b.date) - new Date(a.date) || new Date(b.openedAt) - new Date(a.openedAt));

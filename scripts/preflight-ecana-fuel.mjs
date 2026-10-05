@@ -1,4 +1,4 @@
-// Read-only preflight for importing Ecana Energy's MongoDB history from 2025.
+// Read-only preflight for importing Ecana Energy's MongoDB history from February 2026.
 // Run from cazone-platform: node scripts/preflight-ecana-fuel.mjs
 // LEGACY_FUEL_APP_DIR may point at a different petrol-station-app checkout.
 import path from 'node:path';
@@ -16,7 +16,7 @@ if (!mongoUri) throw new Error('MongoDB connection setting is missing from the s
 const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'));
 const mongoose = sourceRequire('mongoose');
 const prisma = new PrismaClient();
-const cutoff = new Date('2025-01-01T00:00:00.000Z');
+const cutoff = new Date('2026-02-01T00:00:00.000Z');
 const collections = {
   dayshifts: 'date', meterreadings: 'date', salesentries: 'date', paymentrecords: 'date',
   cashdeposits: 'date', tankstockentries: 'date', stockmovements: 'date',
