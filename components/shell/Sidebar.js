@@ -115,6 +115,16 @@ const ACCOUNT_GROUP = { label: 'Account', items: [
   { href: '/admin/settings', label: 'Business Settings', icon: FiSliders, roles: ['owner'] },
 ] };
 
+export function visibleAdminGroups({ services = [], businessType, role, serviceId = '' }) {
+  const currentServiceType = services.find((service) => service.id === serviceId)?.type || businessType || null;
+  const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => (!serviceId || service.id === serviceId) && service.config?.migrationStockPending === true);
+  const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
+  return menu.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+  })).filter((group) => group.items.length > 0);
+}
+
 export default function Sidebar({ services = [], businessType, user }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -144,13 +154,7 @@ export default function Sidebar({ services = [], businessType, user }) {
   // the real state for a deliberate "All services" view.
   const currentServiceId = searchParams.get('service') || '';
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
-
-  const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => (!currentServiceId || service.id === currentServiceId) && service.config?.migrationStockPending === true);
-  const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
-  const groups = menu.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
-  })).filter((g) => g.items.length > 0);
+  const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId });
   const isActive = (item) => {
     if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
       if (item.href === '/admin/fuel/staff') return searchParams.get('view') === 'staff';

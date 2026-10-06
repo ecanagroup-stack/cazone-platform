@@ -5,6 +5,7 @@ import { signOut } from 'next-auth/react';
 import { OrgLogo, Modal, ChangePasswordForm } from '@/components/ui';
 import ServiceBranchSwitcher from './ServiceBranchSwitcher';
 import NotificationBell from './NotificationBell';
+import { AdminLinkSearch } from './LinkSearch';
 
 // Business name, then service/branch switcher, then user menu — nothing else goes in the top bar
 // (platform-ui skill, section 1). The business-name switcher itself is plain text here: no user
@@ -24,6 +25,7 @@ export default function TopBar({ org, services, user }) {
         <ServiceBranchSwitcher services={services} />
       </div>
 
+      <AdminLinkSearch services={services} businessType={org?.businessType} role={user?.role} />
       <NotificationBell />
 
       <div className="relative shrink-0">

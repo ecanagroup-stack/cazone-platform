@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
 import SignOutButton from '@/components/SignOutButton';
 import PlatformLogo from '@/components/shell/PlatformLogo';
+import LinkSearch from '@/components/shell/LinkSearch';
 
 // Cross-tenant super-admin console — deliberately its own minimal chrome, not the tenant Sell/
 // Manage/Know shell (this isn't a business dashboard, it's the platform operator's own console).
@@ -21,11 +22,16 @@ export default async function PlatformLayout({ children }) {
           <span className="font-semibold">Cazone GS&amp;M Platform</span>
         </Link>
         <span className="text-xs bg-white/10 px-2 py-0.5 rounded">super_admin</span>
-        <Link href="/platform/organizations" className="text-sm text-gray-300 hover:text-white">Organizations</Link>
-        <Link href="/platform/services" className="text-sm text-gray-300 hover:text-white">Service Catalog</Link>
-        <Link href="/platform/settings" className="text-sm text-gray-300 hover:text-white">Settings</Link>
+        <Link href="/platform/organizations" className="hidden md:inline text-sm text-gray-300 hover:text-white">Organizations</Link>
+        <Link href="/platform/services" className="hidden md:inline text-sm text-gray-300 hover:text-white">Service Catalog</Link>
+        <Link href="/platform/settings" className="hidden md:inline text-sm text-gray-300 hover:text-white">Settings</Link>
         <div className="flex-1" />
-        <span className="text-sm text-gray-300">{session.user.name}</span>
+        <LinkSearch links={[
+          { href: '/platform/organizations', label: 'Organizations', group: 'Platform' },
+          { href: '/platform/services', label: 'Service Catalog', group: 'Platform' },
+          { href: '/platform/settings', label: 'Settings', group: 'Platform' },
+        ]} />
+        <span className="hidden lg:inline text-sm text-gray-300">{session.user.name}</span>
         <SignOutButton className="text-sm text-gray-300 hover:text-white" />
       </header>
       <main className="max-w-6xl mx-auto p-6">{children}</main>

@@ -6,6 +6,7 @@ import { getCachedOrganization } from '@/lib/orgLookup';
 import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 import PortalMessagesLink from '@/components/PortalMessagesLink';
+import LinkSearch from '@/components/shell/LinkSearch';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
 // customer session only ever sees their own account, never the org's operational screens.
@@ -37,7 +38,7 @@ export default async function PortalLayout({ children }) {
           <OrgLogo org={org} dim="h-7 w-7" />
           <span className="font-semibold">{session.user.organizationName}</span>
         </Link>
-        <nav className="flex items-center gap-4 text-sm text-gray-600">
+        <nav className="hidden md:flex items-center gap-4 text-sm text-gray-600">
           <Link href="/portal" className="hover:text-gray-900">Overview</Link>
           {org?.businessType === 'shop' && <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>}
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
@@ -46,7 +47,15 @@ export default async function PortalLayout({ children }) {
           <Link href="/portal/account" className="hover:text-gray-900">Account</Link>
         </nav>
         <div className="flex-1" />
-        <span className="text-sm text-gray-500">{session.user.name}</span>
+        <LinkSearch links={[
+          { href: '/portal', label: 'Overview', group: 'Account' },
+          ...(org?.businessType === 'shop' ? [{ href: '/portal/shop', label: 'Shop', group: 'Shop' }] : []),
+          { href: '/portal/statement', label: 'Statement', group: 'Account' },
+          { href: '/portal/messages', label: 'Messages', group: 'Account' },
+          ...(org?.businessType !== 'fuel_station' ? [{ href: '/portal/announcements', label: 'Notifications', group: 'Account' }] : []),
+          { href: '/portal/account', label: 'My Account', group: 'Account' },
+        ]} />
+        <span className="hidden lg:inline text-sm text-gray-500">{session.user.name}</span>
         <SignOutButton className="text-sm text-gray-500 hover:text-gray-900" />
       </header>
       <main className="max-w-3xl mx-auto p-6">{children}</main>
