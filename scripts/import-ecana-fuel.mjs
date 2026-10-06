@@ -248,7 +248,7 @@ try {
   else {
     // A resumed import may only write to the Ecana Energy tenant created by this script.
     const org = orgExisting || await prisma.organization.create({ data: {
-      name: 'Ecana Energy', slug, currency: 'NGN', email: owner.email || null,
+      name: 'Ecana Energy', slug, businessType: 'fuel_station', currency: 'NGN', email: owner.email || null,
       subscriptionStatus: 'trialing', trialEndsAt: new Date(Date.now() + 14 * 86400000),
     } });
     const orgId = org.id;

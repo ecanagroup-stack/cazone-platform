@@ -33,6 +33,7 @@ export async function GET() {
         id: o.id,
         name: o.name,
         slug: o.slug,
+        businessType: o.businessType,
         phone: o.phone,
         email: o.email,
         logoUrl: o.logoUrl,
@@ -72,9 +73,9 @@ export async function POST(request) {
 
   try {
     if (!orgName || !serviceType || !branchName || !ownerName || !ownerUsername || !ownerPassword) {
-      throw new ApiError('Business name, starting service, first branch, and the owner login are all required', 400);
+      throw new ApiError('Business name, business type, first branch, and the admin login are all required', 400);
     }
-    if (!(await isValidServiceType(serviceType))) throw new ApiError('Choose a valid starting service', 400);
+    if (!(await isValidServiceType(serviceType))) throw new ApiError('Choose a valid business type', 400);
     if (!slug) throw new ApiError('Could not derive a valid slug from the business name', 400);
 
     const passwordHash = await bcrypt.hash(ownerPassword, 10);
@@ -88,7 +89,7 @@ export async function POST(request) {
 
       return prisma.$transaction(async (tx) => {
         const org = await tx.organization.create({
-          data: { name: orgName, slug, phone: phone || null, email: email || null, currency, subscriptionStatus: 'trialing', trialEndsAt, freeForever: false, isActive: true },
+          data: { name: orgName, slug, businessType: serviceType, phone: phone || null, email: email || null, currency, subscriptionStatus: 'trialing', trialEndsAt, freeForever: false, isActive: true },
         });
         const service = await tx.service.create({
           data: { organizationId: org.id, type: serviceType, name: await serviceLabel(serviceType) },

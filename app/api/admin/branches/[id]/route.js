@@ -8,8 +8,11 @@ import { logAudit } from '@/lib/audit';
 export const GET = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
-    const branch = await prisma.branch.findUnique({ where: { id } });
+    const branch = await prisma.branch.findUnique({ where: { id }, include: { service: { select: { type: true, isActive: true } } } });
     if (!branch) throw new ApiError('Branch not found', 404);
+    const session = await getOrgSession();
+    const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    if (!branch.service.isActive || branch.service.type !== org.businessType) throw new ApiError('Branch not found', 404);
     return NextResponse.json({ success: true, data: branch });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
@@ -26,8 +29,10 @@ export const PATCH = withOrg(async (request, { params }) => {
     const body = await request.json();
     const update = {};
     let toleranceChange = null;
-    const current = await prisma.branch.findUnique({ where: { id }, include: { service: { select: { type: true } } } });
+    const current = await prisma.branch.findUnique({ where: { id }, include: { service: { select: { type: true, isActive: true } } } });
     if (!current) throw new ApiError('Branch not found', 404);
+    const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    if (!current.service.isActive || current.service.type !== org.businessType) throw new ApiError('Branch not found', 404);
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim();
     if (typeof body.address === 'string') update.address = body.address.trim() || null;

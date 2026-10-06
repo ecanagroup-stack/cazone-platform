@@ -128,7 +128,7 @@ export default function PlatformOrganizationsPage() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Organization">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <p className="text-sm text-gray-500">Creates a brand-new, isolated business workspace with its own owner login and a 14-day trial.</p>
+          <p className="text-sm text-gray-500">Creates a business workspace with its own admin login and a 14-day trial. The business type cannot be changed later.</p>
           <Field label="Business name" required>
             <input type="text" value={form.orgName} onChange={(e) => setForm({ ...form, orgName: e.target.value })} className={inputCls} required placeholder="e.g., Test Fuel Stop" />
           </Field>
@@ -141,7 +141,7 @@ export default function PlatformOrganizationsPage() {
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Starting service" required>
+            <Field label="Business type" required>
               <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} className={inputCls}>
                 {catalog.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
               </select>
@@ -156,9 +156,9 @@ export default function PlatformOrganizationsPage() {
             <input type="text" value={form.branchName} onChange={(e) => setForm({ ...form, branchName: e.target.value })} className={inputCls} required placeholder="e.g., Main Branch" />
           </Field>
           <div className="border-t pt-4 space-y-4">
-            <p className="text-sm font-medium">First owner login</p>
+            <p className="text-sm font-medium">First admin login</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Owner name" required>
+              <Field label="Admin name" required>
                 <input type="text" value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} className={inputCls} required />
               </Field>
               <UsernameField label="Username" required value={form.ownerUsername} onChange={(v) => setForm({ ...form, ownerUsername: v })} />

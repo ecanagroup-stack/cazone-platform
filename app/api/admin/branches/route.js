@@ -20,6 +20,8 @@ export const POST = withOrg(async (request) => {
 
     const service = await prisma.service.findUnique({ where: { id: serviceId } });
     if (!service) throw new ApiError('Service not found', 404);
+    const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    if (!service.isActive || service.type !== org.businessType) throw new ApiError('This branch does not belong to the registered business', 403);
 
     let code = slugify(name) || 'branch';
     let suffix = 1;

@@ -8,11 +8,14 @@ import { slugify } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 
 export const GET = withOrg(async () => {
+  const session = await getOrgSession();
+  const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
   const services = await prisma.service.findMany({
+    where: { type: org.businessType },
     include: { branches: { orderBy: { name: 'asc' } } },
     orderBy: { createdAt: 'asc' },
   });
-  return NextResponse.json({ success: true, data: services });
+  return NextResponse.json({ success: true, data: services, businessType: org.businessType });
 });
 
 // Enabling a service also creates its first branch in the same step — a service with zero branches
@@ -29,8 +32,11 @@ export const POST = withOrg(async (request) => {
     if (!(await isValidServiceType(type))) throw new ApiError('Invalid service type', 400);
     if (!branchName) throw new ApiError('Name the first branch for this service', 400);
 
-    const existing = await prisma.service.findFirst({ where: { type } });
-    if (existing) throw new ApiError('This service is already enabled', 400);
+    const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    if (type !== org.businessType) throw new ApiError('The registered business type cannot be changed', 400);
+
+    const existing = await prisma.service.findFirst();
+    if (existing) throw new ApiError('An organization can choose only one business type', 400);
 
     const branchCode = slugify(branchName) || 'main';
     const result = await prisma.$transaction(async (tx) => {

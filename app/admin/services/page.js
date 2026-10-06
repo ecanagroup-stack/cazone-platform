@@ -15,6 +15,7 @@ const REQUEST_STATUS_COLOR = { pending: 'amber', quoted: 'blue', approved: 'gree
 export default function ServicesPage() {
   const [services, setServices] = useState(null);
   const [catalog, setCatalog] = useState([]);
+  const [businessType, setBusinessType] = useState('');
   const [requests, setRequests] = useState(null);
   const [enableModal, setEnableModal] = useState(null); // catalog entry { key, name }
   const [branchName, setBranchName] = useState('');
@@ -31,7 +32,7 @@ export default function ServicesPage() {
       fetch('/api/admin/services').then((r) => r.json()),
       fetch('/api/admin/provisioning-requests').then((r) => r.json()),
     ]);
-    if (sr.success) setServices(sr.data); else toast.error(sr.error || 'Failed to load');
+    if (sr.success) { setServices(sr.data); setBusinessType(sr.businessType); } else toast.error(sr.error || 'Failed to load');
     if (rr.success) setRequests(rr.data);
   };
 
@@ -85,7 +86,7 @@ export default function ServicesPage() {
 
   const enabledTypes = services.map((s) => s.type);
   const pendingTypes = requests.filter((r) => r.type === 'service' && ['pending', 'quoted'].includes(r.status)).map((r) => r.serviceType);
-  const available = catalog.filter((s) => !enabledTypes.includes(s.key) && !pendingTypes.includes(s.key));
+  const available = catalog.filter((s) => s.key === businessType && !enabledTypes.includes(s.key) && !pendingTypes.includes(s.key));
   const openRequests = requests.filter((r) => ['pending', 'quoted'].includes(r.status));
 
   return (
@@ -118,12 +119,14 @@ export default function ServicesPage() {
                 <p className="font-semibold text-sm">{s.name || s.type}</p>
                 <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'}</p>
               </div>
-              <button
-                onClick={() => { setAddBranchFor(s); setNewBranchName(''); setNewBranchNote(''); }}
-                className={tableActionCls}
-              >
-                Request Branch
-              </button>
+              {s.config?.migrationStockPending === true
+                ? <span className="text-xs font-medium text-amber-700">Historical review · opening stock pending</span>
+                : <button
+                    onClick={() => { setAddBranchFor(s); setNewBranchName(''); setNewBranchNote(''); }}
+                    className={tableActionCls}
+                  >
+                    Request Branch
+                  </button>}
             </div>
             <div className="divide-y">
               {s.branches.length === 0 && <p className="px-4 py-4 text-sm text-gray-500">No branches yet.</p>}
@@ -135,9 +138,9 @@ export default function ServicesPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <StatusPill status={b.isActive ? 'Active' : 'Inactive'} color={b.isActive ? 'green' : 'gray'} />
-                    <button onClick={() => s.type === 'fuel_station' ? (setFuelBranchChange(b), setFuelBranchReason('')) : toggleBranch(b)} className={tableActionCls}>
+                    {s.config?.migrationStockPending !== true && <button onClick={() => s.type === 'fuel_station' ? (setFuelBranchChange(b), setFuelBranchReason('')) : toggleBranch(b)} className={tableActionCls}>
                       {b.isActive ? 'Deactivate' : 'Reactivate'}
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -146,10 +149,10 @@ export default function ServicesPage() {
         ))}
       </div>
 
-      {available.length > 0 && (
+      {services.length === 0 && available.length > 0 && (
         <Card className="p-5">
-          <h3 className="font-semibold text-sm mb-1">Request another business</h3>
-          <p className="text-xs text-gray-500 mb-4">Each business runs its own set of branches, managed independently. Adding one is a request — we'll quote it before anything is created.</p>
+          <h3 className="font-semibold text-sm mb-1">Choose a business type</h3>
+          <p className="text-xs text-gray-500 mb-4">An organization can choose one business type. Choose carefully; the type is locked once enabled.</p>
           <div className="flex flex-wrap gap-3">
             {available.map((s) => (
               <button

@@ -6,6 +6,7 @@ import { getCachedOrganization } from '@/lib/orgLookup';
 import TopBar from '@/components/shell/TopBar';
 import Sidebar from '@/components/shell/Sidebar';
 import LapsedBanner from '@/components/shell/LapsedBanner';
+import { getAccessibleBranchIds } from '@/lib/branchAccess';
 
 // Every page under here reads the session and the org's live data — never statically prerenderable.
 // Without this, Next can attempt a build-time static pass on a page that happens not to touch any
@@ -31,22 +32,24 @@ export default async function AdminLayout({ children }) {
   if (session.user.role === 'super_admin') redirect('/platform/organizations');
 
   const orgId = requireOrg(session);
-  const [organization, services] = await Promise.all([
+  const [organization, accessibleBranches] = await Promise.all([
     getCachedOrganization(orgId),
-    prisma.service.findMany({
-      where: { isActive: true },
-      include: { branches: { where: { isActive: true }, orderBy: { name: 'asc' } } },
-      orderBy: { createdAt: 'asc' },
-    }),
+    getAccessibleBranchIds(session),
   ]);
+  const allBusinessServices = await prisma.service.findMany({
+      where: { type: organization.businessType },
+      include: { branches: { where: { isActive: true, ...(accessibleBranches ? { id: { in: accessibleBranches } } : {}) }, orderBy: { name: 'asc' } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  const services = allBusinessServices.filter((service) => service.isActive || (service.type === 'fuel_station' && service.config?.migrationStockPending === true));
 
   return (
     <div className="min-h-screen flex flex-col">
       <TopBar org={organization} services={services} user={session.user} />
       <LapsedBanner org={organization} />
       <div className="flex flex-1">
-        <Sidebar services={services} user={session.user} />
-        <main className="flex-1 p-6 max-w-6xl mx-auto w-full">{children}</main>
+        <Sidebar services={services} businessType={organization.businessType} user={session.user} />
+        <main className="flex-1 p-6 pb-24 md:pb-6 max-w-6xl mx-auto w-full">{children}</main>
       </div>
     </div>
   );

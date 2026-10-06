@@ -72,7 +72,7 @@ export default function SignupPage() {
           <PlatformLogo className="h-12 w-12 mb-2" />
           <h1 className="text-xl font-bold text-gray-900">Create your Cazone GS&amp;M account</h1>
           <p className="text-sm text-gray-500 mt-1 text-center">
-            You can add more services and branches once you're in.
+            Choose your business type carefully. It cannot be changed after registration; you can add branches later.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white border rounded-lg p-6 space-y-4">
@@ -80,7 +80,7 @@ export default function SignupPage() {
             <input type="text" required value={form.orgName} onChange={(e) => setForm({ ...form, orgName: e.target.value })} className={inputCls} placeholder="e.g., Ecana Energy" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Starting service" required>
+            <Field label="Business type" required>
               <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} className={inputCls} disabled={!catalog}>
                 {(catalog || []).map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}
               </select>

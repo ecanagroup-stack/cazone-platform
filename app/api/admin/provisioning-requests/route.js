@@ -33,8 +33,10 @@ export const POST = withOrg(async (request) => {
     if (type === 'service') {
       const serviceType = body.serviceType;
       if (!(await isValidServiceType(serviceType))) throw new ApiError('Invalid service type', 400);
-      const existing = await prisma.service.findFirst({ where: { type: serviceType } });
-      if (existing) throw new ApiError('This service is already enabled', 400);
+      const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+      if (serviceType !== org.businessType) throw new ApiError('The registered business type cannot be changed', 400);
+      const existing = await prisma.service.findFirst();
+      if (existing) throw new ApiError('An organization can choose only one business type', 400);
       const pendingDup = await prisma.provisioningRequest.findFirst({ where: { type: 'service', serviceType, status: { in: ['pending', 'quoted'] } } });
       if (pendingDup) throw new ApiError('A request for this service is already pending', 400);
 

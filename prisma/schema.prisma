@@ -84,6 +84,8 @@ model Organization {
   id   String @id @default(cuid())
   name String
   slug String @unique
+  // Chosen at registration. The database rejects later changes and services of another type.
+  businessType String
 
   phone    String?
   email    String?

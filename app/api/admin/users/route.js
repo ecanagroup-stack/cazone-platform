@@ -24,7 +24,7 @@ export const GET = withOrg(async () => {
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
   if (!can(session.user.role, 'users.invite')) {
-    return NextResponse.json({ error: 'You do not have permission to invite users' }, { status: 403 });
+    return NextResponse.json({ error: 'You do not have permission to add users' }, { status: 403 });
   }
   try {
     const body = await request.json();
@@ -36,10 +36,17 @@ export const POST = withOrg(async (request) => {
 
     if (!name || !identifier || !role || !password) throw new ApiError('Name, login, role and password are all required', 400);
     if (!INVITABLE_ROLES.includes(role)) throw new ApiError('Invalid role', 400);
+    const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    const fuelRoles = ['supervisor', 'cashier', 'daily_auditor', 'external_auditor'];
+    const materialsRoles = ['materials_manager', 'atc_manager'];
+    if (fuelRoles.includes(role) && org.businessType !== 'fuel_station') throw new ApiError('This role is only for Petrol Station', 400);
+    if (materialsRoles.includes(role) && org.businessType !== 'shop') throw new ApiError('This role is only for Construction Materials', 400);
     if (password.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
     // Every non-owner role needs at least one branch — a staff member with no branch has nowhere to
     // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
     if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
+    const selectedBranches = await prisma.branch.findMany({ where: { id: { in: branchIds }, isActive: true, service: { type: org.businessType } }, select: { id: true, service: { select: { type: true, isActive: true, config: true } } } });
+    if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive && branch.service.config?.migrationStockPending !== true)) throw new ApiError('Select available branches of this business only', 400);
 
     const { field: idField, value: idValue } = classifyIdentifier(identifier);
 
