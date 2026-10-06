@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { invitableRolesForBusiness } from '@/lib/businessRoles';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
 
 const ROLE_LABELS = {
@@ -9,32 +10,44 @@ const ROLE_LABELS = {
   materials_manager: 'GSM Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', daily_auditor: 'Daily Auditor', external_auditor: 'External Auditor', staff: 'Staff',
 };
 
-// Plain-language, not a permission-key matrix — platform-ui skill, section 5.
-const ROLE_DESCRIPTIONS = [
-  { role: 'Owner', can: 'Everything — services, branches, billing, and every other user. Set once at signup.' },
-  { role: 'Manager', can: 'Invite users, manage services and branches, and approve fuel readings/payments.' },
-  { role: 'Supervisor', can: 'Fuel only — submits pump readings for a manager to approve.' },
-  { role: 'Cashier', can: 'Fuel only — records payments collected for a manager to approve.' },
-  { role: 'GSM Manager', can: 'Construction Material only — sales, customers, stock, catalog, fund and surcharge, and announcements.' },
-  { role: 'ATC Manager', can: 'Construction Material only — ATC allocation lifecycle (assign/loading/arrive) only.' },
-  { role: 'Auditor', can: 'Raises flags on discrepancies; otherwise read-only.' },
-  { role: 'Daily Auditor', can: 'Reviews fuel records and raises discrepancy flags.' },
-  { role: 'External Auditor', can: 'Read-only access to fuel reports and audit history.' },
-  { role: 'Staff', can: 'Day-to-day work on the branches they are assigned to.' },
-];
+// The guide is selected from the registered business, never from a URL query parameter.
+const ROLE_DESCRIPTIONS = {
+  fuel_station: {
+    owner: 'Manages stations, users, billing, and historical records.',
+    manager: 'Manages stations and users; reviews pump readings, payments, and deposits.',
+    supervisor: 'Runs assigned station shifts and submits pump and tank readings.',
+    cashier: 'Records collections and deposits for assigned stations.',
+    auditor: 'Raises flags on station discrepancies.',
+    daily_auditor: 'Reviews daily fuel records and raises discrepancy flags.',
+    external_auditor: 'Reviews fuel reports and audit history.',
+    staff: 'Works on the stations they are assigned to.',
+  },
+  shop: {
+    owner: 'Manages branches, users, billing, and construction-material operations.',
+    manager: 'Manages branches, users, sales, and approvals.',
+    materials_manager: 'Manages sales, customers, stock, catalog, adjustments, and announcements.',
+    atc_manager: 'Manages ATC assignment, loading, and arrival.',
+    auditor: 'Raises flags on discrepancies.',
+    staff: 'Works on the branches they are assigned to.',
+  },
+  general_store: {
+    owner: 'Manages stores, users, billing, and retail operations.',
+    manager: 'Manages stores, users, sales, and approvals.',
+    auditor: 'Raises flags on store discrepancies.',
+    staff: 'Works on the stores they are assigned to.',
+  },
+};
 
-// Roles scoped to a specific pack only show once a branch of that pack's type is selected —
-// same idea Sidebar.js already uses for currentServiceType, just applied to the invite form's role
-// picker instead of nav items.
-const ROLES_FOR_SERVICE_TYPE = { fuel_station: ['supervisor', 'cashier', 'daily_auditor', 'external_auditor'], shop: ['materials_manager', 'atc_manager'] };
 const UNIVERSAL_ROLES = ['manager', 'staff', 'auditor'];
-const ROLE_OPTION_LABELS = { ...ROLE_LABELS, supervisor: 'Supervisor (fuel)', cashier: 'Cashier (fuel)', materials_manager: 'GSM Manager', atc_manager: 'ATC Manager' };
+const roleLabel = (role, businessType) =>
+  role === 'owner' || invitableRolesForBusiness(businessType).includes(role) ? (ROLE_LABELS[role] || role) : 'Legacy role';
 
 const blankInvite = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 
 export default function UsersPage() {
   const [users, setUsers] = useState(null);
   const [services, setServices] = useState([]);
+  const [businessType, setBusinessType] = useState(null);
   const [showInvite, setShowInvite] = useState(false);
   const [form, setForm] = useState(blankInvite);
   const [submitting, setSubmitting] = useState(false);
@@ -46,23 +59,20 @@ export default function UsersPage() {
     const [ur, sr] = await Promise.all([fetch('/api/admin/users'), fetch('/api/admin/services')]);
     const [ud, sd] = await Promise.all([ur.json(), sr.json()]);
     if (ud.success) setUsers(ud.data); else toast.error(ud.error || 'Failed to load users');
-    if (sd.success) setServices(sd.data);
+    if (sd.success) { setServices(sd.data); setBusinessType(sd.businessType); }
   };
 
   useEffect(() => { load(); }, []);
 
   const allBranches = services.flatMap((s) => s.branches.map((b) => ({ ...b, serviceType: s.type, serviceName: s.name })));
-  const selectedServiceTypes = [...new Set(form.branchIds.map((id) => allBranches.find((b) => b.id === id)?.serviceType).filter(Boolean))];
-  const availableRoles = [
-    ...UNIVERSAL_ROLES,
-    ...selectedServiceTypes.flatMap((t) => ROLES_FOR_SERVICE_TYPE[t] || []),
-  ];
+  const availableRoles = form.branchIds.length > 0
+    ? invitableRolesForBusiness(businessType)
+    : UNIVERSAL_ROLES.filter((role) => invitableRolesForBusiness(businessType).includes(role));
 
   const toggleBranch = (branchId) => {
     setForm((f) => {
       const branchIds = f.branchIds.includes(branchId) ? f.branchIds.filter((id) => id !== branchId) : [...f.branchIds, branchId];
-      const nextTypes = [...new Set(branchIds.map((id) => allBranches.find((b) => b.id === id)?.serviceType).filter(Boolean))];
-      const nextRoles = [...UNIVERSAL_ROLES, ...nextTypes.flatMap((t) => ROLES_FOR_SERVICE_TYPE[t] || [])];
+      const nextRoles = branchIds.length > 0 ? invitableRolesForBusiness(businessType) : UNIVERSAL_ROLES.filter((role) => invitableRolesForBusiness(businessType).includes(role));
       return { ...f, branchIds, role: nextRoles.includes(f.role) ? f.role : 'staff' };
     });
   };
@@ -108,7 +118,7 @@ export default function UsersPage() {
     else toast.error(d.error);
   };
 
-  if (!users) return <Loader />;
+  if (!users || !businessType) return <Loader />;
 
   return (
     <div>
@@ -121,10 +131,10 @@ export default function UsersPage() {
       <Card className="p-4 mb-6">
         <table className="w-full text-sm">
           <tbody className="divide-y">
-            {ROLE_DESCRIPTIONS.map((r) => (
-              <tr key={r.role}>
-                <td className="py-2 pr-4 font-medium w-28">{r.role}</td>
-                <td className="py-2 text-gray-600">{r.can}</td>
+            {['owner', ...invitableRolesForBusiness(businessType)].map((role) => (
+              <tr key={role}>
+                <td className="py-2 pr-4 font-medium w-28">{ROLE_LABELS[role]}</td>
+                <td className="py-2 text-gray-600">{ROLE_DESCRIPTIONS[businessType]?.[role]}</td>
               </tr>
             ))}
           </tbody>
@@ -139,7 +149,7 @@ export default function UsersPage() {
             csvRows={users}
             csvColumns={[
               { key: 'name', label: 'Name' },
-              { key: 'role', label: 'Role', value: (r) => ROLE_LABELS[r.role] || r.role },
+              { key: 'role', label: 'Role', value: (r) => roleLabel(r.role, businessType) },
               { key: 'login', label: 'Login', value: (r) => r.email || r.username || r.phone || '' },
               { key: 'isActive', label: 'Status', value: (r) => (r.isActive ? 'Active' : 'Inactive') },
             ]}
@@ -162,7 +172,7 @@ export default function UsersPage() {
               {users.map((u) => (
                 <tr key={u.id}>
                   <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3">{ROLE_LABELS[u.role] || u.role}</td>
+                  <td className="px-4 py-3">{roleLabel(u.role, businessType)}</td>
                   <td className="px-4 py-3 text-gray-500">{u.email || u.username || u.phone || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
                     {u.role === 'owner' ? 'All branches' : (u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : 'None assigned')}
@@ -206,7 +216,7 @@ export default function UsersPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Role" required>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls}>
-                {availableRoles.map((r) => <option key={r} value={r}>{ROLE_OPTION_LABELS[r]}</option>)}
+                {availableRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
               </select>
             </Field>
             <Field label="Password" required>

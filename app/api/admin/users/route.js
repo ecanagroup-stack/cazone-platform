@@ -5,17 +5,22 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { classifyIdentifier } from '@/lib/identifier';
 import { ApiError } from '@/lib/apiError';
+import { invitableRolesForBusiness } from '@/lib/businessRoles';
 
 // owner is never invited — it's created once at signup/org-creation. super_admin/customer are out of
 // scope for this form entirely (platform operator and, in v1, a role with no screens to use yet).
 // supervisor/cashier/auditor are fuel's review-chain tier, materials_manager/atc_manager are
 // Construction Material's (lib/permissions.js) — all invitable like any other staff-side role.
-const INVITABLE_ROLES = ['manager', 'supervisor', 'cashier', 'materials_manager', 'atc_manager', 'auditor', 'daily_auditor', 'external_auditor', 'staff'];
-
 export const GET = withOrg(async () => {
+  const session = await getOrgSession();
+  if (!can(session?.user?.role, 'users.invite')) {
+    return NextResponse.json({ error: 'You do not have permission to view users' }, { status: 403 });
+  }
+  const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
   const users = await prisma.user.findMany({
     where: { role: { not: 'customer' } },
-    include: { branchAccess: { include: { branch: true } } },
+    select: { id: true, name: true, role: true, email: true, username: true, phone: true, isActive: true,
+      branchAccess: { where: { branch: { service: { type: org.businessType } } }, select: { branch: { select: { name: true } } } } },
     orderBy: { createdAt: 'asc' },
   });
   return NextResponse.json({ success: true, data: users });
@@ -35,12 +40,8 @@ export const POST = withOrg(async (request) => {
     const branchIds = Array.isArray(body.branchIds) ? body.branchIds : [];
 
     if (!name || !identifier || !role || !password) throw new ApiError('Name, login, role and password are all required', 400);
-    if (!INVITABLE_ROLES.includes(role)) throw new ApiError('Invalid role', 400);
     const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
-    const fuelRoles = ['supervisor', 'cashier', 'daily_auditor', 'external_auditor'];
-    const materialsRoles = ['materials_manager', 'atc_manager'];
-    if (fuelRoles.includes(role) && org.businessType !== 'fuel_station') throw new ApiError('This role is only for Petrol Station', 400);
-    if (materialsRoles.includes(role) && org.businessType !== 'shop') throw new ApiError('This role is only for Construction Materials', 400);
+    if (!invitableRolesForBusiness(org?.businessType).includes(role)) throw new ApiError('This role is not available for this business', 400);
     if (password.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
     // Every non-owner role needs at least one branch — a staff member with no branch has nowhere to
     // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
@@ -61,7 +62,7 @@ export const POST = withOrg(async (request) => {
       },
     });
 
-    return NextResponse.json({ success: true, data: user }, { status: 201 });
+    return NextResponse.json({ success: true, data: { id: user.id, name: user.name, role: user.role } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
