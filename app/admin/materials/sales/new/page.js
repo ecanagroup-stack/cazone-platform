@@ -90,6 +90,7 @@ export default function NewMaterialsSalePage() {
   const [cart, setCart] = useState([]);
   const [discount, setDiscount] = useState('');
   const [discountOtp, setDiscountOtp] = useState('');
+  const [delivered, setDelivered] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null);
@@ -146,7 +147,7 @@ export default function NewMaterialsSalePage() {
       const r = await fetch('/api/admin/materials/sales', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp,
+          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered,
           items: cart.map((i) => ({
             kind: i.kind, atcId: i.atcId, productId: i.productId, vehicleId: i.vehicleId,
             actualQty: i.actualQty, billQty: i.billQty, unitPrice: i.unitPrice,
@@ -269,6 +270,13 @@ export default function NewMaterialsSalePage() {
             {otherTotal > 0 && <div className="flex justify-between"><span className="text-gray-500">Other Costs</span><span>{formatMoney(otherTotal)}</span></div>}
             <div className="flex justify-between font-bold border-t pt-1 text-base"><span>Total</span><span>{formatMoney(grandTotal)}</span></div>
           </div>
+        </Card>
+
+        <Card className="p-4">
+          <label className="flex items-start gap-3 text-sm">
+            <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />
+            <span><strong>Delivered</strong><span className="block text-gray-500">Select only after the goods have reached the customer. Otherwise this sale appears as Pending on the sales report.</span></span>
+          </label>
         </Card>
 
         {creditWarning && (

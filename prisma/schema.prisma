@@ -771,6 +771,12 @@ model Order {
   // distinguishable without a separate ledger per channel.
   channel       String?
   createdAt     DateTime @default(now())
+  // Separate from Order.status: a booked sale can still await physical delivery.
+  // Existing sales are treated as delivered; new Building Material sales set this explicitly.
+  deliveryStatus   String   @default("delivered") // pending | delivered
+  deliveredAt      DateTime?
+  deliveredBy      String?
+  deliveryRevision Int      @default(0)
 
   lines       OrderLine[]
   allocations PaymentAllocation[]
@@ -800,6 +806,8 @@ model OrderLine {
   allocation   Delivery?  @relation(fields: [allocationId], references: [id])
 
   qty          Float
+  // Physical quantity deducted from stock or an ATC; may differ from billed qty.
+  stockQty     Float?
   unitPrice    Int
   lineTotal    Int
   // Sale-time snapshots for transaction reports; truck and supplier records can change later.

@@ -21,6 +21,7 @@ export const POST = withOrg(async (request) => {
     const branchId = body.branchId;
     const customerId = body.customerId || null;
     const paymentMethod = body.paymentMethod || 'cash';
+    if (body.delivered != null && typeof body.delivered !== 'boolean') throw new ApiError('Delivered must be true or false', 400);
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const transportFee = Math.round(Number(body.transportFee) || 0) * 100;
 
@@ -42,6 +43,7 @@ export const POST = withOrg(async (request) => {
       lines: priceLines,
       overrideCredit: !!body.overrideCredit,
       transportFee, channel: 'shop',
+      deliveryStatus: body.delivered ? 'delivered' : 'pending',
     });
 
     if (result.needsApproval) {

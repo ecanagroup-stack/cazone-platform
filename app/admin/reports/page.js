@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
-  Loader, PageHeader, Card, EmptyRow, Tabs, StatusPill,
+  Loader, PageHeader, Card, EmptyRow, Tabs, StatusPill, Modal, Field, NumberInput, OtpField, FormButtons,
   inputCls, theadCls, tableScrollCls, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
@@ -192,12 +192,15 @@ function SalesSummary({ branchId, serviceId, from, to }) {
   const [rows, setRows] = useState(null);
   const [allBranches, setAllBranches] = useState(false);
   const [fuelSummary, setFuelSummary] = useState(false);
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [deliveryFilter, setDeliveryFilter] = useState('all');
+  const [editing, setEditing] = useState(null);
 
   const load = useCallback(async () => {
     const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
     const r = await fetch(`/api/admin/reports/sales?${scope}&from=${from}&to=${to}`);
     const d = await r.json();
-    if (d.success) { setRows(d.data); setAllBranches(d.allBranches); setFuelSummary(!!d.fuelSummary); }
+    if (d.success) { setRows(d.data); setAllBranches(d.allBranches); setFuelSummary(!!d.fuelSummary); setDeliveryEnabled(!!d.deliveryEnabled); }
     else toast.error(d.error || 'Failed to load');
   }, [branchId, serviceId, from, to]);
 
@@ -205,7 +208,8 @@ function SalesSummary({ branchId, serviceId, from, to }) {
 
   if (!rows) return <Loader />;
 
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+  const visibleRows = deliveryEnabled && deliveryFilter !== 'all' ? rows.filter((row) => row.deliveryStatus === deliveryFilter) : rows;
+  const grandTotal = visibleRows.reduce((s, r) => s + r.total, 0);
 
   return (
     <div>
@@ -214,7 +218,7 @@ function SalesSummary({ branchId, serviceId, from, to }) {
         <ReportToolbar
           title={fuelSummary ? 'Sales Summary' : 'Sales Transactions'}
           csvFilename={fuelSummary ? 'sales-summary' : 'sales-transactions'}
-          csvRows={rows}
+          csvRows={visibleRows}
           csvColumns={fuelSummary ? [
             { key: 'date', label: 'Date' },
             ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
@@ -236,9 +240,15 @@ function SalesSummary({ branchId, serviceId, from, to }) {
             { key: 'transportAmount', label: 'Transport Amount', value: (r) => (r.transportAmount / 100).toFixed(2) },
             { key: 'total', label: 'Total Amount', value: (r) => (r.total / 100).toFixed(2) },
             { key: 'reference', label: 'Transaction Reference' },
+            ...(deliveryEnabled ? [{ key: 'deliveryStatus', label: 'Delivery Status' }] : []),
           ]}
         />
       </div>
+      {deliveryEnabled && <div className="flex gap-2 mb-3 text-sm" aria-label="Filter by delivery status">
+        {[['all', 'All'], ['pending', 'Pending'], ['delivered', 'Delivered']].map(([value, label]) =>
+          <button key={value} type="button" onClick={() => setDeliveryFilter(value)} className={`px-3 py-2 rounded border ${deliveryFilter === value ? 'bg-brand-600 text-white border-brand-600' : 'bg-white hover:bg-gray-50'}`}>{label}</button>
+        )}
+      </div>}
       <Card className="overflow-hidden">
         <div className={tableScrollCls}>
           <table className="w-full text-sm">
@@ -260,12 +270,13 @@ function SalesSummary({ branchId, serviceId, from, to }) {
                 <th className="px-4 py-3 text-right font-medium">Transport</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
                 <th className="px-4 py-3 text-left font-medium">Reference</th>
+                {deliveryEnabled && <><th className="px-4 py-3 text-left font-medium">Delivery</th><th className="px-4 py-3 text-left font-medium">Edit</th></>}
                 </>}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.length === 0 && <EmptyRow colSpan={fuelSummary ? (allBranches ? 6 : 5) : (allBranches ? 10 : 9)} text="No sales in this range" />}
-              {rows.map((r, i) => (
+              {visibleRows.length === 0 && <EmptyRow colSpan={fuelSummary ? (allBranches ? 6 : 5) : (allBranches ? 10 : 9) + (deliveryEnabled ? 2 : 0)} text="No sales in this range" />}
+              {visibleRows.map((r, i) => (
                 <tr key={i}>
                   <td className="px-4 py-3 text-gray-500">{formatDate(r.date)}</td>
                   {allBranches && <td className="px-4 py-3">{r.branch}</td>}
@@ -283,6 +294,10 @@ function SalesSummary({ branchId, serviceId, from, to }) {
                   <td className="px-4 py-3 text-right">{formatMoney(r.transportAmount / 100)}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatMoney(r.total / 100)}</td>
                   <td className="px-4 py-3">{r.reference}</td>
+                  {deliveryEnabled && <>
+                    <td className="px-4 py-3"><StatusPill status={r.deliveryStatus === 'pending' ? 'Pending' : 'Delivered'} color={r.deliveryStatus === 'pending' ? 'amber' : 'green'} /></td>
+                    <td className="px-4 py-3">{r.editable && <button type="button" onClick={() => setEditing(r)} className="text-brand-700 font-medium hover:underline">Edit</button>}</td>
+                  </>}
                   </>}
                 </tr>
               ))}
@@ -290,8 +305,92 @@ function SalesSummary({ branchId, serviceId, from, to }) {
           </table>
         </div>
       </Card>
+      <EditPendingSaleModal sale={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
     </div>
   );
+}
+
+function EditPendingSaleModal({ sale, onClose, onSaved }) {
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [creditWarning, setCreditWarning] = useState(null);
+  const [overridePin, setOverridePin] = useState('');
+  useEffect(() => {
+    setCreditWarning(null);
+    setOverridePin('');
+    setForm(sale?.edit ? {
+      revision: sale.edit.revision, delivered: false,
+      discount: (sale.edit.discount / 100).toString(),
+      orderTransportFee: (sale.edit.orderTransportFee / 100).toString(),
+      reason: '', discountOtp: '',
+      lines: sale.edit.lines.map((line) => ({
+        ...line, qty: String(line.qty), stockQty: String(line.stockQty),
+        unitPrice: (line.unitPrice / 100).toString(), transportFee: (line.transportFee / 100).toString(),
+        costs: line.costs.map((cost) => ({ ...cost, amount: (cost.amount / 100).toString() })),
+      })),
+    } : null);
+  }, [sale]);
+  if (!sale || !form) return null;
+
+  const updateLine = (id, key, value) => setForm((current) => ({
+    ...current, lines: current.lines.map((line) => line.id === id ? { ...line, [key]: value } : line),
+  }));
+  const updateCost = (lineId, costId, value) => setForm((current) => ({
+    ...current, lines: current.lines.map((line) => line.id === lineId
+      ? { ...line, costs: line.costs.map((cost) => cost.id === costId ? { ...cost, amount: value } : cost) }
+      : line),
+  }));
+  const calculatedTotal = form.lines.reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.unitPrice || 0)
+    + Number(line.transportFee || 0) + line.costs.reduce((costSum, cost) => costSum + Number(cost.amount || 0), 0), 0)
+    + Number(form.orderTransportFee || 0) - Number(form.discount || 0);
+  const discountOtpNeeded = Number(form.discount) > 0 && Math.round(Number(form.discount) * 100) !== sale.edit.discount;
+
+  const save = async (event, overrideCredit = false) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/orders/${sale.id}/delivery`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, overrideCredit, otp: overridePin }),
+      });
+      const result = await response.json();
+      if (result.needsApproval) { setCreditWarning(result); return; }
+      if (!result.success) return toast.error(result.error || 'Could not update this sale');
+      toast.success(form.delivered ? 'Sale marked Delivered' : 'Pending sale updated');
+      onSaved();
+    } finally { setSaving(false); }
+  };
+
+  return <Modal open onClose={onClose} title={`Edit pending sale ${sale.reference}`} size="2xl">
+    <form onSubmit={save} className="space-y-4">
+      <p className="text-sm text-gray-600">Edit the billed and physical quantities and amounts before delivery. Stock, customer balance, and payment allocations will be corrected together.</p>
+      {sale.paymentMethod !== 'credit' && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">This sale was paid immediately. Changing its value corrects the recorded sale and report; settle any cash difference with the customer separately.</p>}
+      {form.lines.map((line) => <Card key={line.id} className="p-4 space-y-3">
+        <h3 className="font-semibold">{line.product}</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Field label={`Physical quantity (${line.unit})`}><NumberInput required value={line.stockQty} onChange={(e) => updateLine(line.id, 'stockQty', e.target.value)} /></Field>
+          <Field label={`Billed quantity (${line.unit})`}><NumberInput required value={line.qty} onChange={(e) => updateLine(line.id, 'qty', e.target.value)} /></Field>
+          <Field label="Unit price"><NumberInput required value={line.unitPrice} onChange={(e) => updateLine(line.id, 'unitPrice', e.target.value)} /></Field>
+          <Field label="Transport"><NumberInput required value={line.transportFee} onChange={(e) => updateLine(line.id, 'transportFee', e.target.value)} /></Field>
+        </div>
+        {line.costs.map((cost) => <Field key={cost.id} label={`${cost.type}${cost.detail ? `: ${cost.detail}` : ''}`}><NumberInput required value={cost.amount} onChange={(e) => updateCost(line.id, cost.id, e.target.value)} /></Field>)}
+      </Card>)}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Other transport"><NumberInput required value={form.orderTransportFee} onChange={(e) => setForm({ ...form, orderTransportFee: e.target.value })} /></Field>
+        <Field label="Discount"><NumberInput required value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></Field>
+      </div>
+      {discountOtpNeeded && <OtpField purpose="sale_discount" value={form.discountOtp} onChange={(discountOtp) => setForm((current) => ({ ...current, discountOtp }))} />}
+      <p className="font-semibold">Revised total: {formatMoney(calculatedTotal)}</p>
+      <Field label="Reason for change" required><input required minLength={5} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} className={inputCls} /></Field>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.delivered} onChange={(e) => setForm({ ...form, delivered: e.target.checked })} /> Mark Delivered after saving</label>
+      {creditWarning && <Card className="p-3 border-amber-300 bg-amber-50 space-y-2">
+        <p className="text-sm text-amber-800">{creditWarning.error}</p>
+        <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
+        <button type="button" disabled={saving || !overridePin} onClick={(event) => save(event, true)} className="text-sm font-medium text-amber-900 underline disabled:opacity-50">Proceed with verification code</button>
+      </Card>}
+      <FormButtons onCancel={onClose} submitting={saving} submitLabel={form.delivered ? 'Save and mark Delivered' : 'Save pending sale'} />
+    </form>
+  </Modal>;
 }
 
 function StockSummary({ branchId, serviceId, from, to }) {

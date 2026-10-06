@@ -187,6 +187,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   const [newCustomerNameDuplicate, setNewCustomerNameDuplicate] = useState(null);
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [delivered, setDelivered] = useState(false);
   const [cart, setCart] = useState([]);
   const [cartProductId, setCartProductId] = useState('');
   const [cartQty, setCartQty] = useState('');
@@ -258,7 +259,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       const r = await fetch('/api/admin/materials/shop/sale', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer?.id || null, paymentMethod,
+          branchId, customerId: customer?.id || null, paymentMethod, delivered,
           lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, billQty: l.billQty, unitPrice: l.price })),
           transportFee: transportHandledBy === 'us' ? (Number(transportPrice) || 0) : 0,
           overrideCredit, otp,
@@ -269,7 +270,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         toast.success(`Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
         setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash');
-        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice('');
+        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice(''); setDelivered(false);
         setCreditWarning(null); setOverridePin('');
         onSold();
       } else if (d.needsApproval) {
@@ -434,6 +435,13 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
             <Field label="Transport price"><NumberInput value={transportPrice} onChange={(e) => setTransportPrice(e.target.value)} placeholder="0 if complimentary" /></Field>
           </div>
         )}
+      </Card>
+
+      <Card className="p-4">
+        <label className="flex items-start gap-3 text-sm">
+          <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />
+          <span><strong>Delivered</strong><span className="block text-gray-500">Select only after the goods have reached the customer. Otherwise this sale appears as Pending on the sales report.</span></span>
+        </label>
       </Card>
 
       {creditWarning && (

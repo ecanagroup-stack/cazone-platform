@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { can } from '@/lib/permissions';
+import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 
 // One row per transaction, with the stored order and line details used by the report and CSV.
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const serviceId = url.searchParams.get('serviceId');
@@ -35,12 +38,15 @@ export const GET = withOrg(async (request) => {
       return NextResponse.json({ success: true, data: rows, allBranches, fuelSummary: true });
     }
 
+    const accessible = await getAccessibleBranchIds(session);
+    const deliveryEnabled = branches[0]?.service?.type === 'shop';
     const orders = await prisma.order.findMany({
       where,
       include: {
         customer: { select: { name: true } },
         lines: { include: {
-          product: { select: { name: true, attributes: true, supplier: { select: { name: true } } } },
+          costs: true,
+          product: { select: { name: true, unit: true, attributes: true, supplier: { select: { name: true } } } },
           allocation: { include: { vehicle: { select: { plateNumber: true, driverName: true } }, supplier: { select: { name: true } } } },
         } },
       },
@@ -65,8 +71,22 @@ export const GET = withOrg(async (request) => {
       paymentMethod: order.paymentMethod || 'unspecified',
       channel: order.channel || 'unspecified',
       count: 1,
+      ...(deliveryEnabled ? {
+        deliveryStatus: order.deliveryStatus,
+        editable: order.deliveryStatus === 'pending' && can(session?.user?.role, 'sales.record') && canAccessBranch(accessible, order.branchId) && order.lines.every((line) => line.stockQty != null),
+        edit: order.deliveryStatus === 'pending' ? {
+          revision: order.deliveryRevision,
+          discount: order.discount,
+          orderTransportFee: order.transportFee - order.lines.reduce((sum, line) => sum + line.transportFee, 0),
+          lines: order.lines.map((line) => ({
+            id: line.id, product: line.product.name, unit: line.product.unit, qty: line.qty, stockQty: line.stockQty,
+            unitPrice: line.unitPrice, transportFee: line.transportFee,
+            costs: line.costs.map((cost) => ({ id: cost.id, type: cost.type, detail: cost.detail, amount: cost.amount })),
+          })),
+        } : null,
+      } : {}),
     }));
-    return NextResponse.json({ success: true, data: rows, allBranches });
+    return NextResponse.json({ success: true, data: rows, allBranches, deliveryEnabled });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
