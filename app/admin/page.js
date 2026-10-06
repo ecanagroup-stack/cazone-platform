@@ -62,6 +62,7 @@ export default async function TodayPage({ searchParams }) {
     byBrand.set(atc.productId, current);
     return byBrand;
   }, new Map()).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
+  const brandSummary = brandCounts.map((brand) => `${brand.count} ${brand.name}`).join(', ');
   const atcsHref = selectedService ? `/admin/materials/atcs?service=${selectedService.id}${selectedBranchId ? `&branch=${selectedBranchId}` : ''}` : '/admin/materials/atcs';
   const recentSales = selectedService ? await prisma.order.aggregate({
     where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : {}), createdAt: { gte: new Date(Date.now() - 7 * 86400000) } },
@@ -86,10 +87,7 @@ export default async function TodayPage({ searchParams }) {
         {availableAtcs && <Link href={atcsHref} className="block rounded-lg border bg-white p-4 hover:border-brand-500">
           <p className="text-xs text-gray-500">Available Cement</p>
           <p className="text-2xl font-bold mt-1">{availableBags.toLocaleString()} bags</p>
-          <p className="text-xs text-gray-500 mt-1">{availableAtcs.length} open ATC{availableAtcs.length === 1 ? '' : 's'}</p>
-          {brandCounts.length > 0 && <ul className="mt-2 space-y-0.5 text-xs text-gray-600" aria-label="Available ATCs by cement brand">
-            {brandCounts.map((brand) => <li key={brand.id}>{brand.name}: {brand.count} ATC{brand.count === 1 ? '' : 's'}</li>)}
-          </ul>}
+          <p className="text-xs text-gray-500 mt-1">{availableAtcs.length} open ATC{availableAtcs.length === 1 ? '' : 's'}{brandSummary ? `: ${brandSummary}` : ''}</p>
         </Link>}
       </div>
 
