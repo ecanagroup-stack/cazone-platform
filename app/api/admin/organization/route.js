@@ -23,8 +23,8 @@ export const PATCH = withOrg(async (request) => {
     if (update.name === null) throw new ApiError('Business name is required', 400);
     if (typeof body.otpEmail === 'string') {
       const otpEmail = body.otpEmail.trim();
-      if (otpEmail && !/^\S+@\S+\.\S+$/.test(otpEmail)) throw new ApiError('Invalid OTP email', 400);
-      update.otpEmail = otpEmail || null;
+      if (!/^\S+@\S+\.\S+$/.test(otpEmail)) throw new ApiError('Enter a separate admin OTP email address', 400);
+      update.otpEmail = otpEmail;
     }
     if (typeof body.otpPhone === 'string') update.otpPhone = body.otpPhone.trim() || null;
 

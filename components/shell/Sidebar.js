@@ -11,7 +11,7 @@ import {
 
 const CHAT_POLL_MS = 30000;
 
-// Same three groups, same order, for every vertical (platform-ui skill, section 1). Sell holds the
+// Shared operations for non-fuel businesses; Account is appended to every business menu. Sell holds the
 // counter itself — one entry per pack, not a list of pages. Manage's "at most two items per pack"
 // budget is lifted for Construction Material specifically — ecana_shop-app's own nav has ~11 items
 // across Setup/Operations for cement+aggregate+shop combined, and faithfully porting its dedicated
@@ -52,8 +52,6 @@ const GROUPS = [
       { href: '/admin/services', label: 'Branches', icon: FiMapPin, roles: ['owner', 'manager'] },
       { href: '/admin/users', label: 'Users', icon: FiUserCheck, roles: ['owner', 'manager'] },
       { href: '/admin/price-approvals', label: 'Price Approvals', icon: FiCheckCircle, roles: ['owner', 'manager'] },
-      { href: '/admin/billing', label: 'Subscription', icon: FiCreditCard, roles: ['owner'] },
-      { href: '/admin/settings', label: 'Settings', icon: FiSliders, roles: ['owner', 'manager'] },
     ],
   },
   {
@@ -102,15 +100,20 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/tank-stock', label: 'Closing Stock', icon: FiDroplet, roles: ['owner', 'manager', 'auditor', 'daily_auditor'], liveOnly: true },
     { href: '/admin/fuel/historical-incomplete', label: 'Incomplete Sales', icon: FiAlertTriangle, roles: ['owner', 'manager', 'cashier'] },
   ] },
-  { label: 'Records', items: [
+  { label: 'Reports', items: [
     { href: '/admin/fuel/summary-book', label: 'Daily Report', icon: FiFileText, roles: ['supervisor', 'daily_auditor', 'external_auditor', 'auditor'] },
     { href: '/admin/fuel/reports', label: 'Monthly Report', icon: FiBarChart2, roles: ['daily_auditor', 'external_auditor', 'auditor'] },
     { href: '/admin/fuel/summary-book', label: 'Meter Book', icon: FiBookOpen, roles: ['daily_auditor', 'auditor'] },
     { href: '/admin/fuel/tank-stock', label: 'Tank Stock', icon: FiDroplet, roles: ['daily_auditor', 'auditor'] },
     { href: '/admin/fuel/backfill', label: 'Historical Entry', icon: FiClock, roles: ['owner'], liveOnly: true },
-    { href: '/admin/billing', label: 'Subscription', icon: FiCreditCard, roles: ['owner'] },
   ] },
 ];
+
+const ACCOUNT_GROUP = { label: 'Account', items: [
+  { href: '/admin/account', label: 'My Account', icon: FiUserCheck },
+  { href: '/admin/billing', label: 'Subscription', icon: FiCreditCard, roles: ['owner'] },
+  { href: '/admin/settings', label: 'Business Settings', icon: FiSliders, roles: ['owner'] },
+] };
 
 export default function Sidebar({ services = [], businessType, user }) {
   const pathname = usePathname();
@@ -143,10 +146,10 @@ export default function Sidebar({ services = [], businessType, user }) {
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
 
   const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => (!currentServiceId || service.id === currentServiceId) && service.config?.migrationStockPending === true);
-  const menu = currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS;
+  const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   const groups = menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/billing', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((g) => g.items.length > 0);
   const isActive = (item) => {
     if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
@@ -157,9 +160,9 @@ export default function Sidebar({ services = [], businessType, user }) {
   };
   return (
     <>
-    <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:block ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
+    <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:flex md:flex-col md:min-h-[calc(100vh-3.5rem)] ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
       {groups.map((group) => (
-        <div key={group.label} className="mb-6">
+        <div key={group.label} className={group.label === 'Account' ? 'mt-auto border-t pt-4' : 'mb-6'}>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>
           <ul className="space-y-0.5">
             {group.items.map((item) => {

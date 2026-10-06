@@ -46,7 +46,7 @@ const FUEL_STAFF_ROLES = ['manager', 'supervisor', 'cashier', 'staff'];
 const roleLabel = (role, businessType) =>
   role === 'owner' || invitableRolesForBusiness(businessType).includes(role) ? (ROLE_LABELS[role] || role) : 'Legacy role';
 
-const blankInvite = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
+const blankUser = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 
 export default function UsersPage() {
   const searchParams = useSearchParams();
@@ -55,8 +55,8 @@ export default function UsersPage() {
   const [services, setServices] = useState([]);
   const [businessType, setBusinessType] = useState(null);
   const [accessibleBranchIds, setAccessibleBranchIds] = useState(null);
-  const [showInvite, setShowInvite] = useState(false);
-  const [form, setForm] = useState(blankInvite);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState(blankUser);
   const [submitting, setSubmitting] = useState(false);
   const [resetFor, setResetFor] = useState(null); // the user being password-reset, or null
   const [newPassword, setNewPassword] = useState('');
@@ -85,7 +85,7 @@ export default function UsersPage() {
     });
   };
 
-  const handleInvite = async (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     try {
@@ -93,7 +93,7 @@ export default function UsersPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       const d = await r.json();
-      if (d.success) { toast.success(`${form.name} added`); setShowInvite(false); setForm(blankInvite); load(); }
+      if (d.success) { toast.success(`${form.name} added`); setShowAdd(false); setForm(blankUser); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -150,7 +150,7 @@ export default function UsersPage() {
       <PageHeader
         title={fuelBusiness ? (staffView ? 'Station Staff' : 'Station Users') : 'Users'}
         subtitle={fuelBusiness ? 'One account list for station access, staff roles, and login management' : 'Who has access, and to what'}
-        action={<button onClick={() => { setForm({ ...blankInvite, branchIds: selectedBranch && allBranches.some((branch) => branch.id === selectedBranch) ? [selectedBranch] : [] }); setShowInvite(true); }} className={btnPrimaryCls}>Add User</button>}
+        action={<button onClick={() => { setForm({ ...blankUser, branchIds: selectedBranch && allBranches.some((branch) => branch.id === selectedBranch) ? [selectedBranch] : [] }); setShowAdd(true); }} className={btnPrimaryCls}>{staffView ? 'Add Staff' : 'Add User'}</button>}
       />
 
       {fuelBusiness && <div className="mb-5 flex flex-wrap items-center gap-2" role="navigation" aria-label="Fuel users view"><Link href={viewHref('all')} className={`rounded-lg px-4 py-2 text-sm font-medium ${!staffView ? 'bg-brand-700 text-white' : 'border bg-white text-gray-700'}`}>All users</Link><Link href={viewHref('staff')} className={`rounded-lg px-4 py-2 text-sm font-medium ${staffView ? 'bg-brand-700 text-white' : 'border bg-white text-gray-700'}`}>Station staff</Link><span className="ml-auto text-xs text-gray-500">{filteredUsers.length} {filteredUsers.length === 1 ? 'account' : 'accounts'}{selectedBranch ? ' at selected station' : ''}</span></div>}
@@ -220,8 +220,8 @@ export default function UsersPage() {
         </div>
       </Card>
 
-      <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Invite User">
-        <form onSubmit={handleInvite} className="space-y-4">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={staffView ? 'Add Staff' : 'Add User'}>
+        <form onSubmit={handleAdd} className="space-y-4">
           <Field label="Name" required>
             <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} required autoFocus />
           </Field>
@@ -250,7 +250,7 @@ export default function UsersPage() {
               <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
             </Field>
           </div>
-          <FormButtons onCancel={() => setShowInvite(false)} submitting={submitting} submitLabel="Invite User" />
+          <FormButtons onCancel={() => setShowAdd(false)} submitting={submitting} submitLabel={staffView ? 'Add Staff' : 'Add User'} />
         </form>
       </Modal>
 

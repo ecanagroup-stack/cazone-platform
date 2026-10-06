@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Card, Field, inputCls, btnPrimaryCls, OrgLogo } from '@/components/ui';
 import { resizeImageToPng } from '@/lib/imageResize';
@@ -11,6 +12,7 @@ const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 // logo uploads immediately on file select (no separate "save" step for it); the rest of the fields
 // save together via the form below.
 export default function OrganizationProfileForm({ org }) {
+  const router = useRouter();
   const [form, setForm] = useState({
     name: org.name || '', phone: org.phone || '', email: org.email || '', address: org.address || '',
     invoiceFooter: org.invoiceFooter || '', bankName: org.bankName || '', accountNumber: org.accountNumber || '', accountName: org.accountName || '',
@@ -48,7 +50,7 @@ export default function OrganizationProfileForm({ org }) {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       const d = await r.json();
-      if (d.success) toast.success('Organization profile saved');
+      if (d.success) { toast.success('Organization profile saved'); router.refresh(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);

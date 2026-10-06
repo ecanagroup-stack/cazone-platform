@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+        <h1 className="text-xl font-bold text-gray-900">Business Settings</h1>
         <p className="text-sm text-gray-500 mt-1">Your organization's profile, invoicing details, and security.</p>
       </div>
 
