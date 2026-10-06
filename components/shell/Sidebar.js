@@ -160,9 +160,9 @@ export default function Sidebar({ services = [], businessType, user }) {
   };
   return (
     <>
-    <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:flex md:flex-col md:min-h-[calc(100vh-3.5rem)] ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
+    <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:flex md:flex-col ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
       {groups.map((group) => (
-        <div key={group.label} className={group.label === 'Account' ? 'mt-auto border-t pt-4' : 'mb-6'}>
+        <div key={group.label} className={group.label === 'Account' ? 'border-t pt-4' : 'mb-6'}>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>
           <ul className="space-y-0.5">
             {group.items.map((item) => {
