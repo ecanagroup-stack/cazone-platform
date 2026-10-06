@@ -11,10 +11,10 @@ export const GET = withOrg(async () => {
     if (!session.user.customerId) throw new ApiError('No linked customer account', 403);
     const [customer, org] = await Promise.all([
       prisma.customer.findUnique({ where: { id: session.user.customerId } }),
-      prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { paymentsEnabled: true } }),
+      prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { paymentsEnabled: true, businessType: true } }),
     ]);
     if (!customer) throw new ApiError('Not found', 404);
-    return NextResponse.json({ success: true, data: { ...customer, paymentsEnabled: org?.paymentsEnabled || false } });
+    return NextResponse.json({ success: true, data: { ...customer, paymentsEnabled: org?.paymentsEnabled || false, businessType: org?.businessType } });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 500 });
   }

@@ -6,7 +6,7 @@ import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls
 
 const ROLE_LABELS = {
   owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier',
-  materials_manager: 'Materials Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', daily_auditor: 'Daily Auditor', external_auditor: 'External Auditor', staff: 'Staff',
+  materials_manager: 'GSM Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', daily_auditor: 'Daily Auditor', external_auditor: 'External Auditor', staff: 'Staff',
 };
 
 // Plain-language, not a permission-key matrix — platform-ui skill, section 5.
@@ -15,7 +15,7 @@ const ROLE_DESCRIPTIONS = [
   { role: 'Manager', can: 'Invite users, manage services and branches, and approve fuel readings/payments.' },
   { role: 'Supervisor', can: 'Fuel only — submits pump readings for a manager to approve.' },
   { role: 'Cashier', can: 'Fuel only — records payments collected for a manager to approve.' },
-  { role: 'Materials Manager', can: 'Construction Material only — sales, customers, stock and catalog upkeep, no branch/user admin.' },
+  { role: 'GSM Manager', can: 'Construction Material only — sales, customers, stock, catalog, fund and surcharge, and announcements.' },
   { role: 'ATC Manager', can: 'Construction Material only — ATC allocation lifecycle (assign/loading/arrive) only.' },
   { role: 'Auditor', can: 'Raises flags on discrepancies; otherwise read-only.' },
   { role: 'Daily Auditor', can: 'Reviews fuel records and raises discrepancy flags.' },
@@ -28,7 +28,7 @@ const ROLE_DESCRIPTIONS = [
 // picker instead of nav items.
 const ROLES_FOR_SERVICE_TYPE = { fuel_station: ['supervisor', 'cashier', 'daily_auditor', 'external_auditor'], shop: ['materials_manager', 'atc_manager'] };
 const UNIVERSAL_ROLES = ['manager', 'staff', 'auditor'];
-const ROLE_OPTION_LABELS = { ...ROLE_LABELS, supervisor: 'Supervisor (fuel)', cashier: 'Cashier (fuel)', materials_manager: 'Materials Manager', atc_manager: 'ATC Manager' };
+const ROLE_OPTION_LABELS = { ...ROLE_LABELS, supervisor: 'Supervisor (fuel)', cashier: 'Cashier (fuel)', materials_manager: 'GSM Manager', atc_manager: 'ATC Manager' };
 
 const blankInvite = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 

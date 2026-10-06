@@ -89,6 +89,7 @@ export default function NewMaterialsSalePage() {
   const [itemKind, setItemKind] = useState('cement');
   const [cart, setCart] = useState([]);
   const [discount, setDiscount] = useState('');
+  const [discountOtp, setDiscountOtp] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null);
@@ -145,7 +146,7 @@ export default function NewMaterialsSalePage() {
       const r = await fetch('/api/admin/materials/sales', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer.id, discount: Number(discount) || 0,
+          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp,
           items: cart.map((i) => ({
             kind: i.kind, atcId: i.atcId, productId: i.productId, vehicleId: i.vehicleId,
             actualQty: i.actualQty, billQty: i.billQty, unitPrice: i.unitPrice,
@@ -259,6 +260,7 @@ export default function NewMaterialsSalePage() {
           <Field label="Discount">
             <NumberInput value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0.00" />
           </Field>
+          {Number(discount) > 0 && <OtpField purpose="sale_discount" value={discountOtp} onChange={setDiscountOtp} />}
           <div className="bg-gray-50 rounded p-3 text-sm space-y-1">
             <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatMoney(subtotal)}</span></div>
             {Number(discount) > 0 && <div className="flex justify-between"><span className="text-gray-500">Discount</span><span>-{formatMoney(Number(discount))}</span></div>}
@@ -275,7 +277,7 @@ export default function NewMaterialsSalePage() {
             <p className="text-xs text-amber-800 mb-3">{creditWarning.error}</p>
             <div className="mb-3"><OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} /></div>
             <button type="button" onClick={() => submit(true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
-              Proceed anyway (this will be flagged for the owner)
+              Proceed anyway (this will be flagged for the admin)
             </button>
           </Card>
         )}

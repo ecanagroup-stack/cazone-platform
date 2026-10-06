@@ -3,7 +3,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { createSaleOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
-import { notify } from '@/lib/notify';
+import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Cement Warehouse's "Record Sale" tab (ecana_shop-app's app/admin/shop's sell tab + /api/sales'
@@ -52,9 +52,7 @@ export const POST = withOrg(async (request) => {
       });
     }
 
-    if (result.flagged) {
-      await notify({ recipientRole: 'owner', type: 'flag_raised', title: 'Credit limit overridden', message: `Sale ${result.order.orderNumber} overrode a customer's credit limit`, relatedType: 'Order', relatedId: result.order.id });
-    }
+    if (body.overrideCredit) await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code for sale ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
 
     return NextResponse.json({ success: true, data: { order: result.order, flagged: result.flagged } }, { status: 201 });
   } catch (e) {

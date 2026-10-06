@@ -22,7 +22,7 @@ export const POST = withOrg(async (request, { params }) => {
 
     return NextResponse.json({
       success: true, data: result.rule,
-      ...(result.pending && { pricePending: true, message: 'Price change submitted for owner approval — the current price is unchanged until then' }),
+      ...(result.pending && { pricePending: true, message: 'Price change submitted for admin approval — the current price is unchanged until then' }),
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

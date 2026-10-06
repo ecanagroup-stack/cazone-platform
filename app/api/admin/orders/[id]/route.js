@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
 // One order, fully populated for a printable receipt (app/admin/orders/[id]/receipt) — any signed-in
 // staff member can view it, same as they could see it in a report; nothing here is role-gated beyond
@@ -10,6 +11,8 @@ import { ApiError } from '@/lib/apiError';
 export const GET = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
   try {
+    const business = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+    if (!['shop', 'general_store'].includes(business?.businessType)) throw new ApiError('Not available for this business', 404);
     const { id } = await params;
     const [order, organization] = await Promise.all([
       prisma.order.findUnique({
@@ -23,6 +26,8 @@ export const GET = withOrg(async (request, { params }) => {
       prisma.organization.findUnique({ where: { id: session.user.organizationId } }),
     ]);
     if (!order) throw new ApiError('Order not found', 404);
+    const branchIds = await getAccessibleBranchIds(session);
+    if (!canAccessBranch(branchIds, order.branchId)) throw new ApiError('Order not found', 404);
 
     return NextResponse.json({ success: true, data: { order, organization } });
   } catch (e) {

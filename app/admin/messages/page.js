@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, inputCls, btnPrimaryCls, theadCls, tableScrollCls } from '@/components/ui';
 
@@ -9,6 +9,7 @@ const POLL_MS = 30000;
 
 export default function MessagesInboxPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [conversations, setConversations] = useState(null);
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [broadcastBody, setBroadcastBody] = useState('');
@@ -26,6 +27,7 @@ export default function MessagesInboxPage() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+  useEffect(() => { if (searchParams.get('announce') === '1') setShowBroadcast(true); }, [searchParams]);
 
   const openBroadcast = () => {
     setBroadcastBody('');
@@ -60,7 +62,7 @@ export default function MessagesInboxPage() {
       <PageHeader
         title="Messages"
         subtitle="Conversations with customers who have portal access"
-        action={<button onClick={openBroadcast} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">New Broadcast</button>}
+        action={<button onClick={openBroadcast} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Create Announcement</button>}
       />
 
       <Card className="overflow-hidden">
@@ -105,7 +107,7 @@ export default function MessagesInboxPage() {
         )}
       </Card>
 
-      <Modal open={showBroadcast} onClose={() => setShowBroadcast(false)} title="New Broadcast" size="lg">
+      <Modal open={showBroadcast} onClose={() => setShowBroadcast(false)} title="Create Announcement" size="lg">
         <form onSubmit={handleSendBroadcast} className="space-y-4">
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -129,7 +131,7 @@ export default function MessagesInboxPage() {
             <label className="block text-sm font-medium mb-1">Message</label>
             <textarea value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} rows={4} className={inputCls} required />
           </div>
-          <FormButtons onCancel={() => setShowBroadcast(false)} submitting={sending} submitLabel="Send Broadcast" />
+          <FormButtons onCancel={() => setShowBroadcast(false)} submitting={sending} submitLabel="Send Announcement" />
         </form>
       </Modal>
     </div>

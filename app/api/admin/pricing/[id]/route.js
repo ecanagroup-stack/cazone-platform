@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { verifyOtp } from '@/lib/otp';
-import { notify } from '@/lib/notify';
+import { notify, notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Owner-only (can('pricing.approve') resolves true only for owner's '*' wildcard — no manager/staff
@@ -46,6 +46,7 @@ export const PATCH = withOrg(async (request, { params }) => {
         relatedType: 'Product', relatedId: updated.productId,
       });
     }
+    await notifyReviewers({ actorUserId: session.user.id, type: 'price_decided', title: 'Price decision made', message: `${session.user.name} ${decision} a price change.`, relatedType: 'Product', relatedId: updated.productId });
 
     return NextResponse.json({ success: true, data: updated });
   } catch (e) {

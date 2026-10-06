@@ -4,6 +4,7 @@ import { can } from '@/lib/permissions';
 import { applyAdjustment } from '@/lib/adjustments';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
+import { notifyReviewers } from '@/lib/notify';
 
 // A surcharge or fund not tied to any sale — e.g. a standalone penalty/fee or a goodwill credit/
 // opening-balance correction. Ported from ecana_shop-app's app/api/customers/[id]/surcharge and
@@ -28,6 +29,11 @@ export const POST = withOrg(async (request, { params }) => {
     await verifyOtp({ userId: session.user.id, purpose: 'customer_adjustment', code: body.otp });
 
     const adjustment = await applyAdjustment({ session, customerId, type, amount, reason });
+    await notifyReviewers({
+      actorUserId: session.user.id, title: type === 'refund' ? 'Customer fund applied' : 'Customer surcharge applied',
+      message: `${session.user.name} applied a ${type === 'refund' ? 'fund' : 'surcharge'} of ${(amount / 100).toFixed(2)}. Reason: ${reason}`,
+      type: 'customer_adjustment', relatedType: 'CustomerAdjustment', relatedId: adjustment.id,
+    });
     return NextResponse.json({ success: true, data: adjustment }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

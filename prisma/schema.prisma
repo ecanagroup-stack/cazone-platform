@@ -802,6 +802,11 @@ model OrderLine {
   qty          Float
   unitPrice    Int
   lineTotal    Int
+  // Sale-time snapshots for transaction reports; truck and supplier records can change later.
+  sourceTruckNumber String?
+  sourceDriverName  String?
+  sourceName        String?
+  quality           String?
   // This line's own transport cost (a combined cement+aggregate sale prices transport per item, not
   // once for the whole order — see Order.transportFee above) — 0 everywhere else.
   transportFee Int             @default(0)

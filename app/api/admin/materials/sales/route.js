@@ -6,7 +6,7 @@ import { resolvePrice } from '@/lib/pricing';
 import { createSaleOrder, priceLines } from '@/lib/sale';
 import { checkCredit } from '@/lib/credit';
 import { verifyOtp } from '@/lib/otp';
-import { notify } from '@/lib/notify';
+import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // A combined materials sale — one customer, one order, any mix of cement (sold down a pre-recorded
@@ -35,7 +35,9 @@ export const POST = withOrg(async (request) => {
     const branchId = body.branchId;
     const customerId = body.customerId;
     const items = Array.isArray(body.items) ? body.items : [];
-    const discount = toCents(body.discount);
+    const rawDiscount = body.discount ?? 0;
+    if (!Number.isFinite(Number(rawDiscount)) || Number(rawDiscount) < 0) throw new ApiError('Discount must be zero or more', 400);
+    const discount = toCents(rawDiscount);
 
     if (!branchId || !customerId) throw new ApiError('Branch and customer are required', 400);
     if (items.length === 0) throw new ApiError('Add at least one item', 400);
@@ -45,7 +47,7 @@ export const POST = withOrg(async (request) => {
     const resolved = [];
     for (const item of items) {
       if (item.kind === 'cement') {
-        const atc = await prisma.delivery.findUnique({ where: { id: item.atcId } });
+        const atc = await prisma.delivery.findUnique({ where: { id: item.atcId }, include: { vehicle: true, supplier: true, product: true } });
         if (!atc || atc.qtyRemaining == null) throw new ApiError('ATC not found', 404);
         if (atc.branchId !== branchId) throw new ApiError('That ATC belongs to a different branch', 400);
         const actualQty = Number(item.actualQty);
@@ -57,11 +59,13 @@ export const POST = withOrg(async (request) => {
           line: {
             productId: atc.productId, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, unitPrice, allocationId: atc.id,
             transportFee: toCents(item.transportFee), costs: centsCosts(item.costs),
+            sourceTruckNumber: atc.vehicle?.plateNumber, sourceDriverName: atc.vehicle?.driverName,
+            sourceName: atc.supplier?.name, quality: atc.product?.attributes?.grade || null,
           },
         });
       } else if (item.kind === 'aggregate') {
         const [product, vehicle] = await Promise.all([
-          prisma.product.findUnique({ where: { id: item.productId } }),
+          prisma.product.findUnique({ where: { id: item.productId }, include: { supplier: true } }),
           prisma.vehicle.findUnique({ where: { id: item.vehicleId } }),
         ]);
         if (!product || !product.supplierId) throw new ApiError('Aggregate product not found', 404);
@@ -78,6 +82,8 @@ export const POST = withOrg(async (request) => {
           line: {
             productId: product.id, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, unitPrice,
             transportFee: toCents(item.transportFee), costs: centsCosts(item.costs),
+            sourceTruckNumber: vehicle.plateNumber, sourceDriverName: vehicle.driverName,
+            sourceName: product.supplier?.name, quality: product.attributes?.size || null,
           },
         });
       } else {
@@ -92,6 +98,7 @@ export const POST = withOrg(async (request) => {
     const totalLabourFee = resolved.reduce((s, r) => s + r.line.costs.filter((c) => c.type === 'labour').reduce((cs, c) => cs + c.amount, 0), 0);
     const totalOtherFee = resolved.reduce((s, r) => s + r.line.costs.filter((c) => c.type === 'other').reduce((cs, c) => cs + c.amount, 0), 0);
     const grandTotal = subtotal - discount + totalTransportFee + totalLabourFee + totalOtherFee;
+    if (discount > subtotal) throw new ApiError('Discount cannot exceed the sale subtotal', 400);
 
     const decision = await checkCredit({ customerId, orderTotal: grandTotal });
     if (decision.decision === 'blocked') throw new ApiError(decision.reason || 'This customer cannot be sold to on credit', 400);
@@ -103,6 +110,7 @@ export const POST = withOrg(async (request) => {
       });
     }
     if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
+    if (discount > 0) await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
 
     // The purchase leg for every aggregate item — buying straight from the quarry at its listed cost,
     // delivered by that item's truck. Not wrapped with the sale below: if the sale is rejected after
@@ -141,9 +149,12 @@ export const POST = withOrg(async (request) => {
       });
     }
 
-    if (result.flagged) {
-      await notify({ recipientRole: 'owner', type: 'flag_raised', title: 'Credit limit overridden', message: `Sale ${result.order.orderNumber} overrode a customer's credit limit`, relatedType: 'Order', relatedId: result.order.id });
-    }
+    if (body.overrideCredit) await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code for sale ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
+    if (discount > 0) await notifyReviewers({
+      actorUserId: session.user.id, title: 'Sale discount applied',
+      message: `${session.user.name} applied a discount of ${(discount / 100).toFixed(2)} to sale ${result.order.orderNumber}.`,
+      type: 'sale_discount', relatedType: 'Order', relatedId: result.order.id,
+    });
 
     return NextResponse.json({ success: true, data: { order: result.order, deliveries, flagged: result.flagged } }, { status: 201 });
   } catch (e) {

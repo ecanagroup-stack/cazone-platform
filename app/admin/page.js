@@ -93,6 +93,15 @@ export default async function TodayPage({ searchParams }) {
         </Link>}
       </div>
 
+      {['owner', 'materials_manager'].includes(session.user.role) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm font-medium">
+          <Link href="/admin/messages" className="rounded-lg border bg-white p-4 hover:border-brand-500">Chat</Link>
+          <Link href="/admin/orders" className="rounded-lg border bg-white p-4 hover:border-brand-500">Orders</Link>
+          <Link href="/admin/reports" className="rounded-lg border bg-white p-4 hover:border-brand-500">Transactions</Link>
+          <Link href="/admin/messages?announce=1" className="rounded-lg border bg-white p-4 hover:border-brand-500">Create Announcement</Link>
+        </div>
+      )}
+
       <Card className="p-6">
         <h2 className="font-semibold text-gray-900">{organization.businessType === 'shop' ? 'Construction materials work' : 'General store work'}</h2>
         <p className="mt-1 text-sm text-gray-500">Choose the task you need for this business.</p>

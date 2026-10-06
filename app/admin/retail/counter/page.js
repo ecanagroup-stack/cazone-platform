@@ -255,7 +255,7 @@ export default function RetailCounterPage() {
                 disabled={submitting || !overridePin}
                 className="text-xs font-medium text-amber-900 underline disabled:opacity-50"
               >
-                Proceed anyway (this will be flagged for the owner)
+                Proceed anyway (this will be flagged for the admin)
               </button>
             </div>
           )}

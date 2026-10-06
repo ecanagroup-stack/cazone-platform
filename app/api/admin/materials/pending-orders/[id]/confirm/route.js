@@ -3,7 +3,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { confirmPendingOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
-import { notify } from '@/lib/notify';
+import { notifyReviewers } from '@/lib/notify';
 
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
@@ -24,9 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
       });
     }
 
-    if (result.flagged) {
-      await notify({ recipientRole: 'owner', type: 'flag_raised', title: 'Credit limit overridden', message: `Confirming online order ${result.order.orderNumber} overrode a customer's credit limit`, relatedType: 'Order', relatedId: result.order.id });
-    }
+    if (body.overrideCredit) await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code to confirm order ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
 
     return NextResponse.json({ success: true, data: { order: result.order, flagged: result.flagged } });
   } catch (e) {

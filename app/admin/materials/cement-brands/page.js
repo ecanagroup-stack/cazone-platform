@@ -194,7 +194,7 @@ export default function CementBrandsPage() {
             <Field label="Reason">
               <input type="text" value={priceReason} onChange={(e) => setPriceReason(e.target.value)} className={inputCls} placeholder="optional" />
             </Field>
-            <p className="text-xs text-gray-500">If you're not an owner, this change won't take effect until an owner approves it.</p>
+            <p className="text-xs text-gray-500">If you're not an admin, this change takes effect after an admin approves it.</p>
             <FormButtons onCancel={() => setPriceModal(null)} submitting={submitting} submitLabel="Update Price" />
           </form>
         )}

@@ -153,7 +153,7 @@ export default function RetailProductsPage() {
 
       <Modal open={!!priceFor} onClose={() => setPriceFor(null)} title={`Edit Price — ${priceFor?.name || ''}`}>
         <form onSubmit={handlePriceChange} className="space-y-4">
-          <p className="text-sm text-gray-500">If you're not an owner, this change won't take effect until an owner approves it.</p>
+          <p className="text-sm text-gray-500">If you're not an admin, this change takes effect after an admin approves it.</p>
           <Field label="New price" required>
             <NumberInput value={newPrice} onChange={(e) => setNewPrice(e.target.value)} required autoFocus />
           </Field>

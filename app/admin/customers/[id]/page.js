@@ -14,7 +14,7 @@ const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61
 export default function CustomerDetailPage() {
   const { id } = useParams();
   const { data: authSession } = useSession();
-  const canChat = authSession?.user?.role === 'owner' || authSession?.user?.role === 'manager';
+  const canChat = ['owner', 'manager', 'materials_manager'].includes(authSession?.user?.role);
   const [data, setData] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', reference: '' });

@@ -5,6 +5,8 @@ import { can } from '@/lib/permissions';
 import { applyAdjustment } from '@/lib/adjustments';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
+import { notifyReviewers } from '@/lib/notify';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
 // A surcharge or fund tied to a specific sale — ported from ecana_shop-app's
 // app/api/sales/[id]/surcharge and /refund routes. `method` on a surcharge picks how the amount is
@@ -26,6 +28,8 @@ export const POST = withOrg(async (request, { params }) => {
 
     const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
     if (!order) throw new ApiError('Order not found', 404);
+    const branchIds = await getAccessibleBranchIds(session);
+    if (!canAccessBranch(branchIds, order.branchId)) throw new ApiError('Order not found', 404);
     if (order.status === 'void') throw new ApiError('Cannot adjust a voided order', 400);
     if (order.channel === 'shop') throw new ApiError(`${type === 'surcharge' ? 'Surcharges' : 'Funds'} do not apply to shop sales`, 400);
     if (!order.customerId) throw new ApiError('This order has no customer to adjust', 400);
@@ -48,8 +52,13 @@ export const POST = withOrg(async (request, { params }) => {
     await verifyOtp({ userId: session.user.id, purpose: 'customer_adjustment', code: body.otp });
 
     const adjustment = await applyAdjustment({ session, customerId: order.customerId, orderId, type, method, amount, reason });
+    await notifyReviewers({
+      actorUserId: session.user.id, title: type === 'refund' ? 'Sale fund applied' : 'Sale surcharge applied',
+      message: `${session.user.name} applied a ${type === 'refund' ? 'fund' : 'surcharge'} of ${(amount / 100).toFixed(2)} to sale ${order.orderNumber}. Reason: ${reason}`,
+      type: 'customer_adjustment', relatedType: 'CustomerAdjustment', relatedId: adjustment.id,
+    });
     return NextResponse.json({ success: true, data: adjustment }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
-});
+}, 'shop');

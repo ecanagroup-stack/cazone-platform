@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyState, EmptyRow, Modal, FormButtons, Field, Tabs, StatusPill,
@@ -179,6 +180,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
   const [customer, setCustomer] = useState(null);
+  const [customerMode, setCustomerMode] = useState('search');
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '' });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
@@ -266,7 +268,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       if (d.success) {
         toast.success(`Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
-        setCart([]); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash');
+        setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash');
         setTransportHandledBy(''); setTransportMeans(''); setTransportPrice('');
         setCreditWarning(null); setOverridePin('');
         onSold();
@@ -281,6 +283,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   };
 
   const attemptSubmit = () => {
+    if (customerMode === 'search' && !customer) return toast.error('Search and select a customer, or choose Walk-in Customer');
     if (cart.length === 0) return toast.error('Add at least one item');
     if (!transportHandledBy) return toast.error('State who is handling transport');
     if (transportHandledBy === 'us') {
@@ -306,6 +309,11 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       )}
 
       <Card className="p-4">
+        <div className="flex gap-2 mb-3">
+          <button type="button" onClick={() => setCustomerMode('search')} className={`px-3 py-2 text-sm rounded border ${customerMode === 'search' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Search Customer</button>
+          <button type="button" onClick={() => { setCustomerMode('walk-in'); setCustomer(null); setCustomerQuery(''); }} className={`px-3 py-2 text-sm rounded border ${customerMode === 'walk-in' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Walk-in Customer</button>
+        </div>
+        {customerMode === 'search' && (
         <Field label="Customer">
           {customer ? (
             <div className="flex items-center justify-between bg-brand-50 rounded px-3 py-2 text-sm">
@@ -332,6 +340,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
             </div>
           )}
         </Field>
+        )}
       </Card>
 
       <Card className="p-4 space-y-3">
@@ -433,7 +442,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
           <p className="text-xs text-amber-800 mb-3">{creditWarning.error}</p>
           <div className="mb-3"><OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} /></div>
           <button onClick={() => submit(true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
-            Proceed anyway (this will be flagged for the owner)
+            Proceed anyway (this will be flagged for the admin)
           </button>
         </Card>
       )}
@@ -470,6 +479,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 }
 
 function SalesHistoryTab({ branchId }) {
+  const { data: authSession } = useSession();
   const [orders, setOrders] = useState(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -488,13 +498,13 @@ function SalesHistoryTab({ branchId }) {
   const clearDates = () => { setFrom(''); setTo(''); load({ from: '', to: '' }); };
 
   const handleVoid = async (order) => {
-    const reason = prompt(`Delete sale ${order.orderNumber}? This permanently removes it and restores stock. Reason:`);
+    const reason = prompt(`Void unpaid sale ${order.orderNumber} and restore its stock? Enter a reason:`);
     if (!reason) return;
     const r = await fetch(`/api/admin/orders/${order.id}/void`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }),
     });
     const d = await r.json();
-    if (d.success) { toast.success('Sale deleted, stock restored'); load(); }
+    if (d.success) { toast.success('Sale voided, stock restored'); load(); }
     else toast.error(d.error);
   };
 
@@ -547,7 +557,9 @@ function SalesHistoryTab({ branchId }) {
                   <td className="px-4 py-3"><StatusPill status={o.status} color={o.status === 'active' ? 'green' : 'red'} /></td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/admin/orders/${o.id}/receipt`} target="_blank" className={`${tableActionCls} mr-3`}>Receipt</Link>
-                    {o.status === 'active' && <button onClick={() => handleVoid(o)} className={tableDangerActionCls}>Delete</button>}
+                    {o.status === 'active' && o.channel === 'shop' && o.paymentMethod === 'credit' &&
+                      ['owner', 'manager', 'materials_manager'].includes(authSession?.user?.role) &&
+                      <button onClick={() => handleVoid(o)} className={tableDangerActionCls}>Void unpaid sale</button>}
                   </td>
                 </tr>
               ))}
@@ -663,7 +675,7 @@ function ManageProductsTab({ serviceId, branchId }) {
 
       <Modal open={!!priceFor} onClose={() => setPriceFor(null)} title={`Edit Price — ${priceFor?.name || ''}`}>
         <form onSubmit={handlePriceChange} className="space-y-4">
-          <p className="text-sm text-gray-500">If you're not an owner, this change won't take effect until an owner approves it.</p>
+          <p className="text-sm text-gray-500">If you're not an admin, this change takes effect after an admin approves it.</p>
           <Field label="New price" required><NumberInput value={newPrice} onChange={(e) => setNewPrice(e.target.value)} required autoFocus /></Field>
           <FormButtons onCancel={() => setPriceFor(null)} submitting={submitting} submitLabel="Save" />
         </form>

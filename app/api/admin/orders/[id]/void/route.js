@@ -1,19 +1,15 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
-// Generic "delete a sale, restore stock" — ecana_shop-app's Sales History "Delete" action, ported as
-// a void (never a hard delete — the record and its reason stay, matching this app's append-only
-// ledger principle everywhere else) reusable by any pack's history screen, not just Cement Warehouse.
-// Reverses each StockMove this order created (an offsetting 'adjustment' move, not an edit), restores
-// an allocation's qtyRemaining for any line that drew from one, and reverses the customer's balance
-// if this was a credit sale.
+// A bounded correction for unpaid ordinary shop credit sales. Other sale types need a
+// dedicated payment or allocation reversal before their stock and balance can change.
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'sales.record')) {
+  if (!['owner', 'manager', 'materials_manager'].includes(session?.user?.role)) {
     return NextResponse.json({ error: 'You do not have permission to void a sale' }, { status: 403 });
   }
   try {
@@ -24,34 +20,31 @@ export const POST = withOrg(async (request, { params }) => {
 
     const order = await prisma.order.findUnique({ where: { id }, include: { lines: true } });
     if (!order) throw new ApiError('Order not found', 404);
-    if (order.status === 'void') throw new ApiError('This order is already void', 400);
+    const branchIds = await getAccessibleBranchIds(session);
+    if (!canAccessBranch(branchIds, order.branchId)) throw new ApiError('Order not found', 404);
+    if (order.status !== 'active' || order.channel !== 'shop' || order.paymentMethod !== 'credit' || !order.customerId) {
+      throw new ApiError('Only active shop credit sales can be voided here', 409);
+    }
+    if (order.lines.some((line) => line.allocationId)) throw new ApiError('Allocation sales need a separate stock correction', 409);
 
     const moves = await prisma.stockMove.findMany({ where: { ref: id, reason: 'sale' } });
+    if (moves.length !== order.lines.length) throw new ApiError('Sale stock movements are incomplete; use a supervised correction', 409);
 
     await prisma.$transaction(async (tx) => {
+      const [payments, adjustments] = await Promise.all([
+        tx.paymentAllocation.count({ where: { orderId: id } }),
+        tx.customerAdjustment.count({ where: { orderId: id } }),
+      ]);
+      if (payments || adjustments) throw new ApiError('This sale has payments or adjustments; use a supervised correction', 409);
+      const changed = await tx.order.updateMany({ where: { id, status: 'active' }, data: { status: 'void' } });
+      if (changed.count !== 1) throw new ApiError('This sale has already changed', 409);
       for (const move of moves) {
         await tx.stockMove.create({
           data: { branchId: move.branchId, productId: move.productId, qty: -move.qty, reason: 'adjustment', ref: id, userId: session.user.id, note: `Void ${order.orderNumber}: ${reason}` },
         });
       }
 
-      for (const line of order.lines) {
-        if (!line.allocationId) continue;
-        const move = moves.find((m) => m.productId === line.productId);
-        const restoreQty = move ? -move.qty : line.qty; // the StockMove already reflects the actual (stockQty) amount taken
-        const allocation = await tx.delivery.findUnique({ where: { id: line.allocationId } });
-        if (!allocation) continue;
-        await tx.delivery.update({
-          where: { id: line.allocationId },
-          data: { qtyRemaining: { increment: restoreQty }, status: allocation.status === 'closed' ? 'arrived' : allocation.status },
-        });
-      }
-
-      if (order.customerId && order.paymentMethod === 'credit') {
-        await tx.customer.update({ where: { id: order.customerId }, data: { balance: { decrement: order.grandTotal } } });
-      }
-
-      await tx.order.update({ where: { id }, data: { status: 'void' } });
+      await tx.customer.update({ where: { id: order.customerId }, data: { balance: { decrement: order.grandTotal } } });
     }, { timeout: 15000 });
 
     await logAudit({
@@ -63,4 +56,4 @@ export const POST = withOrg(async (request, { params }) => {
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
-});
+}, 'shop');

@@ -16,6 +16,7 @@ export default function CustomersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentBranchId = searchParams.get('branch') || '';
+  const [customerFilter, setCustomerFilter] = useState('all');
 
   const [customers, setCustomers] = useState(null);
   const [services, setServices] = useState([]);
@@ -26,13 +27,13 @@ export default function CustomersPage() {
   const [nameDuplicate, setNameDuplicate] = useState(null);
 
   const load = useCallback(async () => {
-    const qs = currentBranchId ? `?branchId=${currentBranchId}` : '';
+    const qs = customerFilter === 'branch' && currentBranchId ? `?branchId=${currentBranchId}` : '';
     const [cr, sr, mr] = await Promise.all([fetch(`/api/admin/customers${qs}`), fetch('/api/admin/services'), fetch('/api/admin/me')]);
     const [cd, sd, md] = await Promise.all([cr.json(), sr.json(), mr.json()]);
     if (cd.success) setCustomers(cd.data); else toast.error(cd.error || 'Failed to load');
     if (sd.success) setServices(sd.data);
     if (md.success) setAccessibleBranchIds(md.data.accessibleBranchIds);
-  }, [currentBranchId]);
+  }, [currentBranchId, customerFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -77,9 +78,14 @@ export default function CustomersPage() {
     <div>
       <PageHeader
         title="Customers"
-        subtitle={currentBranchId ? 'Accounts registered at the current branch' : 'Every customer across the organization'}
+        subtitle={customerFilter === 'branch' && currentBranchId ? 'Accounts registered at the current branch' : 'Every customer across the organization'}
         action={<button onClick={openCreate} className={btnPrimaryCls}>Add Customer</button>}
       />
+
+      <div className="flex gap-2 mb-4 text-sm">
+        <button type="button" onClick={() => setCustomerFilter('all')} className={`px-3 py-2 rounded border ${customerFilter === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>All Customers (All)</button>
+        {currentBranchId && <button type="button" onClick={() => setCustomerFilter('branch')} className={`px-3 py-2 rounded border ${customerFilter === 'branch' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Current Branch</button>}
+      </div>
 
       <Card className="overflow-hidden">
         <div className="px-4 py-3 border-b flex justify-end">

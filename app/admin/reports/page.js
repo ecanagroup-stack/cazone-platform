@@ -180,12 +180,13 @@ function BalancesSummary({ from, to }) {
 function SalesSummary({ branchId, serviceId, from, to }) {
   const [rows, setRows] = useState(null);
   const [allBranches, setAllBranches] = useState(false);
+  const [fuelSummary, setFuelSummary] = useState(false);
 
   const load = useCallback(async () => {
     const scope = branchId ? `branchId=${branchId}` : `serviceId=${serviceId}`;
     const r = await fetch(`/api/admin/reports/sales?${scope}&from=${from}&to=${to}`);
     const d = await r.json();
-    if (d.success) { setRows(d.data); setAllBranches(d.allBranches); }
+    if (d.success) { setRows(d.data); setAllBranches(d.allBranches); setFuelSummary(!!d.fuelSummary); }
     else toast.error(d.error || 'Failed to load');
   }, [branchId, serviceId, from, to]);
 
@@ -200,16 +201,30 @@ function SalesSummary({ branchId, serviceId, from, to }) {
       <div className="flex justify-between items-center mb-3">
         <p className="text-sm text-gray-500">Total: <span className="font-semibold text-gray-900">{formatMoney(grandTotal / 100)}</span></p>
         <ReportToolbar
-          title="Sales Summary"
-          csvFilename="sales-summary"
+          title={fuelSummary ? 'Sales Summary' : 'Sales Transactions'}
+          csvFilename={fuelSummary ? 'sales-summary' : 'sales-transactions'}
           csvRows={rows}
-          csvColumns={[
+          csvColumns={fuelSummary ? [
             { key: 'date', label: 'Date' },
             ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'paymentMethod', label: 'Payment Method' },
             { key: 'channel', label: 'Channel' },
             { key: 'count', label: 'Orders' },
             { key: 'total', label: 'Total', value: (r) => (r.total / 100).toFixed(2) },
+          ] : [
+            { key: 'date', label: 'Date' },
+            { key: 'enteredAt', label: 'Entry Timestamp', value: (r) => new Date(r.enteredAt).toLocaleString() },
+            ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
+            { key: 'customer', label: 'Customer' },
+            { key: 'products', label: 'Products' },
+            { key: 'truck', label: 'Truck Number' },
+            { key: 'driver', label: 'Driver' },
+            { key: 'source', label: 'Product Source' },
+            { key: 'quality', label: 'Product Quality' },
+            { key: 'salesAmount', label: 'Sales Amount', value: (r) => (r.salesAmount / 100).toFixed(2) },
+            { key: 'transportAmount', label: 'Transport Amount', value: (r) => (r.transportAmount / 100).toFixed(2) },
+            { key: 'total', label: 'Total Amount', value: (r) => (r.total / 100).toFixed(2) },
+            { key: 'reference', label: 'Transaction Reference' },
           ]}
         />
       </div>
@@ -220,22 +235,44 @@ function SalesSummary({ branchId, serviceId, from, to }) {
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Date</th>
                 {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
-                <th className="px-4 py-3 text-left font-medium">Payment Method</th>
-                <th className="px-4 py-3 text-left font-medium">Channel</th>
-                <th className="px-4 py-3 text-right font-medium">Orders</th>
+                {fuelSummary ? <>
+                  <th className="px-4 py-3 text-left font-medium">Payment Method</th>
+                  <th className="px-4 py-3 text-left font-medium">Channel</th>
+                  <th className="px-4 py-3 text-right font-medium">Orders</th>
+                  <th className="px-4 py-3 text-right font-medium">Total</th>
+                </> : <>
+                <th className="px-4 py-3 text-left font-medium">Customer</th>
+                <th className="px-4 py-3 text-left font-medium">Product</th>
+                <th className="px-4 py-3 text-left font-medium">Truck / Driver</th>
+                <th className="px-4 py-3 text-left font-medium">Source / Quality</th>
+                <th className="px-4 py-3 text-right font-medium">Sales</th>
+                <th className="px-4 py-3 text-right font-medium">Transport</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
+                <th className="px-4 py-3 text-left font-medium">Reference</th>
+                </>}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.length === 0 && <EmptyRow colSpan={allBranches ? 6 : 5} text="No sales in this range" />}
+              {rows.length === 0 && <EmptyRow colSpan={fuelSummary ? (allBranches ? 6 : 5) : (allBranches ? 10 : 9)} text="No sales in this range" />}
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td className="px-4 py-3 text-gray-500">{formatDate(r.date)}</td>
                   {allBranches && <td className="px-4 py-3">{r.branch}</td>}
-                  <td className="px-4 py-3 capitalize">{r.paymentMethod}</td>
-                  <td className="px-4 py-3 capitalize text-gray-500">{r.channel}</td>
-                  <td className="px-4 py-3 text-right">{r.count}</td>
+                  {fuelSummary ? <>
+                    <td className="px-4 py-3 capitalize">{r.paymentMethod}</td>
+                    <td className="px-4 py-3 capitalize text-gray-500">{r.channel}</td>
+                    <td className="px-4 py-3 text-right">{r.count}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatMoney(r.total / 100)}</td>
+                  </> : <>
+                  <td className="px-4 py-3">{r.customer}</td>
+                  <td className="px-4 py-3">{r.products}</td>
+                  <td className="px-4 py-3">{r.truck} / {r.driver}</td>
+                  <td className="px-4 py-3">{r.source} / {r.quality}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(r.salesAmount / 100)}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(r.transportAmount / 100)}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatMoney(r.total / 100)}</td>
+                  <td className="px-4 py-3">{r.reference}</td>
+                  </>}
                 </tr>
               ))}
             </tbody>

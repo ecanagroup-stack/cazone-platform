@@ -38,7 +38,7 @@ export const PATCH = withOrg(async (request, { params }) => {
 
     return NextResponse.json({
       success: true, data: updated,
-      ...(pricePending && { pricePending: true, message: 'Price change submitted for owner approval — the current price is unchanged until then' }),
+      ...(pricePending && { pricePending: true, message: 'Price change submitted for admin approval — the current price is unchanged until then' }),
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

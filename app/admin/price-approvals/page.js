@@ -58,7 +58,7 @@ export default function PriceApprovalsPage() {
 
   return (
     <div>
-      <PageHeader title="Price Approvals" subtitle="Price changes proposed by non-owner staff, awaiting your decision" />
+      <PageHeader title="Price Approvals" subtitle="Price changes proposed by staff, awaiting the admin's decision" />
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       <Card className="overflow-hidden">

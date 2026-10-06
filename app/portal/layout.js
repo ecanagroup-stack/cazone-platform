@@ -39,9 +39,10 @@ export default async function PortalLayout({ children }) {
         </Link>
         <nav className="flex items-center gap-4 text-sm text-gray-600">
           <Link href="/portal" className="hover:text-gray-900">Overview</Link>
-          <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>
+          {org?.businessType === 'shop' && <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>}
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
           <PortalMessagesLink className="hover:text-gray-900" />
+          {org?.businessType !== 'fuel_station' && <Link href="/portal/announcements" className="hover:text-gray-900">Notifications</Link>}
           <Link href="/portal/account" className="hover:text-gray-900">Account</Link>
         </nav>
         <div className="flex-1" />
