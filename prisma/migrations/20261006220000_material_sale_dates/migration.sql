@@ -1,0 +1,3 @@
+ALTER TABLE "Order"
+  ADD COLUMN "saleDate" TIMESTAMP(3),
+  ADD COLUMN "deliveryDate" TIMESTAMP(3);

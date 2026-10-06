@@ -40,6 +40,11 @@ export const GET = withOrg(async (request) => {
 
     const accessible = await getAccessibleBranchIds(session);
     const deliveryEnabled = branches[0]?.service?.type === 'shop';
+    if (deliveryEnabled) {
+      const range = { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) };
+      delete where.createdAt;
+      where.OR = [{ saleDate: range }, { saleDate: null, createdAt: range }];
+    }
     const orders = await prisma.order.findMany({
       where,
       include: {
@@ -55,7 +60,7 @@ export const GET = withOrg(async (request) => {
 
     const rows = orders.map((order) => ({
       id: order.id,
-      date: order.createdAt.toISOString().slice(0, 10),
+      date: (deliveryEnabled && order.saleDate ? order.saleDate : order.createdAt).toISOString().slice(0, 10),
       enteredAt: order.createdAt,
       branch: branchNameById[order.branchId] || '—',
       customer: order.customer?.name || 'Walk-in',
@@ -73,9 +78,11 @@ export const GET = withOrg(async (request) => {
       count: 1,
       ...(deliveryEnabled ? {
         deliveryStatus: order.deliveryStatus,
+        deliveryDate: order.deliveryDate?.toISOString().slice(0, 10) || order.deliveredAt?.toISOString().slice(0, 10) || null,
         editable: order.deliveryStatus === 'pending' && can(session?.user?.role, 'sales.record') && canAccessBranch(accessible, order.branchId) && order.lines.every((line) => line.stockQty != null),
         edit: order.deliveryStatus === 'pending' ? {
           revision: order.deliveryRevision,
+          saleDate: (order.saleDate || order.createdAt).toISOString().slice(0, 10),
           discount: order.discount,
           orderTransportFee: order.transportFee - order.lines.reduce((sum, line) => sum + line.transportFee, 0),
           lines: order.lines.map((line) => ({
@@ -86,6 +93,7 @@ export const GET = withOrg(async (request) => {
         } : null,
       } : {}),
     }));
+    if (deliveryEnabled) rows.sort((left, right) => right.date.localeCompare(left.date) || new Date(right.enteredAt) - new Date(left.enteredAt));
     return NextResponse.json({ success: true, data: rows, allBranches, deliveryEnabled });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

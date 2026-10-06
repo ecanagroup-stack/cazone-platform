@@ -11,6 +11,7 @@ import {
   OtpField, NumberInput, CustomerNameField,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { todayLocalDate } from '@/lib/saleDates.mjs';
 
 const TABS = [
   { key: 'inventory', label: 'Inventory' },
@@ -188,6 +189,8 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [delivered, setDelivered] = useState(false);
+  const [saleDate, setSaleDate] = useState(todayLocalDate);
+  const [deliveryDate, setDeliveryDate] = useState(todayLocalDate);
   const [cart, setCart] = useState([]);
   const [cartProductId, setCartProductId] = useState('');
   const [cartQty, setCartQty] = useState('');
@@ -259,7 +262,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       const r = await fetch('/api/admin/materials/shop/sale', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer?.id || null, paymentMethod, delivered,
+          branchId, customerId: customer?.id || null, paymentMethod, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
           lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, billQty: l.billQty, unitPrice: l.price })),
           transportFee: transportHandledBy === 'us' ? (Number(transportPrice) || 0) : 0,
           overrideCredit, otp,
@@ -270,7 +273,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         toast.success(`Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
         setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash');
-        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice(''); setDelivered(false);
+        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice(''); setDelivered(false); setSaleDate(todayLocalDate()); setDeliveryDate(todayLocalDate());
         setCreditWarning(null); setOverridePin('');
         onSold();
       } else if (d.needsApproval) {
@@ -438,6 +441,10 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       </Card>
 
       <Card className="p-4">
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <Field label="Sale date"><input type="date" required value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+          {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
+        </div>
         <label className="flex items-start gap-3 text-sm">
           <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />
           <span><strong>Delivered</strong><span className="block text-gray-500">Select only after the goods have reached the customer. Otherwise this sale appears as Pending on the sales report.</span></span>

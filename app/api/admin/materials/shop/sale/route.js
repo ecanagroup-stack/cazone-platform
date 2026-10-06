@@ -5,6 +5,7 @@ import { createSaleOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
 import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { materialSaleDates } from '@/lib/saleDates.mjs';
 
 // Cement Warehouse's "Record Sale" tab (ecana_shop-app's app/admin/shop's sell tab + /api/sales'
 // itemType==='shop' branch) — the one Cement Warehouse flow that's a real cart (multiple lines),
@@ -22,6 +23,7 @@ export const POST = withOrg(async (request) => {
     const customerId = body.customerId || null;
     const paymentMethod = body.paymentMethod || 'cash';
     if (body.delivered != null && typeof body.delivered !== 'boolean') throw new ApiError('Delivered must be true or false', 400);
+    const { saleDate, deliveryDate } = materialSaleDates(body);
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const transportFee = Math.round(Number(body.transportFee) || 0) * 100;
 
@@ -44,6 +46,7 @@ export const POST = withOrg(async (request) => {
       overrideCredit: !!body.overrideCredit,
       transportFee, channel: 'shop',
       deliveryStatus: body.delivered ? 'delivered' : 'pending',
+      saleDate, deliveryDate,
     });
 
     if (result.needsApproval) {

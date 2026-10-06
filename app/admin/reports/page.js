@@ -8,6 +8,7 @@ import {
   inputCls, theadCls, tableScrollCls, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { todayLocalDate } from '@/lib/saleDates.mjs';
 
 const TABS = [
   { key: 'sales', label: 'Sales Summary' },
@@ -227,7 +228,7 @@ function SalesSummary({ branchId, serviceId, from, to }) {
             { key: 'count', label: 'Orders' },
             { key: 'total', label: 'Total', value: (r) => (r.total / 100).toFixed(2) },
           ] : [
-            { key: 'date', label: 'Date' },
+            { key: 'date', label: deliveryEnabled ? 'Sale Date' : 'Date' },
             { key: 'enteredAt', label: 'Entry Timestamp', value: (r) => new Date(r.enteredAt).toLocaleString() },
             ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
             { key: 'customer', label: 'Customer' },
@@ -240,7 +241,10 @@ function SalesSummary({ branchId, serviceId, from, to }) {
             { key: 'transportAmount', label: 'Transport Amount', value: (r) => (r.transportAmount / 100).toFixed(2) },
             { key: 'total', label: 'Total Amount', value: (r) => (r.total / 100).toFixed(2) },
             { key: 'reference', label: 'Transaction Reference' },
-            ...(deliveryEnabled ? [{ key: 'deliveryStatus', label: 'Delivery Status' }] : []),
+            ...(deliveryEnabled ? [
+              { key: 'deliveryStatus', label: 'Delivery Status' },
+              { key: 'deliveryDate', label: 'Delivery Date', value: (r) => r.deliveryDate || 'Not recorded' },
+            ] : []),
           ]}
         />
       </div>
@@ -254,7 +258,7 @@ function SalesSummary({ branchId, serviceId, from, to }) {
           <table className="w-full text-sm">
             <thead className={theadCls}>
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Date</th>
+                <th className="px-4 py-3 text-left font-medium">{deliveryEnabled ? 'Sale Date' : 'Date'}</th>
                 {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
                 {fuelSummary ? <>
                   <th className="px-4 py-3 text-left font-medium">Payment Method</th>
@@ -270,12 +274,12 @@ function SalesSummary({ branchId, serviceId, from, to }) {
                 <th className="px-4 py-3 text-right font-medium">Transport</th>
                 <th className="px-4 py-3 text-right font-medium">Total</th>
                 <th className="px-4 py-3 text-left font-medium">Reference</th>
-                {deliveryEnabled && <><th className="px-4 py-3 text-left font-medium">Delivery</th><th className="px-4 py-3 text-left font-medium">Edit</th></>}
+                {deliveryEnabled && <><th className="px-4 py-3 text-left font-medium">Delivery Status</th><th className="px-4 py-3 text-left font-medium">Delivery Date</th><th className="px-4 py-3 text-left font-medium">Edit</th></>}
                 </>}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {visibleRows.length === 0 && <EmptyRow colSpan={fuelSummary ? (allBranches ? 6 : 5) : (allBranches ? 10 : 9) + (deliveryEnabled ? 2 : 0)} text="No sales in this range" />}
+              {visibleRows.length === 0 && <EmptyRow colSpan={fuelSummary ? (allBranches ? 6 : 5) : (allBranches ? 10 : 9) + (deliveryEnabled ? 3 : 0)} text="No sales in this range" />}
               {visibleRows.map((r, i) => (
                 <tr key={i}>
                   <td className="px-4 py-3 text-gray-500">{formatDate(r.date)}</td>
@@ -296,6 +300,7 @@ function SalesSummary({ branchId, serviceId, from, to }) {
                   <td className="px-4 py-3">{r.reference}</td>
                   {deliveryEnabled && <>
                     <td className="px-4 py-3"><StatusPill status={r.deliveryStatus === 'pending' ? 'Pending' : 'Delivered'} color={r.deliveryStatus === 'pending' ? 'amber' : 'green'} /></td>
+                    <td className="px-4 py-3 text-gray-500">{r.deliveryDate ? formatDate(r.deliveryDate) : 'Not recorded'}</td>
                     <td className="px-4 py-3">{r.editable && <button type="button" onClick={() => setEditing(r)} className="text-brand-700 font-medium hover:underline">Edit</button>}</td>
                   </>}
                   </>}
@@ -320,6 +325,7 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
     setOverridePin('');
     setForm(sale?.edit ? {
       revision: sale.edit.revision, delivered: false,
+      saleDate: sale.edit.saleDate, deliveryDate: todayLocalDate(),
       discount: (sale.edit.discount / 100).toString(),
       orderTransportFee: (sale.edit.orderTransportFee / 100).toString(),
       reason: '', discountOtp: '',
@@ -364,6 +370,10 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
   return <Modal open onClose={onClose} title={`Edit pending sale ${sale.reference}`} size="2xl">
     <form onSubmit={save} className="space-y-4">
       <p className="text-sm text-gray-600">Edit the billed and physical quantities and amounts before delivery. Stock, customer balance, and payment allocations will be corrected together.</p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Sale date"><input type="date" required value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} className={inputCls} /></Field>
+        {form.delivered && <Field label="Delivery date"><input type="date" required min={form.saleDate} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} className={inputCls} /></Field>}
+      </div>
       {sale.paymentMethod !== 'credit' && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">This sale was paid immediately. Changing its value corrects the recorded sale and report; settle any cash difference with the customer separately.</p>}
       {form.lines.map((line) => <Card key={line.id} className="p-4 space-y-3">
         <h3 className="font-semibold">{line.product}</h3>

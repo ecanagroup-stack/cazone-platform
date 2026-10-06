@@ -7,6 +7,7 @@ import {
   Loader, PageHeader, Card, EmptyState, Field, inputCls, btnPrimaryCls, OtpField, NumberInput,
 } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { todayLocalDate } from '@/lib/saleDates.mjs';
 
 // Replaces the old single-product Cement Sale and Aggregate Sale pages with one cart: a customer can
 // need both bags and tonnes on the same trip, so this adds items of either kind to one order rather
@@ -91,6 +92,8 @@ export default function NewMaterialsSalePage() {
   const [discount, setDiscount] = useState('');
   const [discountOtp, setDiscountOtp] = useState('');
   const [delivered, setDelivered] = useState(false);
+  const [saleDate, setSaleDate] = useState(todayLocalDate);
+  const [deliveryDate, setDeliveryDate] = useState(todayLocalDate);
 
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null);
@@ -147,7 +150,7 @@ export default function NewMaterialsSalePage() {
       const r = await fetch('/api/admin/materials/sales', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered,
+          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
           items: cart.map((i) => ({
             kind: i.kind, atcId: i.atcId, productId: i.productId, vehicleId: i.vehicleId,
             actualQty: i.actualQty, billQty: i.billQty, unitPrice: i.unitPrice,
@@ -273,6 +276,10 @@ export default function NewMaterialsSalePage() {
         </Card>
 
         <Card className="p-4">
+          <div className="grid sm:grid-cols-2 gap-3 mb-3">
+            <Field label="Sale date"><input type="date" required value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+            {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
+          </div>
           <label className="flex items-start gap-3 text-sm">
             <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />
             <span><strong>Delivered</strong><span className="block text-gray-500">Select only after the goods have reached the customer. Otherwise this sale appears as Pending on the sales report.</span></span>

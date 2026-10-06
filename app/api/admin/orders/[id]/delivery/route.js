@@ -8,6 +8,7 @@ import { notifyReviewers } from '@/lib/notify';
 import { checkCredit } from '@/lib/credit';
 import { ApiError } from '@/lib/apiError';
 import { revisedSaleTotals, allocationReleasePlan, revisedAtcAvailability } from '@/lib/pendingSaleEdit.mjs';
+import { materialSaleDates } from '@/lib/saleDates.mjs';
 
 const cents = (value, label) => {
   const number = Number(value);
@@ -38,6 +39,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (!Number.isInteger(revision) || revision < 0) throw new ApiError('Reload this sale before editing it', 409);
     if (reason.length < 5) throw new ApiError('Give a reason for the sale change (at least 5 characters)', 400);
     if (typeof body.delivered !== 'boolean') throw new ApiError('Select a delivery status', 400);
+    const { saleDate, deliveryDate } = materialSaleDates(body);
     if (!Array.isArray(body.lines) || body.lines.length === 0) throw new ApiError('Sale lines are required', 400);
 
     const accessible = await getAccessibleBranchIds(session);
@@ -157,6 +159,7 @@ export const PATCH = withOrg(async (request, { params }) => {
       const updated = await tx.order.update({ where: { id }, data: {
         subtotal, discount, transportFee, labourFee, otherFee, grandTotal,
         deliveryStatus: body.delivered ? 'delivered' : 'pending',
+        saleDate, deliveryDate,
         deliveredAt: body.delivered ? new Date() : null,
         deliveredBy: body.delivered ? session.user.id : null,
       } });
@@ -170,8 +173,8 @@ export const PATCH = withOrg(async (request, { params }) => {
       await tx.auditLog.create({ data: {
         action: 'order.pending_delivery.edited', entityType: 'Order', entityId: id,
         actorUserId: session.user.id, actorName: session.user.name,
-        before: { deliveryStatus: existing.deliveryStatus, subtotal: existing.subtotal, discount: existing.discount, transportFee: existing.transportFee, labourFee: existing.labourFee, otherFee: existing.otherFee, grandTotal: existing.grandTotal, allocations: allocations.map((allocation) => ({ id: allocation.id, paymentId: allocation.paymentId, amount: allocation.amount })), lines: existing.lines.map((line) => ({ id: line.id, qty: line.qty, stockQty: line.stockQty, unitPrice: line.unitPrice, transportFee: line.transportFee, costs: line.costs.map((cost) => ({ id: cost.id, amount: cost.amount })) })) },
-        after: { deliveryStatus: updated.deliveryStatus, subtotal, discount, transportFee, labourFee, otherFee, grandTotal, reason, releasedAllocations, addedAllocations, lines: prepared.map((item) => ({ id: item.line.id, qty: item.qty, stockQty: item.stockQty, unitPrice: item.unitPrice, transportFee: item.transportFee, costs: item.costs.map((cost) => ({ id: cost.id, amount: cost.amount })) })) },
+        before: { deliveryStatus: existing.deliveryStatus, saleDate: existing.saleDate, deliveryDate: existing.deliveryDate, subtotal: existing.subtotal, discount: existing.discount, transportFee: existing.transportFee, labourFee: existing.labourFee, otherFee: existing.otherFee, grandTotal: existing.grandTotal, allocations: allocations.map((allocation) => ({ id: allocation.id, paymentId: allocation.paymentId, amount: allocation.amount })), lines: existing.lines.map((line) => ({ id: line.id, qty: line.qty, stockQty: line.stockQty, unitPrice: line.unitPrice, transportFee: line.transportFee, costs: line.costs.map((cost) => ({ id: cost.id, amount: cost.amount })) })) },
+        after: { deliveryStatus: updated.deliveryStatus, saleDate: updated.saleDate, deliveryDate: updated.deliveryDate, subtotal, discount, transportFee, labourFee, otherFee, grandTotal, reason, releasedAllocations, addedAllocations, lines: prepared.map((item) => ({ id: item.line.id, qty: item.qty, stockQty: item.stockQty, unitPrice: item.unitPrice, transportFee: item.transportFee, costs: item.costs.map((cost) => ({ id: cost.id, amount: cost.amount })) })) },
       } });
       return updated;
     }, { timeout: 30000, isolationLevel: 'Serializable' });

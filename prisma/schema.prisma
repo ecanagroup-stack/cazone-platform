@@ -468,6 +468,7 @@ model CustomerAdjustment {
   balanceAfter  Int
   createdBy     String?
   createdAt     DateTime @default(now())
+  saleDate      DateTime? // Actual business date for Building Material sales; null on legacy orders.
 
   @@index([organizationId])
   @@index([customerId])
@@ -775,6 +776,7 @@ model Order {
   // Existing sales are treated as delivered; new Building Material sales set this explicitly.
   deliveryStatus   String   @default("delivered") // pending | delivered
   deliveredAt      DateTime?
+  deliveryDate     DateTime? // Actual delivery date; deliveredAt is the recorded-at audit timestamp.
   deliveredBy      String?
   deliveryRevision Int      @default(0)
 

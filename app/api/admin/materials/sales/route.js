@@ -8,6 +8,7 @@ import { checkCredit } from '@/lib/credit';
 import { verifyOtp } from '@/lib/otp';
 import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { materialSaleDates } from '@/lib/saleDates.mjs';
 
 // A combined materials sale — one customer, one order, any mix of cement (sold down a pre-recorded
 // ATC allocation, see sales/cement) and aggregate (bought off the truck from the quarry and sold in
@@ -37,6 +38,7 @@ export const POST = withOrg(async (request) => {
     const items = Array.isArray(body.items) ? body.items : [];
     if (body.delivered != null && typeof body.delivered !== 'boolean') throw new ApiError('Delivered must be true or false', 400);
     const deliveryStatus = body.delivered ? 'delivered' : 'pending';
+    const { saleDate, deliveryDate } = materialSaleDates(body);
     const rawDiscount = body.discount ?? 0;
     if (!Number.isFinite(Number(rawDiscount)) || Number(rawDiscount) < 0) throw new ApiError('Discount must be zero or more', 400);
     const discount = toCents(rawDiscount);
@@ -140,7 +142,7 @@ export const POST = withOrg(async (request) => {
       session, branchId, customerId, paymentMethod: 'credit',
       lines: resolved.map((r) => r.line),
       overrideCredit: !!body.overrideCredit,
-      discount, channel: 'atc', deliveryStatus,
+      discount, channel: 'atc', deliveryStatus, saleDate, deliveryDate,
     });
 
     if (result.needsApproval) {
