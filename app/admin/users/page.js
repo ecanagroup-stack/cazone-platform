@@ -125,7 +125,7 @@ export default function UsersPage() {
       <PageHeader
         title="Users"
         subtitle="Who has access, and to what"
-        action={<button onClick={() => { setForm(blankInvite); setShowInvite(true); }} className={btnPrimaryCls}>Invite User</button>}
+        action={<button onClick={() => { setForm(blankInvite); setShowInvite(true); }} className={btnPrimaryCls}>Add User</button>}
       />
 
       <Card className="p-4 mb-6">
