@@ -34,7 +34,16 @@ export default function ReportsPage() {
   const serviceId = searchParams.get('service') || '';
 
   const [services, setServices] = useState(null);
-  useEffect(() => { fetch('/api/admin/services').then((r) => r.json()).then((d) => { if (d.success) setServices(d.data); }); }, []);
+  useEffect(() => { fetch('/api/admin/services').then((r) => r.json()).then((d) => {
+    if (!d.success) return;
+    if (d.businessType === 'fuel_station') {
+      const params = new URLSearchParams(window.location.search);
+      params.delete('tab');
+      router.replace(`/admin/fuel/reports?${params.toString()}`);
+      return;
+    }
+    setServices(d.data);
+  }); }, [router]);
   const currentServiceType = services?.find((s) => s.id === serviceId)?.type || null;
   const tabs = currentServiceType === 'shop' ? [...TABS, MATERIALS_TAB] : TABS;
 
@@ -49,6 +58,8 @@ export default function ReportsPage() {
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
+
+  if (!services) return <Loader />;
 
   return (
     <div>

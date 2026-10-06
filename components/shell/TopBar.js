@@ -16,8 +16,8 @@ export default function TopBar({ org, services, user }) {
   return (
     <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4 shrink-0">
       <div className="flex items-center gap-2 shrink-0">
-        <OrgLogo org={org} dim="h-7 w-7" />
-        <span className="font-semibold text-gray-900 hidden sm:inline">{org?.name}</span>
+        <OrgLogo org={org} dim={org?.businessType === 'fuel_station' ? 'h-9 w-9' : 'h-7 w-7'} />
+        <span className="hidden sm:flex flex-col leading-tight"><span className="font-semibold text-gray-900">{org?.businessType === 'fuel_station' ? `${org.name} PMS` : org?.name}</span>{org?.businessType === 'fuel_station' && <span className="text-xs text-gray-500">Fuel Station Manager</span>}</span>
       </div>
 
       <div className="flex-1 min-w-0">

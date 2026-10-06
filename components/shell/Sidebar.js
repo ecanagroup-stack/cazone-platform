@@ -69,40 +69,45 @@ const GROUPS = [
   },
 ];
 
-// Petrol staff land in the same role-shaped workflow as the original station app.
-// Every destination is a CaZone page backed by the tenant's own fuel records.
+// The station app's navigation, mapped to tenant-scoped CaZone fuel screens. A pending stock
+// cutover removes live shift actions while keeping the full historical/admin review workspace.
 const FUEL_GROUPS = [
-  { label: 'Shift work', items: [
+  { label: 'Navigation', items: [
     { href: '/admin/fuel/dashboard', label: 'Dashboard', icon: FiHome },
-    { href: '/admin/fuel/shift', label: 'Begin / End Shift', icon: FiClock, roles: ['owner', 'manager', 'staff'] },
-    { href: '/admin/fuel/shift', label: 'Record Sales', icon: FiDroplet, roles: ['supervisor'] },
-    { href: '/admin/fuel/collections', label: 'Record Payments', icon: FiCreditCard, roles: ['cashier', 'owner', 'manager'] },
-    { href: '/admin/fuel/historical-incomplete', label: 'Incomplete Sales', icon: FiAlertTriangle, roles: ['cashier', 'owner', 'manager'] },
-  ] },
-  { label: 'Station', items: [
-    { href: '/admin/fuel/tank-stock', label: 'Tank Dipstick', icon: FiDroplet, roles: ['supervisor'] },
-    { href: '/admin/fuel/tanks', label: 'Tanks & Pumps', icon: FiSettings, roles: ['owner', 'manager'] },
-    { href: '/admin/fuel/attendant-performance', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager'] },
-    { href: '/admin/services', label: 'Branches', icon: FiMapPin, roles: ['owner', 'manager'] },
+    { href: '/admin/fuel/stations', label: 'Stations', icon: FiMapPin, roles: ['owner', 'manager'] },
+    { href: '/admin/fuel/trucks', label: 'Trucks', icon: FiTruck, roles: ['owner', 'manager'] },
+    { href: '/admin/price-approvals', label: 'Price Changes', icon: FiSliders, roles: ['owner', 'manager'] },
     { href: '/admin/users', label: 'Users', icon: FiUsers, roles: ['owner', 'manager'] },
-  ] },
-  { label: 'Review', items: [
-    { href: '/admin/fuel/summary-book', label: 'Summary Book', icon: FiBookOpen, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
-    { href: '/admin/fuel/collections', label: 'Payment History', icon: FiFileText, roles: ['auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/fuel/staff', label: 'Staff', icon: FiUserCheck, roles: ['owner', 'manager'] },
+    { href: '/admin/fuel/reports', label: 'Reports', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/fuel/attendant-performance', label: 'Staff Report', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor'] },
     { href: '/admin/exceptions', label: 'Flags', icon: FiAlertTriangle, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
-    { href: '/admin/audit', label: 'Audit Log', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
-    { href: '/admin/fuel/backfill', label: 'Historical Backfill', icon: FiClock, roles: ['owner'] },
-    { href: '/admin/billing', label: 'Subscription', icon: FiCreditCard, roles: ['owner'] },
+    { href: '/admin/audit', label: 'Audit Logs', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
   ] },
-];
-const HISTORICAL_FUEL_GROUPS = [
-  { label: 'Historical review', items: [
-    { href: '/admin/fuel/dashboard', label: 'Dashboard', icon: FiHome },
-    { href: '/admin/fuel/summary-book', label: 'Summary Book', icon: FiBookOpen },
+  { label: 'Station work', items: [
+    { href: '/admin/fuel/tanks', label: 'Station Config', icon: FiSettings, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/shift', label: 'Begin Day', icon: FiClock, roles: ['owner', 'manager', 'staff'], liveOnly: true },
+    { href: '/admin/fuel/tanks', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/shift', label: 'Record Sales', icon: FiDroplet, roles: ['supervisor'], liveOnly: true },
+    { href: '/admin/fuel/tank-stock', label: 'Tank Dipstick', icon: FiDroplet, roles: ['supervisor'], liveOnly: true },
+    { href: '/admin/fuel/shift', label: 'Supervisor Entries', icon: FiCheckCircle, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/collections', label: 'Sales Records', icon: FiFileText, roles: ['cashier'] },
+    { href: '/admin/fuel/collections', label: 'Record Payments', icon: FiCreditCard, roles: ['cashier'], liveOnly: true },
+    { href: '/admin/fuel/collections', label: 'Cashier Entries', icon: FiCreditCard, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/collections', label: 'View Payments', icon: FiFileText, roles: ['cashier'] },
+    { href: '/admin/fuel/collections', label: 'Bank Deposits', icon: FiCreditCard, roles: ['cashier', 'owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/summary-book', label: 'Summary Book', icon: FiBookOpen, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/fuel/shift', label: 'End Day', icon: FiClock, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/deliveries', label: 'Truck Offload', icon: FiTruck, roles: ['owner', 'manager'], liveOnly: true },
+    { href: '/admin/fuel/tank-stock', label: 'Closing Stock', icon: FiDroplet, roles: ['owner', 'manager', 'auditor', 'daily_auditor'], liveOnly: true },
     { href: '/admin/fuel/historical-incomplete', label: 'Incomplete Sales', icon: FiAlertTriangle, roles: ['owner', 'manager', 'cashier'] },
-    { href: '/admin/fuel/attendant-performance', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
-    { href: '/admin/exceptions', label: 'Flags', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
-    { href: '/admin/users', label: 'Users', icon: FiUsers, roles: ['owner', 'manager'] },
+  ] },
+  { label: 'Records', items: [
+    { href: '/admin/fuel/summary-book', label: 'Daily Report', icon: FiFileText, roles: ['supervisor', 'daily_auditor', 'external_auditor', 'auditor'] },
+    { href: '/admin/fuel/reports', label: 'Monthly Report', icon: FiBarChart2, roles: ['daily_auditor', 'external_auditor', 'auditor'] },
+    { href: '/admin/fuel/summary-book', label: 'Meter Book', icon: FiBookOpen, roles: ['daily_auditor', 'auditor'] },
+    { href: '/admin/fuel/tank-stock', label: 'Tank Stock', icon: FiDroplet, roles: ['daily_auditor', 'auditor'] },
+    { href: '/admin/fuel/backfill', label: 'Historical Entry', icon: FiClock, roles: ['owner'], liveOnly: true },
     { href: '/admin/billing', label: 'Subscription', icon: FiCreditCard, roles: ['owner'] },
   ] },
 ];
@@ -137,15 +142,15 @@ export default function Sidebar({ services = [], businessType, user }) {
   const currentServiceId = searchParams.get('service') || '';
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
 
-  const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => service.config?.migrationStockPending === true);
-  const menu = historicalFuel ? HISTORICAL_FUEL_GROUPS : currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS;
+  const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => (!currentServiceId || service.id === currentServiceId) && service.config?.migrationStockPending === true);
+  const menu = currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS;
   const groups = menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (services.length > 0 || ['/admin/billing', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/billing', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((g) => g.items.length > 0);
   return (
     <>
-    <nav className="print:hidden w-56 shrink-0 border-r bg-white p-4 hidden md:block">
+    <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:block ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
       {groups.map((group) => (
         <div key={group.label} className="mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>
@@ -154,7 +159,7 @@ export default function Sidebar({ services = [], businessType, user }) {
               const active = pathname === item.href;
               const Icon = item.icon;
               return (
-                <li key={item.href}>
+                <li key={`${item.href}-${item.label}`}>
                   <Link
                     href={withParams(item.href)}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${

@@ -4,6 +4,7 @@ import { getOrgSession } from '@/lib/session';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 import { requireOrg } from '@/lib/tenantScope';
 import { Card } from '@/components/ui';
+import FuelQuickPriceUpdate from '@/components/fuel/FuelQuickPriceUpdate';
 
 const ROLE_VIEW = {
   owner: { title: 'Station Overview', subtitle: 'Shifts, sales, cash collections and review across your stations' },
@@ -36,12 +37,19 @@ export default async function FuelDashboard({ searchParams }) {
   const role = session.user.role;
   const access = await getAccessibleBranchIds(session);
   const service = await prisma.service.findFirst({ where: { type: 'fuel_station' }, select: { id: true, config: true, branches: { where: { isActive: true, ...(access ? { id: { in: access } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' } } } });
+  if (!service) return <div className="rounded-xl border bg-white p-6">Fuel service is unavailable.</div>;
   const historicalOnly = service.config?.migrationStockPending === true;
   const view = ROLE_VIEW[role] || { title: 'Petrol Station', subtitle: 'Your station workspace' };
   const selectedBranch = service.branches.find((branch) => branch.id === params?.branch) || (service.branches.length === 1 ? service.branches[0] : null);
   const link = (path) => `${path}?${new URLSearchParams({ service: service.id, ...(selectedBranch ? { branch: selectedBranch.id } : {}) })}`;
+  const network = role === 'owner' ? await Promise.all([
+    prisma.branch.count({ where: { serviceId: service.id, isActive: true } }),
+    prisma.user.count({ where: { role: { not: 'customer' }, isActive: true } }),
+    prisma.user.count({ where: { role: { in: ['manager', 'supervisor', 'cashier', 'staff'] }, isActive: true } }),
+  ]) : null;
+  const networkPanel = network && <div className="space-y-5"><div className="rounded-2xl border border-rose-100 bg-gradient-to-r from-rose-50 to-white p-7 shadow-sm"><p className="text-xs font-semibold uppercase tracking-widest text-brand-700">Fuel Station Manager</p><h1 className="mt-1 text-3xl font-bold text-gray-900">Admin Dashboard</h1><p className="mt-2 text-gray-600">Manage stations, prices, and users across your fuel network.</p></div><div className="grid gap-4 sm:grid-cols-3"><Link href={link('/admin/fuel/stations')} className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-gray-600">Total Stations</p><p className="mt-3 text-4xl font-bold text-rose-900">{network[0]}</p><p className="mt-2 text-xs text-gray-500">View stations</p></Link><Link href={link('/admin/users')} className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-gray-600">Total Users</p><p className="mt-3 text-4xl font-bold text-green-800">{network[1]}</p><p className="mt-2 text-xs text-gray-500">View users</p></Link><Link href={link('/admin/fuel/staff')} className="rounded-2xl border border-blue-200 bg-blue-50 p-6 text-center shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-gray-600">Staff</p><p className="mt-3 text-4xl font-bold text-blue-900">{network[2]}</p><p className="mt-2 text-xs text-gray-500">View staff list</p></Link></div><div className="rounded-xl border bg-white p-5"><h2 className="font-semibold text-gray-900">Quick Actions</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[['Stations', '/admin/fuel/stations', 'View station configuration and status'], ['Price Approvals', '/admin/price-approvals', 'Review proposed fuel prices'], ['Users', '/admin/users', 'Manage station logins'], ['Reports', '/admin/fuel/reports', 'Review operating reports'], ['Audit Logs', '/admin/audit', 'Inspect the change history'], historicalOnly ? ['Incomplete Sales', '/admin/fuel/historical-incomplete', 'Complete imported sales records'] : ['Historical Entry', '/admin/fuel/backfill', 'Enter past station records']].map(([label, path, detail]) => <Link key={path} href={link(path)} className="rounded-xl border bg-gray-50 p-4 hover:border-brand-500"><span className="font-semibold text-gray-900">{label}</span><span className="mt-1 block text-xs text-gray-500">{detail}</span></Link>)}</div></div></div>;
 
-  if (!selectedBranch) return <div className="space-y-5"><div><h1 className="text-2xl font-bold text-gray-900">{view.title}</h1><p className="mt-1 text-sm text-gray-500">Choose a station to continue.</p></div><div className="grid gap-3 sm:grid-cols-2">{service.branches.map((branch) => <Link key={branch.id} href={`/admin/fuel/dashboard?service=${service.id}&branch=${branch.id}`} className="rounded-xl border bg-white p-5 font-semibold hover:border-brand-500">{branch.name} →</Link>)}</div></div>;
+  if (!selectedBranch) return <div className="space-y-5">{networkPanel}{network && <FuelQuickPriceUpdate />}<div><h1 className="text-2xl font-bold text-gray-900">{view.title}</h1><p className="mt-1 text-sm text-gray-500">Choose a station to continue.</p></div><div className="grid gap-3 sm:grid-cols-2">{service.branches.map((branch) => <Link key={branch.id} href={`/admin/fuel/dashboard?service=${service.id}&branch=${branch.id}`} className="rounded-xl border bg-white p-5 font-semibold hover:border-brand-500">{branch.name} →</Link>)}</div></div>;
 
   const openShift = await prisma.shift.findFirst({ where: { branchId: selectedBranch.id, status: 'open' }, select: { id: true, shiftLabel: true, operatingDate: true, openedAt: true }, orderBy: { openedAt: 'desc' } });
   const latestShift = historicalOnly ? await prisma.shift.findFirst({ where: { branchId: selectedBranch.id }, select: { operatingDate: true }, orderBy: { openedAt: 'desc' } }) : null;
@@ -54,6 +62,8 @@ export default async function FuelDashboard({ searchParams }) {
   ]);
 
   return <div className="space-y-6">
+    {networkPanel}
+    {network && <FuelQuickPriceUpdate selectedBranchId={selectedBranch.id} />}
     <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-brand-700">{selectedBranch.name} · {operatingDate}</p><h1 className="mt-1 text-2xl font-bold text-gray-900">{view.title}</h1><p className="mt-1 text-sm text-gray-500">{view.subtitle}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${openShift ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{openShift ? `${openShift.shiftLabel || 'Shift'} open` : 'No open shift'}</span></div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Card className="p-5"><p className="text-xs text-gray-500">Pump sales</p><p className="mt-1 text-2xl font-bold">{(sales._sum.litres || 0).toLocaleString('en-NG')} L</p><p className="text-xs text-gray-500">{sales._count} recorded entries</p></Card>
