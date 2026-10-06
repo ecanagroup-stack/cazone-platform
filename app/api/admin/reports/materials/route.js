@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 
-// Construction Material-only reports (M6) — ported from ecana_shop-app's reports/products,
+// Building Material-only reports (M6) — ported from ecana_shop-app's reports/products,
 // reports/trucks and reports/quarry-purchases, each collapsed into one route selected by `type`
 // rather than three separate pages, matching how the generic reports/{sales,stock,cash} routes are
 // already organized in this app. `type=products` splits cement (Product.abbreviation set) from

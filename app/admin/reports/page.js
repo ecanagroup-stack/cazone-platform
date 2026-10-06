@@ -498,7 +498,7 @@ function CashSummary({ branchId, serviceId, from, to }) {
   );
 }
 
-// M6 — Construction Material only (the Materials tab only shows when the selected service is
+// M6 — Building Material only (the Materials tab only shows when the selected service is
 // 'shop'). Ported from ecana_shop-app's reports/products + reports/trucks + reports/quarry-purchases,
 // combined into one sub-tab set rather than three separate pages.
 function MaterialsSummary({ branchId, serviceId, from, to }) {

@@ -26,7 +26,7 @@ const ROLE_DESCRIPTIONS = {
     staff: 'Works on the stations they are assigned to.',
   },
   shop: {
-    owner: 'Manages branches, users, billing, and construction-material operations.',
+    owner: 'Manages branches, users, billing, and building material operations.',
     manager: 'Manages branches, users, sales, and approvals.',
     materials_manager: 'Manages sales, customers, stock, catalog, adjustments, and announcements.',
     atc_manager: 'Manages ATC assignment, loading, and arrival.',

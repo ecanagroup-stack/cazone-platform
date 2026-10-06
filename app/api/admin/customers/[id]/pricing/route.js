@@ -4,7 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 
-// This customer's negotiated per-product prices, against the Construction Material ("shop") service's
+// This customer's negotiated per-product prices, against the Building Material ("shop") service's
 // full product list — the only vertical with a self-service ordering flow (app/portal/shop) today.
 // `customerPrice` is null wherever no PriceRule exists for this customer+product, meaning that
 // product falls through to the list price at order time (see lib/pricing.js resolvePrice).

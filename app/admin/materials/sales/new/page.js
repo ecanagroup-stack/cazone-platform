@@ -181,7 +181,7 @@ export default function NewMaterialsSalePage() {
     return (
       <div>
         <PageHeader title="New Sale" subtitle="Sell cement and aggregate together as one order" />
-        <Card><EmptyState title="Pick a branch" subtitle="Choose Construction Material and a branch from the switcher at the top of the page." /></Card>
+        <Card><EmptyState title="Pick a branch" subtitle="Choose Building Material and a branch from the switcher at the top of the page." /></Card>
       </div>
     );
   }

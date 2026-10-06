@@ -99,7 +99,7 @@ export default function CementBrandsPage() {
     return (
       <div>
         <PageHeader title="Cement Brands" subtitle="Brands you sell with their current per-bag price" />
-        <Card><EmptyState title="Pick a service" subtitle="Choose Construction Material from the switcher at the top of the page." /></Card>
+        <Card><EmptyState title="Pick a service" subtitle="Choose Building Material from the switcher at the top of the page." /></Card>
       </div>
     );
   }

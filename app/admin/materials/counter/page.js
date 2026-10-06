@@ -46,7 +46,7 @@ export default function CementWarehousePage() {
     return (
       <div>
         <PageHeader title="Cement Warehouse" subtitle="Retail counter — its own products, stock, and walk-in sales" />
-        <Card><EmptyState title="Pick a branch" subtitle="Choose Construction Material and a branch from the switcher at the top of the page." /></Card>
+        <Card><EmptyState title="Pick a branch" subtitle="Choose Building Material and a branch from the switcher at the top of the page." /></Card>
       </div>
     );
   }

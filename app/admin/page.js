@@ -75,11 +75,11 @@ export default async function TodayPage({ searchParams }) {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">Today</h1>
-        <p className="text-sm text-gray-500 mt-1">Your {organization.businessType === 'shop' ? 'construction materials' : 'retail'} business, as of now.</p>
+        <p className="text-sm text-gray-500 mt-1">Your {organization.businessType === 'shop' ? 'building material' : 'retail'} business, as of now.</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4"><p className="text-xs text-gray-500">Business</p><p className="text-lg font-bold mt-1">{organization.businessType === 'shop' ? 'Construction Materials' : 'General Store'}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">Business</p><p className="text-lg font-bold mt-1">{organization.businessType === 'shop' ? 'Building Material' : 'General Store'}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Branches</p><p className="text-2xl font-bold mt-1">{branchCount}</p></Card>
         <Card className="p-4"><p className="text-xs text-gray-500">Staff</p><p className="text-2xl font-bold mt-1">{staffCount}</p></Card>
         {recentSales && <Card className="p-4"><p className="text-xs text-gray-500">Sales · last 7 days</p><p className="text-2xl font-bold mt-1">₦{((recentSales._sum.grandTotal || 0) / 100).toLocaleString('en-NG')}</p><p className="text-xs text-gray-500">{recentSales._count} transactions</p></Card>}
@@ -103,7 +103,7 @@ export default async function TodayPage({ searchParams }) {
       )}
 
       <Card className="p-6">
-        <h2 className="font-semibold text-gray-900">{organization.businessType === 'shop' ? 'Construction materials work' : 'General store work'}</h2>
+        <h2 className="font-semibold text-gray-900">{organization.businessType === 'shop' ? 'Building material work' : 'General store work'}</h2>
         <p className="mt-1 text-sm text-gray-500">Choose the task you need for this business.</p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href={`${counterHref}${context}`} className={btnPrimaryCls}>{organization.businessType === 'shop' ? 'Open cement warehouse' : 'Open retail counter'}</Link>

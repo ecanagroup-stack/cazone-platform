@@ -13,13 +13,13 @@ const CHAT_POLL_MS = 30000;
 
 // Shared operations for non-fuel businesses; Account is appended to every business menu. Sell holds the
 // counter itself — one entry per pack, not a list of pages. Manage's "at most two items per pack"
-// budget is lifted for Construction Material specifically — ecana_shop-app's own nav has ~11 items
+// budget is lifted for Building Material specifically — ecana_shop-app's own nav has ~11 items
 // across Setup/Operations for cement+aggregate+shop combined, and faithfully porting its dedicated
 // pages (Cement Brands, Aggregate, Quarries, ...) means matching that depth, not force-fitting a
 // budget that only ever fit a shallower approximation. `pack` tags an item to a ServiceCatalog key
 // (lib/services.js) — items with no `pack` are core/shared and always show; pack items are filtered
 // by the CURRENTLY SELECTED service's type (see the `services` prop + `?service=`), not by every
-// service the org has ever enabled — an org running both fuel and construction material must not see
+// service the org has ever enabled — an org running both fuel and building material must not see
 // Cement Brands/ATCs/etc. while it's the fuel branch that's actually selected, and vice versa.
 const GROUPS = [
   {

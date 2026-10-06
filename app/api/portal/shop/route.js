@@ -16,7 +16,7 @@ export const GET = withOrg(async () => {
     if (!session.user.customerId) throw new ApiError('No linked customer account', 403);
 
     const service = await prisma.service.findFirst({ where: { type: 'shop', isActive: true } });
-    if (!service) throw new ApiError('This organization has no Construction Material service enabled', 404);
+    if (!service) throw new ApiError('This organization has no Building Material service enabled', 404);
 
     const [branches, products, customer, org] = await Promise.all([
       prisma.branch.findMany({ where: { serviceId: service.id, isActive: true }, orderBy: { name: 'asc' } }),

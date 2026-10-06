@@ -11,7 +11,7 @@ import { getAccessibleBranchIds } from '@/lib/branchAccess';
 // owner is never invited — it's created once at signup/org-creation. super_admin/customer are out of
 // scope for this form entirely (platform operator and, in v1, a role with no screens to use yet).
 // supervisor/cashier/auditor are fuel's review-chain tier, materials_manager/atc_manager are
-// Construction Material's (lib/permissions.js) — all invitable like any other staff-side role.
+// Building Material's (lib/permissions.js) — all available like any other staff-side role.
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
   if (!can(session?.user?.role, 'users.invite')) {

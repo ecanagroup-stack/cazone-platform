@@ -95,7 +95,7 @@ export default function StonedustPage() {
     return (
       <div>
         <PageHeader title="Aggregate Products" subtitle="Quarry products defined by quarry + size + per-tonne price" />
-        <Card><EmptyState title="Pick a service" subtitle="Choose Construction Material from the switcher at the top of the page." /></Card>
+        <Card><EmptyState title="Pick a service" subtitle="Choose Building Material from the switcher at the top of the page." /></Card>
       </div>
     );
   }
