@@ -148,6 +148,13 @@ export default function Sidebar({ services = [], businessType, user }) {
     ...group,
     items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(user?.role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/billing', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((g) => g.items.length > 0);
+  const isActive = (item) => {
+    if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
+      if (item.href === '/admin/fuel/staff') return searchParams.get('view') === 'staff';
+      if (item.href === '/admin/users') return searchParams.get('view') !== 'staff';
+    }
+    return pathname === item.href;
+  };
   return (
     <>
     <nav className={`print:hidden shrink-0 border-r bg-white p-4 hidden md:block ${currentServiceType === 'fuel_station' ? 'w-64' : 'w-56'}`}>
@@ -156,7 +163,7 @@ export default function Sidebar({ services = [], businessType, user }) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-3">{group.label}</p>
           <ul className="space-y-0.5">
             {group.items.map((item) => {
-              const active = pathname === item.href;
+              const active = isActive(item);
               const Icon = item.icon;
               return (
                 <li key={`${item.href}-${item.label}`}>
@@ -184,7 +191,7 @@ export default function Sidebar({ services = [], businessType, user }) {
     <nav aria-label="Mobile navigation" className="print:hidden fixed inset-x-0 bottom-0 z-30 flex gap-1 overflow-x-auto border-t bg-white px-2 py-2 md:hidden">
       {groups.flatMap((group) => group.items).map((item) => {
         const Icon = item.icon;
-        return <Link key={`${item.href}-${item.label}`} href={withParams(item.href)} className={`flex min-w-[5rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-center text-[11px] ${pathname === item.href ? 'bg-brand-50 font-semibold text-brand-700' : 'text-gray-600'}`}>
+        return <Link key={`${item.href}-${item.label}`} href={withParams(item.href)} className={`flex min-w-[5rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-center text-[11px] ${isActive(item) ? 'bg-brand-50 font-semibold text-brand-700' : 'text-gray-600'}`}>
           <Icon size={18} /><span>{item.label}</span>
         </Link>;
       })}
