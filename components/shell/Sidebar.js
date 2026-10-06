@@ -80,7 +80,8 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/historical-incomplete', label: 'Incomplete Sales', icon: FiAlertTriangle, roles: ['cashier', 'owner', 'manager'] },
   ] },
   { label: 'Station', items: [
-    { href: '/admin/fuel/tanks', label: 'Tanks & Pumps', icon: FiSettings, roles: ['owner', 'manager', 'supervisor'] },
+    { href: '/admin/fuel/tank-stock', label: 'Tank Dipstick', icon: FiDroplet, roles: ['supervisor'] },
+    { href: '/admin/fuel/tanks', label: 'Tanks & Pumps', icon: FiSettings, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/attendant-performance', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager'] },
     { href: '/admin/services', label: 'Branches', icon: FiMapPin, roles: ['owner', 'manager'] },
     { href: '/admin/users', label: 'Users', icon: FiUsers, roles: ['owner', 'manager'] },

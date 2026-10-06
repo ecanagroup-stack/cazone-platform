@@ -20,7 +20,7 @@ const ACTIONS = {
   owner: [['Open station shift', '/admin/fuel/shift'], ['Review summary book', '/admin/fuel/summary-book'], ['Manage branches', '/admin/services'], ['Subscription', '/admin/billing']],
   manager: [['Begin or end shift', '/admin/fuel/shift'], ['Review pump entries', '/admin/fuel/shift'], ['Tank stock', '/admin/fuel/tanks'], ['Summary book', '/admin/fuel/summary-book']],
   staff: [['View station shift', '/admin/fuel/shift']],
-  supervisor: [['Record pump sales', '/admin/fuel/shift'], ['Record tank dip', '/admin/fuel/tanks']],
+  supervisor: [['Record pump sales', '/admin/fuel/shift'], ['Record tank dip', '/admin/fuel/tank-stock']],
   cashier: [['Record payments', '/admin/fuel/collections'], ['View pump collections', '/admin/fuel/collections'], ['Complete historical sales', '/admin/fuel/historical-incomplete']],
   daily_auditor: [['Daily summary', '/admin/fuel/summary-book'], ['Tank stock', '/admin/fuel/tanks'], ['Flags', '/admin/exceptions']],
   external_auditor: [['Daily summary', '/admin/fuel/summary-book'], ['Flags', '/admin/exceptions']],
