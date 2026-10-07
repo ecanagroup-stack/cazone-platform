@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField, NumberInput } from '@/components/ui';
@@ -129,13 +130,16 @@ function FlagsTab() {
 // (applies stock/credit) or rejected (no stock/credit was ever applied, so rejecting is just a
 // status flip). See lib/sale.js.
 function PendingOrdersTab() {
+  const { data: authSession } = useSession();
   const [orders, setOrders] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null); // { orderId, shortfall, error }
   const [overridePin, setOverridePin] = useState('');
+  const [editing, setEditing] = useState(null);
+  const canEditPrice = ['owner', 'manager', 'materials_manager'].includes(authSession?.user?.role);
 
   const load = useCallback(async () => {
-    const r = await fetch('/api/admin/materials/pending-orders');
+    const r = await fetch('/api/admin/pending-orders');
     const d = await r.json();
     if (d.success) setOrders(d.data);
     else toast.error(d.error || 'Failed to load');
@@ -146,7 +150,7 @@ function PendingOrdersTab() {
   const confirm = async (orderId, overrideCredit = false, otp = '') => {
     setSubmitting(true);
     try {
-      const r = await fetch(`/api/admin/materials/pending-orders/${orderId}/confirm`, {
+      const r = await fetch(`/api/admin/pending-orders/${orderId}/confirm`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideCredit, otp }),
       });
       const d = await r.json();
@@ -166,13 +170,28 @@ function PendingOrdersTab() {
   const reject = async (orderId) => {
     setSubmitting(true);
     try {
-      const r = await fetch(`/api/admin/materials/pending-orders/${orderId}/reject`, { method: 'POST' });
+      const r = await fetch(`/api/admin/pending-orders/${orderId}/reject`, { method: 'POST' });
       const d = await r.json();
       if (d.success) { toast.success('Order rejected'); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const savePrices = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/admin/pending-orders/${editing.id}/price`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revision: editing.revision, reason: editing.reason,
+          lines: editing.lines.map((line) => ({ id: line.id, unitPrice: line.unitPrice })) }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success('Order prices updated'); setEditing(null); load(); }
+      else toast.error(d.error);
+    } finally { setSubmitting(false); }
   };
 
   if (!orders) return <Loader />;
@@ -227,6 +246,9 @@ function PendingOrdersTab() {
               )}
 
               <div className="flex gap-2">
+                {canEditPrice && <button onClick={() => setEditing({ id: o.id, revision: o.deliveryRevision, reason: '',
+                  lines: o.lines.map((line) => ({ id: line.id, name: line.product.name, qty: line.qty, unitPrice: (line.unitPrice / 100).toFixed(2) })) })}
+                  disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Edit Prices</button>}
                 <button onClick={() => confirm(o.id, false)} disabled={submitting} className={btnPrimaryCls}>Confirm</button>
                 <button onClick={() => reject(o.id)} disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-red-600">Reject</button>
               </div>
@@ -234,6 +256,17 @@ function PendingOrdersTab() {
           ))}
         </div>
       )}
+      <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit Requested Prices">
+        {editing && <form onSubmit={savePrices} className="space-y-4">
+          <p className="text-sm text-gray-600">The customer request stays pending until staff confirms it. Enter the agreed unit prices.</p>
+          {editing.lines.map((line, index) => <Field key={line.id} label={`${line.name} · ${line.qty} units`}>
+            <NumberInput required min="0" step="0.01" value={line.unitPrice} onChange={(event) => setEditing((current) => ({ ...current,
+              lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item) }))} />
+          </Field>)}
+          <Field label="Reason"><input required minLength={3} value={editing.reason} onChange={(event) => setEditing((current) => ({ ...current, reason: event.target.value }))} className={inputCls} /></Field>
+          <FormButtons onCancel={() => setEditing(null)} submitting={submitting} submitLabel="Save Prices" />
+        </form>}
+      </Modal>
     </div>
   );
 }

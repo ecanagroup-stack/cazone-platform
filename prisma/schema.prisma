@@ -816,6 +816,7 @@ model OrderLine {
   // Physical quantity deducted from stock or an ATC; may differ from billed qty.
   stockQty     Float?
   unitPrice    Int
+  managerUnitPrice Int? // Explicit price approved for a pending customer order; retained on confirmation.
   lineTotal    Int
   // Sale-time snapshots for transaction reports; truck and supplier records can change later.
   sourceTruckNumber String?

@@ -20,8 +20,9 @@ export const POST = withOrg(async (request) => {
 
     const org = await prisma.organization.findUnique({
       where: { id: session.user.organizationId },
-      select: { paymentsEnabled: true, paystackSubaccountCode: true },
+      select: { businessType: true, paymentsEnabled: true, paystackSubaccountCode: true },
     });
+    if (org?.businessType !== 'shop') throw new ApiError('Online payment is unavailable for this business', 403);
     if (!org?.paymentsEnabled || !org.paystackSubaccountCode) {
       throw new ApiError('This organization isn\'t set up to collect payments online', 400);
     }

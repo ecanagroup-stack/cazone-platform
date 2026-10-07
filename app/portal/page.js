@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, StatusPill } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 import PortalPayBalanceButton from '@/components/PortalPayBalanceButton';
+import { FiMessageCircle, FiBell, FiShoppingBag, FiArrowUpRight } from 'react-icons/fi';
 
 export default function PortalOverviewPage() {
   const [customer, setCustomer] = useState(null);
@@ -39,9 +40,22 @@ export default function PortalOverviewPage() {
       </div>
 
       {customer.paymentsEnabled && customer.balance > 0 && <PortalPayBalanceButton />}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
-        <Link href="/portal/messages" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Chat</strong><p className="text-sm text-gray-500 mt-1">Talk with your branch managers.</p></Link>
-        <Link href="/portal/announcements" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Notifications</strong><p className="text-sm text-gray-500 mt-1">Read messages sent to your branch or to you.</p></Link>
+      <div className="mt-7">
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">Your actions</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            ...(['shop', 'general_store'].includes(customer.businessType)
+              ? [{ href: '/portal/order', title: 'Order', description: 'Request goods from your branch.', Icon: FiShoppingBag }]
+              : []),
+            { href: '/portal/messages', title: 'Chat', description: `Talk with ${customer.organizationName || 'your organization'}.`, Icon: FiMessageCircle },
+            { href: '/portal/announcements', title: 'Notifications', description: `Read announcements from ${customer.organizationName || 'your organization'}.`, Icon: FiBell },
+          ].map(({ href, title, description, Icon }) => (
+            <Link key={title} href={href} className="group flex min-h-36 flex-col justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-brand-500 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+              <div className="flex items-start justify-between"><Icon className="text-brand-700" size={22} aria-hidden="true" /><FiArrowUpRight className="text-gray-400 transition group-hover:text-brand-700" aria-hidden="true" /></div>
+              <div><strong className="text-base text-gray-900">{title}</strong><p className="mt-1 text-sm leading-5 text-gray-500">{description}</p></div>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );

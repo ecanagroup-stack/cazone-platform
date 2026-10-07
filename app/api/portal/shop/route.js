@@ -15,24 +15,25 @@ export const GET = withOrg(async () => {
     const session = await getOrgSession();
     if (!session.user.customerId) throw new ApiError('No linked customer account', 403);
 
-    const service = await prisma.service.findFirst({ where: { type: 'shop', isActive: true } });
-    if (!service) throw new ApiError('This organization has no Building Material service enabled', 404);
+    const organization = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true, paymentsEnabled: true } });
+    if (!['shop', 'general_store'].includes(organization?.businessType)) throw new ApiError('Online ordering is unavailable for this business', 404);
+    const service = await prisma.service.findFirst({ where: { type: organization.businessType, isActive: true } });
+    if (!service) throw new ApiError('Ordering is not active for this business', 404);
 
-    const [branches, products, customer, org] = await Promise.all([
-      prisma.branch.findMany({ where: { serviceId: service.id, isActive: true }, orderBy: { name: 'asc' } }),
+    const [branches, products, customer] = await Promise.all([
+      prisma.branch.findMany({ where: { serviceId: service.id, isActive: true, customerAccess: { some: { customerId: session.user.customerId } } }, orderBy: { name: 'asc' } }),
       prisma.product.findMany({
         where: { serviceId: service.id, isActive: true },
         include: { priceRules: { where: { validTo: null, OR: [{ customerId: session.user.customerId }, { customerId: null }] } } },
         orderBy: { name: 'asc' },
       }),
       prisma.customer.findUnique({ where: { id: session.user.customerId }, select: { transportRate: true } }),
-      prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { paymentsEnabled: true } }),
     ]);
 
     const data = {
       branches,
-      transportRate: customer?.transportRate ?? null,
-      paymentsEnabled: org?.paymentsEnabled || false,
+      transportRate: organization.businessType === 'shop' ? customer?.transportRate ?? null : null,
+      paymentsEnabled: organization.businessType === 'shop' && organization.paymentsEnabled,
       products: products
         .map((p) => {
           const customerRule = p.priceRules.find((r) => r.customerId === session.user.customerId);

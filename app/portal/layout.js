@@ -41,7 +41,7 @@ export default async function PortalLayout({ children }) {
         </Link>
         <nav className="hidden md:flex items-center gap-4 text-sm text-gray-600">
           <Link href="/portal" className="hover:text-gray-900">Overview</Link>
-          {org?.businessType === 'shop' && <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>}
+          {['shop', 'general_store'].includes(org?.businessType) && <Link href="/portal/order" className="hover:text-gray-900">Order</Link>}
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
           <PortalMessagesLink className="hover:text-gray-900" />
           <PortalAnnouncementsLink className="hover:text-gray-900" />
@@ -50,7 +50,7 @@ export default async function PortalLayout({ children }) {
         <div className="flex-1" />
         <LinkSearch links={[
           { href: '/portal', label: 'Overview', group: 'Account' },
-          ...(org?.businessType === 'shop' ? [{ href: '/portal/shop', label: 'Shop', group: 'Shop' }] : []),
+          ...(['shop', 'general_store'].includes(org?.businessType) ? [{ href: '/portal/order', label: 'Order Goods', group: 'Orders' }] : []),
           { href: '/portal/statement', label: 'Statement', group: 'Account' },
           { href: '/portal/messages', label: 'Messages', group: 'Account' },
           { href: '/portal/announcements', label: 'Notifications', group: 'Account' },
@@ -61,6 +61,7 @@ export default async function PortalLayout({ children }) {
       </header>
       <nav aria-label="Customer navigation" className="flex items-center justify-around gap-2 border-b bg-white px-3 py-2 text-xs text-gray-700 md:hidden">
         <Link href="/portal">Overview</Link>
+        {['shop', 'general_store'].includes(org?.businessType) && <Link href="/portal/order">Order</Link>}
         <PortalMessagesLink />
         <PortalAnnouncementsLink />
         <Link href="/portal/account">Account</Link>

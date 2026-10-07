@@ -10,6 +10,7 @@ import PaystackButton from '@/components/billing/PaystackButton';
 export default function PortalShopPage() {
   const { data: authSession } = useSession();
   const [data, setData] = useState(null);
+  const [orders, setOrders] = useState([]);
   const [branchId, setBranchId] = useState('');
   const [cart, setCart] = useState([]); // [{ productId, name, unit, unitPrice, qty }]
   const [submitting, setSubmitting] = useState(false);
@@ -21,6 +22,7 @@ export default function PortalShopPage() {
         if (d.data.branches.length === 1) setBranchId(d.data.branches[0].id);
       } else toast.error(d.error || 'Failed to load');
     });
+    fetch('/api/portal/orders').then((r) => r.json()).then((d) => { if (d.success) setOrders(d.data); });
   };
 
   useEffect(load, []);
@@ -55,6 +57,7 @@ export default function PortalShopPage() {
       if (d.success) {
         toast.success(`Order ${d.data.orderNumber} placed — we'll confirm it shortly`);
         setCart([]);
+        load();
       } else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -65,7 +68,9 @@ export default function PortalShopPage() {
 
   return (
     <div>
-      <PageHeader title="Shop" subtitle="Place an order — we'll confirm it before it's charged to your account" />
+      <PageHeader title="Order Goods" subtitle="Request goods from your branch — staff will confirm the order before charging your account" />
+
+      {data.branches.length === 0 && <Card className="mb-4 p-4 text-sm text-amber-800">Your account is not linked to an active branch yet. Contact the organization to enable ordering.</Card>}
 
       {data.branches.length > 1 && (
         <div className="mb-4">
@@ -134,7 +139,7 @@ export default function PortalShopPage() {
             <span>Total</span>
             <span>{formatMoney(total / 100)}</span>
           </div>
-          <button onClick={submitOrder} disabled={submitting || cart.length === 0} className={`w-full ${btnPrimaryCls}`}>
+          <button onClick={submitOrder} disabled={submitting || cart.length === 0 || !branchId} className={`w-full ${btnPrimaryCls}`}>
             {submitting ? 'Placing order...' : 'Place Order (Pay Later)'}
           </button>
           {data.paymentsEnabled && (
@@ -156,6 +161,18 @@ export default function PortalShopPage() {
           )}
         </Card>
       </div>
+      <section className="mt-8" aria-label="Your order requests">
+        <h2 className="mb-3 text-base font-semibold text-gray-900">Your order requests</h2>
+        {orders.length === 0 ? <Card className="p-4 text-sm text-gray-500">No order requests yet.</Card> :
+          <div className="space-y-3">{orders.map((order) => <Card key={order.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div><p className="font-semibold">{order.orderNumber}</p><p className="text-xs text-gray-500">{order.branch.name} · {new Date(order.createdAt).toLocaleDateString()}</p></div>
+              <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium">{order.status === 'pending' ? 'Awaiting confirmation' : order.status === 'void' ? 'Declined' : 'Confirmed'}</span>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">{order.lines.map((line) => `${line.qty} ${line.product.unit} ${line.product.name}`).join(', ')}</p>
+            <p className="mt-2 text-sm font-semibold">{formatMoney(order.grandTotal / 100)}</p>
+          </Card>)}</div>}
+      </section>
     </div>
   );
 }
