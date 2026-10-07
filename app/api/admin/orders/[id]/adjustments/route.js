@@ -15,7 +15,7 @@ import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 // 'shortfall', matching ecana). OTP-gated like the standalone version (app/api/admin/customers/[id]/adjustments).
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'customers.manage')) {
+  if (!can(session.user.role, 'customer.adjustments.apply')) {
     return NextResponse.json({ error: 'You do not have permission to adjust a sale' }, { status: 403 });
   }
   try {

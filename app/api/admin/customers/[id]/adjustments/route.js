@@ -12,7 +12,7 @@ import { notifyReviewers } from '@/lib/notify';
 // which replaced ecana's PIN confirmation platform-wide.
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'customers.manage')) {
+  if (!can(session.user.role, 'customer.adjustments.apply')) {
     return NextResponse.json({ error: 'You do not have permission to adjust a customer balance' }, { status: 403 });
   }
   try {

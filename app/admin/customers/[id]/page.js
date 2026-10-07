@@ -8,6 +8,7 @@ import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput, OtpField } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { can } from '@/lib/permissions';
 
 const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61-90d', d61_90: '91-120d', d90_plus: '120d+' };
 
@@ -15,6 +16,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams();
   const { data: authSession } = useSession();
   const canChat = ['owner', 'manager', 'materials_manager'].includes(authSession?.user?.role);
+  const canApplyAdjustment = can(authSession?.user?.role, 'customer.adjustments.apply');
   const [data, setData] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', reference: '' });
@@ -226,8 +228,10 @@ export default function CustomerDetailPage() {
                 {customer.userId ? 'Reactivate Portal Login' : 'Enable Portal Login'}
               </button>
             )}
-            <button onClick={() => openAdjustment('surcharge')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Apply Surcharge</button>
-            <button onClick={() => openAdjustment('refund')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Fund</button>
+            {canApplyAdjustment && <>
+              <button onClick={() => openAdjustment('surcharge')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Apply Surcharge</button>
+              <button onClick={() => openAdjustment('refund')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Fund</button>
+            </>}
             <button onClick={() => setShowPayment(true)} className={btnPrimaryCls}>Record Payment</button>
           </div>
         }
@@ -391,7 +395,7 @@ export default function CustomerDetailPage() {
         </form>
       </Modal>
 
-      <Modal open={!!showAdjustment} onClose={() => setShowAdjustment(null)} title={showAdjustment === 'refund' ? 'Fund' : 'Apply Surcharge'}>
+      <Modal open={canApplyAdjustment && !!showAdjustment} onClose={() => setShowAdjustment(null)} title={showAdjustment === 'refund' ? 'Fund' : 'Apply Surcharge'}>
         <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
           <Field label={`${showAdjustment === 'refund' ? 'Fund' : 'Surcharge'} amount`} required>
             <NumberInput value={adjustmentForm.amount} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: e.target.value })} required autoFocus />
