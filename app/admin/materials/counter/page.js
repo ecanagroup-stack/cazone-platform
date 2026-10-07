@@ -46,7 +46,7 @@ export default function CementWarehousePage() {
   if (!serviceId || !branchId) {
     return (
       <div>
-        <PageHeader title="Cement Warehouse" subtitle="Retail counter — its own products, stock, and walk-in sales" />
+        <PageHeader title="Cement Warehouse" subtitle="Retail counter — products, stock, and customer sales" />
         <Card><EmptyState title="Pick a branch" subtitle="Choose Building Material and a branch from the switcher at the top of the page." /></Card>
       </div>
     );
@@ -54,7 +54,7 @@ export default function CementWarehousePage() {
 
   return (
     <div>
-      <PageHeader title="Cement Warehouse" subtitle="Retail counter — its own products, stock, and walk-in sales" />
+      <PageHeader title="Cement Warehouse" subtitle="Retail counter — products, stock, and customer sales" />
       <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
       {activeTab === 'inventory' && <InventoryTab serviceId={serviceId} branchId={branchId} />}
       {activeTab === 'sell' && <RecordSaleTab serviceId={serviceId} branchId={branchId} onSold={() => setTab('history')} />}
@@ -314,8 +314,8 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 
       <Card className="p-4">
         <div className="flex gap-2 mb-3">
-          <button type="button" onClick={() => setCustomerMode('search')} className={`px-3 py-2 text-sm rounded border ${customerMode === 'search' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Search Customer</button>
-          <button type="button" onClick={() => { setCustomerMode('walk-in'); setCustomer(null); setCustomerQuery(''); }} className={`px-3 py-2 text-sm rounded border ${customerMode === 'walk-in' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Walk-in Customer</button>
+          <button type="button" aria-pressed={customerMode === 'search'} onClick={() => setCustomerMode('search')} className={`px-3 py-2 text-sm rounded border ${customerMode === 'search' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Search Customer</button>
+          <button type="button" aria-pressed={customerMode === 'walk-in'} onClick={() => { setCustomerMode('walk-in'); setCustomer(null); setCustomerQuery(''); }} className={`px-3 py-2 text-sm rounded border ${customerMode === 'walk-in' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Walk-in Customer</button>
         </div>
         {customerMode === 'search' && (
         <Field label="Customer">
@@ -326,7 +326,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
             </div>
           ) : (
             <div className="relative">
-              <input type="text" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} placeholder="Search customer, or leave blank for walk-in" className={inputCls} />
+              <input type="search" autoFocus value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} placeholder="Search customer by name or phone" className={inputCls} />
               {(customerResults.length > 0 || customerQuery.trim().length >= 2) && (
                 <div className="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                   {customerResults.map((c) => (
