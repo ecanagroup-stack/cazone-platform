@@ -10,7 +10,7 @@ export const GET = withOrg(async () => {
   if (!session.user.customerId) return NextResponse.json({ success: true, data: { count: 0 } });
 
   const count = await prisma.chatMessage.count({
-    where: { customerId: session.user.customerId, fromCustomer: false, isRead: false },
+    where: { customerId: session.user.customerId, fromCustomer: false, broadcastId: null, isRead: false },
   });
   return NextResponse.json({ success: true, data: { count } });
 });

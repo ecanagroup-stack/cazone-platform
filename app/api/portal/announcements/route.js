@@ -7,12 +7,9 @@ export const GET = withOrg(async () => {
   if (session.user.role !== 'customer' || !session.user.customerId) {
     return NextResponse.json({ error: 'Customer access required' }, { status: 403 });
   }
-  const organization = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
-  if (organization?.businessType === 'fuel_station') {
-    return NextResponse.json({ error: 'Not available for this business' }, { status: 404 });
-  }
   const announcements = await prisma.chatMessage.findMany({
     where: { customerId: session.user.customerId, broadcastId: { not: null }, fromCustomer: false },
+    include: { branch: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });

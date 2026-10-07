@@ -268,6 +268,7 @@ model Branch {
 
   userAccess     UserBranchAccess[]
   customerAccess CustomerAccess[]
+  chatMessages   ChatMessage[]
 
   orders          Order[]
   stockMoves      StockMove[]
@@ -671,9 +672,10 @@ model Notification {
   @@index([organizationId, recipientRole, isRead])
 }
 
-// A running conversation thread between one customer and the org's owner/manager staff — see
-// app/api/admin/chat and app/api/portal/chat. One thread per customer (no subjects/tickets); the
-// customer initiates, any owner/manager can reply. `isRead` is single-directional per row (unlike
+// A running conversation between one customer and the managers of a branch — see
+// app/api/admin/chat and app/api/portal/chat. Historical messages are assigned to a branch when
+// the customer belonged to exactly one branch; ambiguous older messages keep a null branchId.
+// `isRead` is single-directional per row (unlike
 // Notification's two possible recipients, a chat message only ever needs the OTHER side to read it —
 // staff read what the customer sent, the customer reads what staff sent).
 model ChatMessage {
@@ -683,6 +685,8 @@ model ChatMessage {
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branchId   String?
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   fromCustomer Boolean // true = the customer sent it; false = staff sent it
   // Loose reference, not a relation — same convention as Customer.createdBy — so a staff login being
@@ -703,6 +707,7 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, branchId, customerId, createdAt])
   @@index([organizationId, fromCustomer, isRead])
 }
 

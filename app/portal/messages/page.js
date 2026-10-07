@@ -8,15 +8,19 @@ const POLL_MS = 8000;
 
 export default function PortalMessagesPage() {
   const [messages, setMessages] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState('');
+  const [earlierMessages, setEarlierMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
 
   const load = useCallback(async () => {
-    const r = await fetch('/api/portal/chat');
+    const r = await fetch(`/api/portal/chat${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`);
     const d = await r.json();
-    if (d.success) setMessages(d.data.messages); else toast.error(d.error || 'Failed to load');
-  }, []);
+    if (d.success) { setMessages(d.data.messages); setEarlierMessages(d.data.earlierMessages || []); setBranches(d.data.branches); if (d.data.branchId !== branchId) setBranchId(d.data.branchId); }
+    else toast.error(d.error || 'Failed to load');
+  }, [branchId]);
 
   useEffect(() => {
     load();
@@ -35,7 +39,7 @@ export default function PortalMessagesPage() {
     setSending(true);
     try {
       const r = await fetch('/api/portal/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: text }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchId, body: text }),
       });
       const d = await r.json();
       if (d.success) { setDraft(''); load(); } else toast.error(d.error);
@@ -45,10 +49,20 @@ export default function PortalMessagesPage() {
   };
 
   if (!messages) return <Loader />;
+  const branch = branches.find((item) => item.id === branchId);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <PageHeader title="Messages" subtitle="Chat with the team about your account" />
+      <PageHeader title="Messages" subtitle="Chat with the managers at your branch" />
+      <label className="mb-4 block max-w-sm text-sm font-medium text-gray-700">Branch
+        <select value={branchId} onChange={(event) => { setMessages(null); setDraft(''); setBranchId(event.target.value); }} className={`${inputCls} mt-1`}>
+          {branches.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isActive ? '' : ' (inactive)'}</option>)}
+        </select>
+      </label>
+      {earlierMessages.length > 0 && <Card className="mb-4 max-h-40 overflow-y-auto p-4 text-sm">
+        <p className="mb-2 font-semibold">Earlier organization conversation</p>
+        {earlierMessages.map((message) => <p key={message.id} className="mb-1 text-gray-600"><strong>{message.senderName}:</strong> {message.body}</p>)}
+      </Card>}
 
       <Card className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -80,7 +94,7 @@ export default function PortalMessagesPage() {
             className={inputCls}
             autoFocus
           />
-          <button type="submit" disabled={sending || !draft.trim()} className={btnPrimaryCls}>Send</button>
+          <button type="submit" disabled={sending || !draft.trim() || !branch?.isActive} className={btnPrimaryCls}>Send</button>
         </form>
       </Card>
     </div>

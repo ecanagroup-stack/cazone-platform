@@ -6,6 +6,7 @@ import { getCachedOrganization } from '@/lib/orgLookup';
 import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 import PortalMessagesLink from '@/components/PortalMessagesLink';
+import PortalAnnouncementsLink from '@/components/PortalAnnouncementsLink';
 import LinkSearch from '@/components/shell/LinkSearch';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
@@ -43,7 +44,7 @@ export default async function PortalLayout({ children }) {
           {org?.businessType === 'shop' && <Link href="/portal/shop" className="hover:text-gray-900">Shop</Link>}
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
           <PortalMessagesLink className="hover:text-gray-900" />
-          {org?.businessType !== 'fuel_station' && <Link href="/portal/announcements" className="hover:text-gray-900">Notifications</Link>}
+          <PortalAnnouncementsLink className="hover:text-gray-900" />
           <Link href="/portal/account" className="hover:text-gray-900">Account</Link>
         </nav>
         <div className="flex-1" />
@@ -52,12 +53,18 @@ export default async function PortalLayout({ children }) {
           ...(org?.businessType === 'shop' ? [{ href: '/portal/shop', label: 'Shop', group: 'Shop' }] : []),
           { href: '/portal/statement', label: 'Statement', group: 'Account' },
           { href: '/portal/messages', label: 'Messages', group: 'Account' },
-          ...(org?.businessType !== 'fuel_station' ? [{ href: '/portal/announcements', label: 'Notifications', group: 'Account' }] : []),
+          { href: '/portal/announcements', label: 'Notifications', group: 'Account' },
           { href: '/portal/account', label: 'My Account', group: 'Account' },
         ]} />
         <span className="hidden lg:inline text-sm text-gray-500">{session.user.name}</span>
         <SignOutButton className="text-sm text-gray-500 hover:text-gray-900" />
       </header>
+      <nav aria-label="Customer navigation" className="flex items-center justify-around gap-2 border-b bg-white px-3 py-2 text-xs text-gray-700 md:hidden">
+        <Link href="/portal">Overview</Link>
+        <PortalMessagesLink />
+        <PortalAnnouncementsLink />
+        <Link href="/portal/account">Account</Link>
+      </nav>
       <main className="max-w-3xl mx-auto p-6">{children}</main>
     </div>
   );

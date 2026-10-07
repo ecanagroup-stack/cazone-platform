@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -11,16 +11,20 @@ const POLL_MS = 8000;
 
 export default function MessageThreadPage() {
   const { customerId } = useParams();
+  const searchParams = useSearchParams();
+  const [branchId, setBranchId] = useState(searchParams.get('branchId') || searchParams.get('branch') || '');
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/chat/${customerId}`);
+    const r = await fetch(`/api/admin/chat/${customerId}${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`);
     const d = await r.json();
-    if (d.success) setData(d.data); else toast.error(d.error || 'Failed to load');
-  }, [customerId]);
+    if (d.success) { setData(d.data); if (d.data.branchId !== branchId) setBranchId(d.data.branchId); }
+    else if (r.status === 403 && branchId) setBranchId('');
+    else toast.error(d.error || 'Failed to load');
+  }, [customerId, branchId]);
 
   useEffect(() => {
     load();
@@ -39,7 +43,7 @@ export default function MessageThreadPage() {
     setSending(true);
     try {
       const r = await fetch(`/api/admin/chat/${customerId}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: text }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchId, body: text }),
       });
       const d = await r.json();
       if (d.success) { setDraft(''); load(); } else toast.error(d.error);
@@ -50,12 +54,13 @@ export default function MessageThreadPage() {
 
   if (!data) return <Loader />;
 
-  const { customer, messages } = data;
+  const { customer, messages, branches, earlierMessages } = data;
+  const branch = branches.find((item) => item.id === branchId);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <div className="mb-4">
-        <Link href="/admin/messages" className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1 mb-2">
+        <Link href={`/admin/messages?branchId=${encodeURIComponent(branchId)}`} className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1 mb-2">
           <FiArrowLeft size={14} /> All Messages
         </Link>
         <h1 className="text-xl font-bold text-gray-900">
@@ -66,7 +71,17 @@ export default function MessageThreadPage() {
           {customer.phone || 'No phone on file'} ·{' '}
           <Link href={`/admin/customers/${customer.id}`} className="text-brand-600 hover:underline">View account</Link>
         </p>
+        <label className="mt-3 block max-w-sm text-sm font-medium text-gray-700">Branch
+          <select value={branchId} onChange={(event) => { setData(null); setDraft(''); setBranchId(event.target.value); }} className={`${inputCls} mt-1`}>
+            {branches.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isActive ? '' : ' (inactive)'}</option>)}
+          </select>
+        </label>
       </div>
+
+      {earlierMessages?.length > 0 && <Card className="mb-4 max-h-40 overflow-y-auto p-4 text-sm">
+        <p className="mb-2 font-semibold">Earlier organization conversation</p>
+        {earlierMessages.map((message) => <p key={message.id} className="mb-1 text-gray-600"><strong>{message.senderName}:</strong> {message.body}</p>)}
+      </Card>}
 
       <Card className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -98,7 +113,7 @@ export default function MessageThreadPage() {
             className={inputCls}
             autoFocus
           />
-          <button type="submit" disabled={sending || !draft.trim()} className={btnPrimaryCls}>Send</button>
+          <button type="submit" disabled={sending || !draft.trim() || !branch?.isActive} className={btnPrimaryCls}>Send</button>
         </form>
       </Card>
     </div>

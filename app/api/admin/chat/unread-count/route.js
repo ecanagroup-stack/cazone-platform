@@ -16,7 +16,7 @@ export const GET = withOrg(async () => {
     where: {
       fromCustomer: true,
       isRead: false,
-      ...(accessibleBranchIds === null ? {} : { customer: { access: { some: { branchId: { in: accessibleBranchIds } } } } }),
+      ...(accessibleBranchIds === null ? {} : { branchId: { in: accessibleBranchIds } }),
     },
   });
   return NextResponse.json({ success: true, data: { count } });

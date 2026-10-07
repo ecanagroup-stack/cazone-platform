@@ -77,6 +77,7 @@ const FUEL_GROUPS = [
     { href: '/admin/price-approvals', label: 'Price Changes', icon: FiSliders, roles: ['owner', 'manager'] },
     { href: '/admin/users', label: 'Users', icon: FiUsers, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/staff', label: 'Staff', icon: FiUserCheck, roles: ['owner', 'manager'] },
+    { href: '/admin/messages', label: 'Customer Messages', icon: FiMessageSquare, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/reports', label: 'Reports', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/fuel/attendant-performance', label: 'Staff Report', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor'] },
     { href: '/admin/exceptions', label: 'Flags', icon: FiAlertTriangle, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
@@ -199,7 +200,7 @@ export default function Sidebar({ services = [], businessType, user }) {
       {groups.flatMap((group) => group.items).map((item) => {
         const Icon = item.icon;
         return <Link key={`${item.href}-${item.label}`} href={withParams(item.href)} className={`flex min-w-[5rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-center text-[11px] ${isActive(item) ? 'bg-brand-50 font-semibold text-brand-700' : 'text-gray-600'}`}>
-          <Icon size={18} /><span>{item.label}</span>
+          <span className="relative"><Icon size={18} />{item.href === '/admin/messages' && unreadChats > 0 && <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-red-500" />}</span><span>{item.label}</span>
         </Link>;
       })}
     </nav>

@@ -40,8 +40,8 @@ export default function PortalOverviewPage() {
 
       {customer.paymentsEnabled && customer.balance > 0 && <PortalPayBalanceButton />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
-        <Link href="/portal/messages" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Chat</strong><p className="text-sm text-gray-500 mt-1">Talk with the organization.</p></Link>
-        {customer.businessType !== 'fuel_station' && <Link href="/portal/announcements" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Notifications</strong><p className="text-sm text-gray-500 mt-1">Read announcements from the organization.</p></Link>}
+        <Link href="/portal/messages" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Chat</strong><p className="text-sm text-gray-500 mt-1">Talk with your branch managers.</p></Link>
+        <Link href="/portal/announcements" className="block rounded-lg border bg-white p-4 hover:border-brand-500"><strong>Notifications</strong><p className="text-sm text-gray-500 mt-1">Read messages sent to your branch or to you.</p></Link>
       </div>
     </div>
   );
