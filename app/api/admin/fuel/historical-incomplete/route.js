@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
+import { notifyReviewers } from '@/lib/notify';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 import { exactMeterSale } from '@/lib/fuelCollections.mjs';
@@ -66,6 +67,12 @@ export const POST = withOrg(async (request) => {
         before: { closing: reading.closing, rtt: reading.rtt, status: reading.reviewStatus },
         after: { closing, rtt, reason, sourceId: reading.legacySourceId } } });
       return saved;
+    });
+    await notifyReviewers({
+      actorUserId: session.user.id, type: 'historical_fuel_correction',
+      title: 'Historical fuel correction submitted',
+      message: `${session.user.name} submitted a correction for imported pump reading ${reading.legacySourceId}. Reason: ${reason}`,
+      relatedType: 'MeterReading', relatedId: reading.id,
     });
     return NextResponse.json({ success: true, data: updated });
   } catch (error) { return NextResponse.json({ error: error.message }, { status: error.status || 400 }); }

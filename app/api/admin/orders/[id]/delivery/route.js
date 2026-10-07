@@ -86,7 +86,7 @@ export const PATCH = withOrg(async (request, { params }) => {
         creditOverrideUsed = true;
       }
     }
-    const discountOtpUsed = discount !== existing.discount && discount > 0;
+    const discountOtpUsed = discount !== existing.discount;
     if (discountOtpUsed) {
       await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
     }

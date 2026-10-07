@@ -349,7 +349,7 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
   const calculatedTotal = form.lines.reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.unitPrice || 0)
     + Number(line.transportFee || 0) + line.costs.reduce((costSum, cost) => costSum + Number(cost.amount || 0), 0), 0)
     + Number(form.orderTransportFee || 0) - Number(form.discount || 0);
-  const discountOtpNeeded = Number(form.discount) > 0 && Math.round(Number(form.discount) * 100) !== sale.edit.discount;
+  const discountOtpNeeded = Math.round(Number(form.discount) * 100) !== sale.edit.discount;
 
   const save = async (event, overrideCredit = false) => {
     event.preventDefault();
