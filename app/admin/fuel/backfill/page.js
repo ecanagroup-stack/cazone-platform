@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { PageHeader, Card, EmptyState, Field, FormButtons, inputCls, btnPrimaryCls, tableActionCls, NumberInput, OtpField } from '@/components/ui';
@@ -35,6 +36,7 @@ const blankShiftForm = { shiftLabel: '', openTime: '08:00', closeTime: '20:00', 
 export default function BackfillPage() {
   const searchParams = useSearchParams();
   const branchIdFromUrl = searchParams.get('branch') || '';
+  const { data: session } = useSession();
 
   const [step, setStep] = useState('setup');
   const [date, setDate] = useState(yesterdayIso());
@@ -62,6 +64,10 @@ export default function BackfillPage() {
 
   const [depositForm, setDepositForm] = useState({ amount: '', bankName: '' });
   const [depositsDone, setDepositsDone] = useState([]);
+  const [resetData, setResetData] = useState(null);
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (!branchId) { setReference(null); return; }
@@ -69,6 +75,13 @@ export default function BackfillPage() {
       if (d.success) setReference({ dispensers: d.data.dispensers || [], attendants: d.data.attendants || [], products: d.data.products || [], tanks: d.data.tanks || [] });
     });
   }, [branchId]);
+
+  useEffect(() => {
+    if (session?.user?.role !== 'owner') return;
+    fetch('/api/admin/fuel/history-reset').then((r) => r.json()).then((d) => {
+      if (d.success) setResetData(d);
+    });
+  }, [session?.user?.role]);
 
   const loadExistingShifts = useCallback(async () => {
     if (!branchId || !date) return;
@@ -158,6 +171,24 @@ export default function BackfillPage() {
     setStep('setup');
   };
 
+  const resetHistory = async (e) => {
+    e.preventDefault();
+    if (!resetData || !confirm('This permanently clears all fuel transaction history for this account. Continue?')) return;
+    setResetting(true);
+    try {
+      const response = await fetch('/api/admin/fuel/history-reset', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: resetConfirmation, otp: resetOtp }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Could not clear fuel history');
+      toast.success('Fuel transaction history cleared. You can now rebuild it below.');
+      setResetData((current) => ({ ...current, counts: Object.fromEntries(Object.keys(current.counts).map((key) => [key, 0])) }));
+      setResetConfirmation(''); setResetOtp('');
+    } catch (error) { toast.error(error.message); }
+    finally { setResetting(false); }
+  };
+
   if (!branchId) {
     return (
       <div>
@@ -171,7 +202,7 @@ export default function BackfillPage() {
     <div>
       <PageHeader
         title="Historical Backfill"
-        subtitle={activeShift ? `${date} — ${activeShift.shiftLabel || `Shift ${activeShift.shiftOrder || ''}`} (${timeOf(activeShift.openedAt)}–${timeOf(activeShift.closedAt)})` : `Owner only — for dates before this branch went live on cazone`}
+        subtitle={activeShift ? `${date} — ${activeShift.shiftLabel || `Shift ${activeShift.shiftOrder || ''}`} (${timeOf(activeShift.openedAt)}–${timeOf(activeShift.closedAt)})` : 'Rebuild past station days with manager, supervisor, and cashier entries'}
       />
 
       <div className="flex gap-1 mb-6 overflow-x-auto">
@@ -183,13 +214,35 @@ export default function BackfillPage() {
       </div>
 
       {step === 'setup' && (
-        <Card className="p-5 max-w-md">
-          <Field label="Date" required>
-            <input type="date" value={date} max={yesterdayIso()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
-          </Field>
-          <p className="text-xs text-gray-500 mt-2">You can add as many shifts as actually happened on this date — morning, afternoon, night, whatever it was.</p>
-          <button onClick={() => setStep('shift')} className={`mt-4 ${btnPrimaryCls}`}>Continue</button>
-        </Card>
+        <div className="space-y-5 max-w-2xl">
+          <Card className="p-5">
+            <Field label="Date" required>
+              <input type="date" value={date} max={yesterdayIso()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+            </Field>
+            <p className="text-xs text-gray-500 mt-2">You can add as many shifts as actually happened on this date — morning, afternoon, night, whatever it was.</p>
+            <button onClick={() => setStep('shift')} className={`mt-4 ${btnPrimaryCls}`}>Continue to daily entries</button>
+          </Card>
+          {session?.user?.role === 'owner' && resetData && (
+            <Card className="border-rose-200 bg-rose-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-rose-700">Owner-only reset</p>
+              <h2 className="mt-1 text-lg font-semibold text-rose-950">Clear faulty fuel history</h2>
+              <p className="mt-2 text-sm text-rose-900">This removes fuel sales, pump readings, shifts, collections, deposits, dips, deliveries, stock movements, and imported fuel history. Station setup, staff, attendants, tanks, pumps, and audit logs stay in place.</p>
+              {resetData.branches.length > 0 && <p className="mt-3 text-xs text-rose-800">Branches included: {resetData.branches.map((branch) => branch.name).join(', ')}</p>}
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-rose-900 sm:grid-cols-4">
+                {Object.entries(resetData.counts).filter(([key]) => key !== 'legacyRecords').map(([key, value]) => <span key={key} className="rounded bg-white/70 px-2 py-1">{key}: <strong>{value}</strong></span>)}
+              </div>
+              <form onSubmit={resetHistory} className="mt-4 space-y-3">
+                <Field label={`Type "${resetData.organizationName}" to confirm`} required>
+                  <input value={resetConfirmation} onChange={(e) => setResetConfirmation(e.target.value)} className={inputCls} autoComplete="off" required />
+                </Field>
+                <OtpField purpose="fuel_history_reset" value={resetOtp} onChange={setResetOtp} />
+                <button type="submit" disabled={resetting || !resetOtp || resetConfirmation !== resetData.organizationName} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {resetting ? 'Clearing history...' : 'Permanently clear fuel history'}
+                </button>
+              </form>
+            </Card>
+          )}
+        </div>
       )}
 
       {step === 'shift' && reference && reference.dispensers.length === 0 && (

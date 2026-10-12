@@ -6,6 +6,7 @@ import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput, exactMeterSale } from '@/lib/fuelCollections.mjs';
 import { evaluateVariance } from '@/lib/reconciliation';
+import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 
 // Ported from petrol-station-app's Backfill wizard — entering historical data for dates before an org
 // subscribed to cazone, one step per call (Date & Branch -> Shift -> Pump Readings -> Deliveries ->
@@ -25,9 +26,8 @@ import { evaluateVariance } from '@/lib/reconciliation';
 // has no live supervisor/cashier/manager division of labor to route through.
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (session.user.role !== 'owner') {
-    return NextResponse.json({ error: 'Only an owner can enter historical data' }, { status: 403 });
-  }
+  if (!['owner', 'manager', 'supervisor', 'cashier'].includes(session.user.role))
+    return NextResponse.json({ error: 'Station staff access required' }, { status: 403 });
   try {
     const body = await request.json();
     const type = body.type;
@@ -35,6 +35,14 @@ export const POST = withOrg(async (request) => {
     if (!date) throw new ApiError('date is required', 400);
     const dayStart = new Date(`${date}T00:00:00.000Z`);
     if (dayStart >= new Date(new Date().toISOString().slice(0, 10))) throw new ApiError('Cannot backfill today or a future date', 400);
+    if (body.branchId && !canAccessBranch(await getAccessibleBranchIds(session), body.branchId))
+      throw new ApiError('Branch access denied', 403);
+    if (type === 'shift' && !['owner', 'manager', 'supervisor'].includes(session.user.role))
+      throw new ApiError('Only station managers and supervisors can create historical shifts', 403);
+    if (['reading', 'delivery', 'dip'].includes(type) && !['owner', 'manager', 'supervisor'].includes(session.user.role))
+      throw new ApiError('Only station managers and supervisors can enter this historical record', 403);
+    if (['payment', 'deposit'].includes(type) && !['owner', 'manager', 'cashier'].includes(session.user.role))
+      throw new ApiError('Only station managers and cashiers can enter this historical record', 403);
 
     // OTP verified once per shift created — an OtpCode is single-use (lib/otp.js), so each new
     // historical shift needs its own fresh code. Every other step just requires that shift to already
@@ -54,9 +62,10 @@ export const POST = withOrg(async (request) => {
   }
 });
 
-async function loadBackfillShift(shiftId) {
+async function loadBackfillShift(shiftId, session) {
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
   if (!shift?.isBackfill) throw new ApiError('Not a backfill shift', 400);
+  if (!canAccessBranch(await getAccessibleBranchIds(session), shift.branchId)) throw new ApiError('Branch access denied', 403);
   return shift;
 }
 
@@ -130,7 +139,7 @@ async function handleReading(session, body) {
   if (!Number.isFinite(closing)) throw new ApiError('Closing reading is required', 400);
   if (!Number.isFinite(price) || price <= 0) throw new ApiError('Historical price is required', 400);
 
-  const shift = await loadBackfillShift(shiftId);
+  const shift = await loadBackfillShift(shiftId, session);
   const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });
   if (!reading) throw new ApiError('No opening reading found — add this pump in the Shift step first', 404);
   if (closing < reading.opening) throw new ApiError('Closing reading cannot be less than the opening reading', 400);
@@ -188,7 +197,7 @@ async function handlePayment(session, body) {
   try { amounts = validateCollectionInput(cashCollected, posEntries); }
   catch (error) { throw new ApiError(error.message, 400); }
 
-  const shift = await loadBackfillShift(shiftId);
+  const shift = await loadBackfillShift(shiftId, session);
   const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });
   if (!reading || !(reading.litres > 0)) throw new ApiError('A positive pump sale is required before collection', 400);
   const existing = await prisma.fuelCollection.findMany({ where: { shiftId, dispenserId } });
@@ -231,7 +240,7 @@ async function handleDelivery(session, body) {
   if (!Number.isFinite(quantity) || quantity <= 0) throw new ApiError('Quantity must be positive', 400);
   if (!Number.isFinite(costPerUnit) || costPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
 
-  const shift = await loadBackfillShift(shiftId);
+  const shift = await loadBackfillShift(shiftId, session);
   const branchId = shift.branchId;
   // Mid-shift, between open and close, so it's picked up as "receipts" (not "opening") by anything
   // computing this specific shift's period.
@@ -266,7 +275,7 @@ async function handleDip(session, body) {
   if (!shiftId || !tankId) throw new ApiError('Shift and tank are required', 400);
   if (!Number.isFinite(measured) || measured < 0) throw new ApiError('Measured litres must be a non-negative number', 400);
 
-  const shift = await loadBackfillShift(shiftId);
+  const shift = await loadBackfillShift(shiftId, session);
   const branchId = shift.branchId;
   const tank = await prisma.tank.findUnique({ where: { id: tankId } });
   if (!tank || tank.branchId !== branchId) throw new ApiError('Tank does not belong to this branch', 400);
@@ -316,7 +325,7 @@ async function handleDeposit(session, body) {
   if (!shiftId) throw new ApiError('shiftId is required', 400);
   if (!Number.isFinite(amount) || amount <= 0) throw new ApiError('Amount must be positive', 400);
 
-  const shift = await loadBackfillShift(shiftId);
+  const shift = await loadBackfillShift(shiftId, session);
   const branchId = shift.branchId;
 
   const dup = await prisma.cashDeposit.findFirst({ where: { branchId, shiftId, amount, isBackfill: true } });
