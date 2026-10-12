@@ -4,6 +4,11 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
 
+const FUEL_TRANSACTION_ARCHIVE_COLLECTIONS = [
+  'attendantassignments', 'cashdeposits', 'dayshifts', 'meterreadings',
+  'paymentrecords', 'pumpopenings', 'salesentries', 'stockmovements', 'tankstockentries',
+];
+
 async function getFuelScope(organizationId) {
   const service = await prisma.service.findFirst({
     where: { organizationId, type: 'fuel_station' },
@@ -14,8 +19,11 @@ async function getFuelScope(organizationId) {
 
 async function getCounts(organizationId, branchIds) {
   const where = { branchId: { in: branchIds } };
-  const [orders, stockMoves, shifts, meterReadings, collections, deposits, dips, deliveries, legacyRecords] = await Promise.all([
-    prisma.order.count({ where }),
+  const orderIds = (await prisma.order.findMany({ where, select: { id: true } })).map((order) => order.id);
+  const [orderLines, paymentAllocations, orderAdjustments, stockMoves, shifts, meterReadings, collections, deposits, dips, deliveries, reconciliations, legacyRecords, posPayments, attendantAssignments] = await Promise.all([
+    prisma.orderLine.count({ where: { orderId: { in: orderIds } } }),
+    prisma.paymentAllocation.count({ where: { orderId: { in: orderIds } } }),
+    prisma.customerAdjustment.count({ where: { orderId: { in: orderIds } } }),
     prisma.stockMove.count({ where }),
     prisma.shift.count({ where }),
     prisma.meterReading.count({ where }),
@@ -23,9 +31,12 @@ async function getCounts(organizationId, branchIds) {
     prisma.cashDeposit.count({ where }),
     prisma.fuelTankDip.count({ where }),
     prisma.delivery.count({ where }),
-    prisma.legacyFuelRecord.count({ where: { organizationId } }),
+    prisma.reconciliation.count({ where }),
+    prisma.legacyFuelRecord.count({ where: { organizationId, sourceCollection: { in: FUEL_TRANSACTION_ARCHIVE_COLLECTIONS } } }),
+    prisma.posPayment.count({ where: { meterReading: { branchId: { in: branchIds } } } }),
+    prisma.attendantAssignment.count({ where }),
   ]);
-  return { orders, stockMoves, shifts, meterReadings, collections, deposits, dips, deliveries, legacyRecords };
+  return { orders: orderIds.length, orderLines, paymentAllocations, orderAdjustments, stockMoves, shifts, meterReadings, collections, deposits, dips, deliveries, reconciliations, legacyRecords, posPayments, attendantAssignments };
 }
 
 export const GET = withOrg(async () => {
@@ -57,18 +68,27 @@ export const DELETE = withOrg(async (request) => {
       await tx.fuelTankDip.deleteMany({ where: branchWhere });
       await tx.meterReading.deleteMany({ where: branchWhere });
       await tx.attendantAssignment.deleteMany({ where: branchWhere });
+      const fuelOrderIds = (await tx.order.findMany({ where: branchWhere, select: { id: true } })).map((order) => order.id);
+      await tx.customerAdjustment.deleteMany({ where: { orderId: { in: fuelOrderIds } } });
       await tx.cashDeposit.deleteMany({ where: branchWhere });
       await tx.shift.deleteMany({ where: branchWhere });
       await tx.stockMove.deleteMany({ where: branchWhere });
       await tx.order.deleteMany({ where: branchWhere });
       await tx.delivery.deleteMany({ where: branchWhere });
       await tx.reconciliation.deleteMany({ where: branchWhere });
-      await tx.legacyFuelRecord.deleteMany({ where: { organizationId } });
+      await tx.legacyFuelRecord.deleteMany({ where: { organizationId, sourceCollection: { in: FUEL_TRANSACTION_ARCHIVE_COLLECTIONS } } });
+      const service = await tx.service.findFirst({ where: { organizationId, type: 'fuel_station' } });
+      if (service) {
+        await tx.service.update({
+          where: { id: service.id },
+          data: { isActive: false, config: { ...(service.config || {}), migrationStockPending: true } },
+        });
+      }
       await tx.auditLog.create({
         data: {
           organizationId, actorUserId: session.user.id, actorName: session.user.name,
           action: 'fuelHistory.reset', entityType: 'FuelHistory', entityId: organizationId,
-          before, after: { cleared: true, branchIds },
+          before, after: { cleared: true, branchIds, operationsPausedForOpeningStock: true },
         },
       });
     }, { timeout: 30000 });

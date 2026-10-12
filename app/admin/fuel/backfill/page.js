@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -27,6 +27,24 @@ const STEPS = [
   { key: 'deposits', label: 'Bank Deposits' },
 ];
 
+const RESET_COUNT_LABELS = {
+  orders: 'Sales',
+  orderLines: 'Sale line items',
+  paymentAllocations: 'Sale payment allocations',
+  orderAdjustments: 'Sale adjustments',
+  stockMoves: 'Stock movements',
+  shifts: 'Shifts',
+  meterReadings: 'Pump readings',
+  collections: 'Pump collections',
+  deposits: 'Bank deposits',
+  dips: 'Tank dips',
+  deliveries: 'Fuel deliveries',
+  reconciliations: 'Reconciliations',
+  legacyRecords: 'Imported transaction archives',
+  posPayments: 'POS payment lines',
+  attendantAssignments: 'Pump assignments',
+};
+
 const blankShiftForm = { shiftLabel: '', openTime: '08:00', closeTime: '20:00', openingFloat: '' };
 
 // Ported from petrol-station-app's Backfill wizard — historical data entry for dates before an org
@@ -34,6 +52,7 @@ const blankShiftForm = { shiftLabel: '', openTime: '08:00', closeTime: '20:00', 
 // whatever times actually happened — nothing here is a fixed window. Owner-only, OTP-gated once per
 // new shift created (see the backing route for why later steps don't re-verify).
 export default function BackfillPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const branchIdFromUrl = searchParams.get('branch') || '';
   const { data: session } = useSession();
@@ -173,7 +192,7 @@ export default function BackfillPage() {
 
   const resetHistory = async (e) => {
     e.preventDefault();
-    if (!resetData || !confirm('This permanently clears all fuel transaction history for this account. Continue?')) return;
+    if (!resetData || !confirm(`Permanently delete the listed fuel transactions for ${resetData.organizationName}? Station setup and audit logs will stay in place.`)) return;
     setResetting(true);
     try {
       const response = await fetch('/api/admin/fuel/history-reset', {
@@ -182,9 +201,11 @@ export default function BackfillPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Could not clear fuel history');
-      toast.success('Fuel transaction history cleared. You can now rebuild it below.');
+      toast.success('Fuel transactions cleared. Set verified opening stock before starting new shifts.');
       setResetData((current) => ({ ...current, counts: Object.fromEntries(Object.keys(current.counts).map((key) => [key, 0])) }));
       setResetConfirmation(''); setResetOtp('');
+      router.replace('/admin/fuel/activate');
+      router.refresh();
     } catch (error) { toast.error(error.message); }
     finally { setResetting(false); }
   };
@@ -225,11 +246,11 @@ export default function BackfillPage() {
           {session?.user?.role === 'owner' && resetData && (
             <Card className="border-rose-200 bg-rose-50 p-5">
               <p className="text-xs font-semibold uppercase tracking-widest text-rose-700">Owner-only reset</p>
-              <h2 className="mt-1 text-lg font-semibold text-rose-950">Clear faulty fuel history</h2>
-              <p className="mt-2 text-sm text-rose-900">This removes fuel sales, pump readings, shifts, collections, deposits, dips, deliveries, stock movements, and imported fuel history. Station setup, staff, attendants, tanks, pumps, and audit logs stay in place.</p>
+              <h2 className="mt-1 text-lg font-semibold text-rose-950">Clear fuel transaction history</h2>
+              <p className="mt-2 text-sm text-rose-900">This removes station sales, pump readings, shifts, collections, deposits, tank dips, deliveries, stock movements, pump assignments, and imported transaction snapshots for every fuel branch listed below. Branches, products, customer and staff accounts, attendants, tanks, pumps, setup snapshots, price history, notifications, and audit logs stay in place.</p>
               {resetData.branches.length > 0 && <p className="mt-3 text-xs text-rose-800">Branches included: {resetData.branches.map((branch) => branch.name).join(', ')}</p>}
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-rose-900 sm:grid-cols-4">
-                {Object.entries(resetData.counts).filter(([key]) => key !== 'legacyRecords').map(([key, value]) => <span key={key} className="rounded bg-white/70 px-2 py-1">{key}: <strong>{value}</strong></span>)}
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-rose-900 sm:grid-cols-3">
+                {Object.entries(resetData.counts).map(([key, value]) => <span key={key} className="rounded bg-white/70 px-2 py-1">{RESET_COUNT_LABELS[key] || key}: <strong>{value.toLocaleString()}</strong></span>)}
               </div>
               <form onSubmit={resetHistory} className="mt-4 space-y-3">
                 <Field label={`Type "${resetData.organizationName}" to confirm`} required>

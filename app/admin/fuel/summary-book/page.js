@@ -73,8 +73,8 @@ export default function SummaryBookPage() {
   return (
     <div>
       <PageHeader title="Summary Book" subtitle="Shift-by-shift, product-by-product reconciliation" />
-      <a className="inline-block mb-4 text-sm text-brand-600 underline" href={`/admin/fuel/historical-incomplete?branch=${encodeURIComponent(branchId)}`}>
-        Review incomplete historical pump records
+      <a className="inline-block mb-4 text-sm text-brand-600 underline" href={`/admin/fuel/backfill?branch=${encodeURIComponent(branchId)}`}>
+        Rebuild historical station records
       </a>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">

@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare,
+  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare, FiPlay,
 } from 'react-icons/fi';
 
 const CHAT_POLL_MS = 30000;
@@ -84,6 +84,7 @@ const FUEL_GROUPS = [
     { href: '/admin/audit', label: 'Audit Logs', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
   ] },
   { label: 'Station work', items: [
+    { href: '/admin/fuel/activate', label: 'Start Operations', icon: FiPlay, roles: ['owner'], historicalOnly: true },
     { href: '/admin/fuel/tanks', label: 'Station Config', icon: FiSettings, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/fuel/shift', label: 'Begin Day', icon: FiClock, roles: ['owner', 'manager', 'staff'], liveOnly: true },
     { href: '/admin/fuel/tanks', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager'], liveOnly: true },
@@ -99,14 +100,13 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/shift', label: 'End Day', icon: FiClock, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/deliveries', label: 'Truck Offload', icon: FiTruck, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/fuel/tank-stock', label: 'Closing Stock', icon: FiDroplet, roles: ['owner', 'manager', 'auditor', 'daily_auditor'], liveOnly: true },
-    { href: '/admin/fuel/historical-incomplete', label: 'Incomplete Sales', icon: FiAlertTriangle, roles: ['owner', 'manager', 'cashier'] },
+    { href: '/admin/fuel/backfill', label: 'Historical Entries', icon: FiClock, roles: ['owner', 'manager', 'supervisor', 'cashier'] },
   ] },
   { label: 'Reports', items: [
     { href: '/admin/fuel/summary-book', label: 'Daily Report', icon: FiFileText, roles: ['supervisor', 'daily_auditor', 'external_auditor', 'auditor'] },
     { href: '/admin/fuel/reports', label: 'Monthly Report', icon: FiBarChart2, roles: ['daily_auditor', 'external_auditor', 'auditor'] },
     { href: '/admin/fuel/summary-book', label: 'Meter Book', icon: FiBookOpen, roles: ['daily_auditor', 'auditor'] },
     { href: '/admin/fuel/tank-stock', label: 'Tank Stock', icon: FiDroplet, roles: ['daily_auditor', 'auditor'] },
-    { href: '/admin/fuel/backfill', label: 'Historical Entry', icon: FiClock, roles: ['owner'], liveOnly: true },
   ] },
 ];
 
@@ -122,7 +122,7 @@ export function visibleAdminGroups({ services = [], businessType, role, serviceI
   const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   return menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (!item.liveOnly || !historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (!item.liveOnly || !historicalFuel) && (!item.historicalOnly || historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((group) => group.items.length > 0);
 }
 
