@@ -6,12 +6,8 @@ import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, btnPrima
 
 const REQUEST_STATUS_COLOR = { pending: 'amber', quoted: 'blue', approved: 'green', rejected: 'red' };
 
-// Services and branches are no longer self-service beyond what an org signed up for — a service
-// comes with its first branch at a quoted cost, and wanting more (another branch, or a whole new
-// business) is a request cazone quotes a price for, same manual pay-then-confirm flow subscription
-// renewal already uses (see app/admin/billing/page.js for where the org tracks its own requests).
-// The actual creation only happens once a platform operator approves & provisions it — see
-// app/api/platform/organizations/[id]/provisioning-requests/[requestId]/route.js.
+// The first service is created immediately so a newly registered organization can start working.
+// Additional branches remain quote-based requests handled by the platform provisioning flow.
 export default function ServicesPage() {
   const [services, setServices] = useState(null);
   const [catalog, setCatalog] = useState([]);
@@ -45,12 +41,18 @@ export default function ServicesPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const r = await fetch('/api/admin/provisioning-requests', {
+      const firstService = services.length === 0;
+      const r = await fetch(firstService ? '/api/admin/services' : '/api/admin/provisioning-requests', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'service', serviceType: enableModal.key, branchName, note }),
+        body: JSON.stringify(firstService
+          ? { type: enableModal.key, branchName }
+          : { type: 'service', serviceType: enableModal.key, branchName, note }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(`Request sent — we'll quote ${enableModal.name} shortly`); setEnableModal(null); setBranchName(''); setNote(''); load(); }
+      if (d.success) {
+        toast.success(firstService ? `${enableModal.name} is ready to use` : `Request sent — we'll quote ${enableModal.name} shortly`);
+        setEnableModal(null); setBranchName(''); setNote(''); load();
+      }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -117,7 +119,7 @@ export default function ServicesPage() {
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div>
                 <p className="font-semibold text-sm">{s.name || s.type}</p>
-                <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'}</p>
+                <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'} · Active service</p>
               </div>
               {<button
                     onClick={() => { setAddBranchFor(s); setNewBranchName(''); setNewBranchNote(''); }}
@@ -149,8 +151,8 @@ export default function ServicesPage() {
 
       {services.length === 0 && available.length > 0 && (
         <Card className="p-5">
-          <h3 className="font-semibold text-sm mb-1">Choose a business type</h3>
-          <p className="text-xs text-gray-500 mb-4">An organization can choose one business type. Choose carefully; the type is locked once enabled.</p>
+          <h3 className="font-semibold text-sm mb-1">Start your business</h3>
+          <p className="text-xs text-gray-500 mb-4">Choose your registered business type and name its first branch. It will be ready immediately.</p>
           <div className="flex flex-wrap gap-3">
             {available.map((s) => (
               <button
@@ -174,16 +176,16 @@ export default function ServicesPage() {
         </form>
       </Modal>
 
-      <Modal open={!!enableModal} onClose={() => setEnableModal(null)} title={`Request ${enableModal?.name || ''}`}>
+      <Modal open={!!enableModal} onClose={() => setEnableModal(null)} title={`${services.length === 0 ? 'Start' : 'Request'} ${enableModal?.name || ''}`}>
         <form onSubmit={handleRequestService} className="space-y-4">
-          <p className="text-sm text-gray-500">Name the first branch for this business — we'll send a quote before it's created.</p>
+          <p className="text-sm text-gray-500">{services.length === 0 ? 'Name the first branch for this business. The service will be created immediately.' : 'Name the branch — we will send a quote before it is created.'}</p>
           <Field label="Branch name" required>
             <input type="text" value={branchName} onChange={(e) => setBranchName(e.target.value)} className={inputCls} required autoFocus placeholder="e.g., Main Branch" />
           </Field>
           <Field label="Note (optional)">
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="Anything we should know" />
           </Field>
-          <FormButtons onCancel={() => setEnableModal(null)} submitting={submitting} submitLabel="Send Request" />
+          <FormButtons onCancel={() => setEnableModal(null)} submitting={submitting} submitLabel={services.length === 0 ? 'Start Business' : 'Send Request'} />
         </form>
       </Modal>
 

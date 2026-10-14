@@ -9,9 +9,10 @@ import { logAudit } from '@/lib/audit';
 
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
-  const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
+  const organizationId = session.user.organizationId;
+  const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { businessType: true } });
   const services = await prisma.service.findMany({
-    where: { type: org.businessType },
+    where: { organizationId, type: org.businessType },
     include: { branches: { orderBy: { name: 'asc' } } },
     orderBy: { createdAt: 'asc' },
   });
@@ -35,13 +36,14 @@ export const POST = withOrg(async (request) => {
     const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
     if (type !== org.businessType) throw new ApiError('The registered business type cannot be changed', 400);
 
-    const existing = await prisma.service.findFirst();
+    const organizationId = session.user.organizationId;
+    const existing = await prisma.service.findFirst({ where: { organizationId } });
     if (existing) throw new ApiError('An organization can choose only one business type', 400);
 
     const branchCode = slugify(branchName) || 'main';
     const result = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.create({ data: { type, name: await serviceLabel(type), isActive: true, config: {} } });
-      const branch = await tx.branch.create({ data: { serviceId: service.id, name: branchName, code: branchCode } });
+      const service = await tx.service.create({ data: { organizationId, type, name: await serviceLabel(type), isActive: true, config: {} } });
+      const branch = await tx.branch.create({ data: { organizationId, serviceId: service.id, name: branchName, code: branchCode } });
       return { service, branch };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 

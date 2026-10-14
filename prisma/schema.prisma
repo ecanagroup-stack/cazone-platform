@@ -211,9 +211,8 @@ model Service {
   @@index([organizationId])
 }
 
-// A request to add a branch (to an existing Service) or a whole new Service (business) — the
-// org picks what it wants at signup with one branch included; wanting more than that is a request,
-// not a self-service action (see app/api/admin/provisioning-requests). cazone quotes a price,
+// A request to add a branch (to an existing Service) or an additional Service (business) after the
+// organization's first service is started. Cazone quotes a price,
 // fulfillment happens once that's paid the same manual way subscription renewal already works
 // (app/api/platform/organizations/[id]/extend-subscription) — "approve" both marks this decided AND
 // actually creates the Service/Branch in the same step, run unscoped as this org (lib/tenantScope.js's

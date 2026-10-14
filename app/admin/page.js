@@ -25,7 +25,7 @@ export default async function TodayPage({ searchParams }) {
 
   if (organization.businessType === 'fuel_station') {
     const fuel = services[0];
-    if (!fuel) return <div className="max-w-2xl space-y-4"><h1 className="text-2xl font-bold">Petrol Station</h1><Card className="p-6"><h2 className="font-semibold">Service unavailable</h2><p className="mt-2 text-sm text-gray-600">Contact your administrator for access to this business.</p>{session.user.role === 'owner' && <Link href="/admin/billing" className="mt-4 inline-block text-brand-700 font-medium">Manage subscription</Link>}</Card></div>;
+    if (!fuel) return <div className="max-w-2xl space-y-4"><h1 className="text-2xl font-bold">Petrol Station</h1><Card className="p-6"><h2 className="font-semibold">Start your Petrol Station</h2><p className="mt-2 text-sm text-gray-600">Your business account is ready, but its first station service and branch have not been created yet.</p>{session.user.role === 'owner' && <Link href="/admin/services" className="mt-4 inline-block rounded-lg bg-brand-700 px-4 py-2 font-medium text-white">Start Business</Link>}</Card></div>;
     const branchId = params?.branch || me?.lastBranchId || (fuel.branches.length === 1 ? fuel.branches[0].id : '');
     const qs = new URLSearchParams({ service: fuel.id, ...(branchId ? { branch: branchId } : {}) });
     redirect(`/admin/fuel/dashboard?${qs.toString()}`);
