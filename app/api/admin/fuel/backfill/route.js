@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
@@ -8,19 +8,16 @@ import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput,
 import { evaluateVariance } from '@/lib/reconciliation';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 
-// Ported from petrol-station-app's Backfill wizard — entering historical data for dates before an org
-// subscribed to cazone, one step per call (Date & Branch -> Shift -> Pump Readings -> Deliveries ->
-// Tank Dips -> Payments -> Bank Deposits), owner-only and OTP-gated (see lib/otp.js's 'backfill'
-// purpose — this project moved away from the old app's hardcoded PIN entirely).
+// Shared historical station entry — one step per call (Date & Branch -> Shift -> Pump Readings ->
+// Deliveries -> Tank Dips -> Payments -> Bank Deposits), with OTP verification for each new shift.
 //
-// A day being backfilled can have had ANY number of real shifts on it (morning/afternoon/night, or
+// A historical day can have had ANY number of real shifts on it (morning/afternoon/night, or
 // just one) with whatever open/close times actually happened — nothing here is a fixed window.
 // Deliveries/dips/deposits always belong to one specific shift (shiftId, not "the day"), the same way
 // a live branch's data does, so multiple shifts on one date never get their figures mixed together.
 //
-// Unlike the old app, backfilled StockMove entries DO count toward derived stock (the whole point of
-// backfilling is an accurate historical ledger) — there's no mutable currentStock field here to
-// protect the way the old app protected Station.currentStock. Every write here sets isBackfill: true
+// Historical StockMove entries count toward derived stock so the ledger remains accurate. Every
+// write here sets isBackfill: true
 // on its parent record (Shift/Delivery/Reconciliation/CashDeposit) for real provenance, not the old
 // app's free-text notes convention. A reading's Order/StockMove land already 'approved' — backfill
 // has no live supervisor/cashier/manager division of labor to route through.

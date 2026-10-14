@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -27,32 +27,11 @@ const STEPS = [
   { key: 'deposits', label: 'Bank Deposits' },
 ];
 
-const RESET_COUNT_LABELS = {
-  orders: 'Sales',
-  orderLines: 'Sale line items',
-  paymentAllocations: 'Sale payment allocations',
-  orderAdjustments: 'Sale adjustments',
-  stockMoves: 'Stock movements',
-  shifts: 'Shifts',
-  meterReadings: 'Pump readings',
-  collections: 'Pump collections',
-  deposits: 'Bank deposits',
-  dips: 'Tank dips',
-  deliveries: 'Fuel deliveries',
-  reconciliations: 'Reconciliations',
-  legacyRecords: 'Imported transaction archives',
-  posPayments: 'POS payment lines',
-  attendantAssignments: 'Pump assignments',
-};
-
 const blankShiftForm = { shiftLabel: '', openTime: '08:00', closeTime: '20:00', openingFloat: '' };
 
-// Ported from petrol-station-app's Backfill wizard — historical data entry for dates before an org
-// subscribed to cazone. A day being backfilled can have had ANY number of real shifts on it, at
-// whatever times actually happened — nothing here is a fixed window. Owner-only, OTP-gated once per
-// new shift created (see the backing route for why later steps don't re-verify).
+// Historical data entry for any Petrol Station business. A date can have any number of real shifts
+// at whatever times actually happened. OTP verification protects each new historical shift.
 export default function BackfillPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const branchIdFromUrl = searchParams.get('branch') || '';
   const { data: session } = useSession();
@@ -61,7 +40,7 @@ export default function BackfillPage() {
   const [date, setDate] = useState(yesterdayIso());
   const [branchId, setBranchId] = useState(branchIdFromUrl);
   const [reference, setReference] = useState(null); // dispensers, attendants, products
-  const [existingShifts, setExistingShifts] = useState(null); // backfilled shifts already on this date
+  const [existingShifts, setExistingShifts] = useState(null);
   const [activeShift, setActiveShift] = useState(null); // the shift currently being added to
 
   const [otp, setOtp] = useState('');
@@ -83,10 +62,6 @@ export default function BackfillPage() {
 
   const [depositForm, setDepositForm] = useState({ amount: '', bankName: '' });
   const [depositsDone, setDepositsDone] = useState([]);
-  const [resetData, setResetData] = useState(null);
-  const [resetConfirmation, setResetConfirmation] = useState('');
-  const [resetOtp, setResetOtp] = useState('');
-  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (!branchId) { setReference(null); return; }
@@ -94,13 +69,6 @@ export default function BackfillPage() {
       if (d.success) setReference({ dispensers: d.data.dispensers || [], attendants: d.data.attendants || [], products: d.data.products || [], tanks: d.data.tanks || [] });
     });
   }, [branchId]);
-
-  useEffect(() => {
-    if (session?.user?.role !== 'owner') return;
-    fetch('/api/admin/fuel/history-reset').then((r) => r.json()).then((d) => {
-      if (d.success) setResetData(d);
-    });
-  }, [session?.user?.role]);
 
   const loadExistingShifts = useCallback(async () => {
     if (!branchId || !date) return;
@@ -190,30 +158,10 @@ export default function BackfillPage() {
     setStep('setup');
   };
 
-  const resetHistory = async (e) => {
-    e.preventDefault();
-    if (!resetData || !confirm(`Permanently delete the listed fuel transactions for ${resetData.organizationName}? Station setup and audit logs will stay in place.`)) return;
-    setResetting(true);
-    try {
-      const response = await fetch('/api/admin/fuel/history-reset', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation: resetConfirmation, otp: resetOtp }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Could not clear fuel history');
-      toast.success('Fuel transactions cleared. Set verified opening stock before starting new shifts.');
-      setResetData((current) => ({ ...current, counts: Object.fromEntries(Object.keys(current.counts).map((key) => [key, 0])) }));
-      setResetConfirmation(''); setResetOtp('');
-      router.replace('/admin/fuel/activate');
-      router.refresh();
-    } catch (error) { toast.error(error.message); }
-    finally { setResetting(false); }
-  };
-
   if (!branchId) {
     return (
       <div>
-        <PageHeader title="Historical Backfill" subtitle="Enter data for a date before this branch went live on cazone" />
+        <PageHeader title="Historical Entries" subtitle="Enter ordinary station records for a previous operating date" />
         <Card><EmptyState title="Pick a branch" subtitle="Choose a fuel branch from the switcher at the top of the page." /></Card>
       </div>
     );
@@ -222,8 +170,8 @@ export default function BackfillPage() {
   return (
     <div>
       <PageHeader
-        title="Historical Backfill"
-        subtitle={activeShift ? `${date} — ${activeShift.shiftLabel || `Shift ${activeShift.shiftOrder || ''}`} (${timeOf(activeShift.openedAt)}–${timeOf(activeShift.closedAt)})` : 'Rebuild past station days with manager, supervisor, and cashier entries'}
+        title="Historical Entries"
+        subtitle={activeShift ? `${date} — ${activeShift.shiftLabel || `Shift ${activeShift.shiftOrder || ''}`} (${timeOf(activeShift.openedAt)}–${timeOf(activeShift.closedAt)})` : 'Record past station days with the same pump, stock, sales, and payment records used today'}
       />
 
       <div className="flex gap-1 mb-6 overflow-x-auto">
@@ -243,26 +191,6 @@ export default function BackfillPage() {
             <p className="text-xs text-gray-500 mt-2">You can add as many shifts as actually happened on this date — morning, afternoon, night, whatever it was.</p>
             <button onClick={() => setStep('shift')} className={`mt-4 ${btnPrimaryCls}`}>Continue to daily entries</button>
           </Card>
-          {session?.user?.role === 'owner' && resetData && (
-            <Card className="border-rose-200 bg-rose-50 p-5">
-              <p className="text-xs font-semibold uppercase tracking-widest text-rose-700">Owner-only reset</p>
-              <h2 className="mt-1 text-lg font-semibold text-rose-950">Clear fuel transaction history</h2>
-              <p className="mt-2 text-sm text-rose-900">This removes station sales, pump readings, shifts, collections, deposits, tank dips, deliveries, stock movements, pump assignments, and imported transaction snapshots for every fuel branch listed below. Branches, products, customer and staff accounts, attendants, tanks, pumps, setup snapshots, price history, notifications, and audit logs stay in place.</p>
-              {resetData.branches.length > 0 && <p className="mt-3 text-xs text-rose-800">Branches included: {resetData.branches.map((branch) => branch.name).join(', ')}</p>}
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-rose-900 sm:grid-cols-3">
-                {Object.entries(resetData.counts).map(([key, value]) => <span key={key} className="rounded bg-white/70 px-2 py-1">{RESET_COUNT_LABELS[key] || key}: <strong>{value.toLocaleString()}</strong></span>)}
-              </div>
-              <form onSubmit={resetHistory} className="mt-4 space-y-3">
-                <Field label={`Type "${resetData.organizationName}" to confirm`} required>
-                  <input value={resetConfirmation} onChange={(e) => setResetConfirmation(e.target.value)} className={inputCls} autoComplete="off" required />
-                </Field>
-                <OtpField purpose="fuel_history_reset" value={resetOtp} onChange={setResetOtp} />
-                <button type="submit" disabled={resetting || !resetOtp || resetConfirmation !== resetData.organizationName} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  {resetting ? 'Clearing history...' : 'Permanently clear fuel history'}
-                </button>
-              </form>
-            </Card>
-          )}
         </div>
       )}
 
@@ -270,7 +198,7 @@ export default function BackfillPage() {
         <Card className="p-6 max-w-2xl text-center">
           <p className="text-sm font-medium text-gray-900 mb-1">No pumps set up at this branch yet</p>
           <p className="text-sm text-gray-500 mb-4">
-            Backfilling a historical shift needs at least one tank and dispenser to already exist —
+            Entering a historical shift needs at least one tank and dispenser to already exist —
             there's nothing to enter historical readings against otherwise. Set that up once
             (it only takes a minute), then come back here.
           </p>
