@@ -10,12 +10,12 @@ export const GET = withOrg(async () => {
   const session = await getOrgSession();
   if (!['owner', 'manager'].includes(session?.user?.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const access = await getAccessibleBranchIds(session);
-  const service = await prisma.service.findFirst({ where: { type: 'fuel_station' }, select: { id: true, config: true } });
+  const service = await prisma.service.findFirst({ where: { type: 'fuel_station' }, select: { id: true } });
   const [branches, products] = await Promise.all([
     prisma.branch.findMany({ where: { serviceId: service.id, isActive: true, ...(access ? { id: { in: access } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.product.findMany({ where: { serviceId: service.id, isActive: true, unit: 'litre' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
-  return NextResponse.json({ success: true, data: { branches, products, historicalOnly: service.config?.migrationStockPending === true } });
+  return NextResponse.json({ success: true, data: { branches, products } });
 });
 
 export const POST = withOrg(async (request) => {

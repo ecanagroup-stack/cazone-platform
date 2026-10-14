@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare, FiPlay,
+  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare,
 } from 'react-icons/fi';
 
 const CHAT_POLL_MS = 30000;
@@ -67,8 +67,7 @@ const GROUPS = [
   },
 ];
 
-// The station app's navigation, mapped to tenant-scoped CaZone fuel screens. A pending stock
-// cutover removes live shift actions while keeping the full historical/admin review workspace.
+// The station app's navigation, mapped to tenant-scoped CaZone fuel screens.
 const FUEL_GROUPS = [
   { label: 'Navigation', items: [
     { href: '/admin/fuel/dashboard', label: 'Dashboard', icon: FiHome },
@@ -84,7 +83,6 @@ const FUEL_GROUPS = [
     { href: '/admin/audit', label: 'Audit Logs', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
   ] },
   { label: 'Station work', items: [
-    { href: '/admin/fuel/activate', label: 'Start Operations', icon: FiPlay, roles: ['owner'], historicalOnly: true },
     { href: '/admin/fuel/tanks', label: 'Station Config', icon: FiSettings, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/fuel/shift', label: 'Begin Day', icon: FiClock, roles: ['owner', 'manager', 'staff'], liveOnly: true },
     { href: '/admin/fuel/tanks', label: 'Attendants', icon: FiUserCheck, roles: ['owner', 'manager'], liveOnly: true },
@@ -118,11 +116,10 @@ const ACCOUNT_GROUP = { label: 'Account', items: [
 
 export function visibleAdminGroups({ services = [], businessType, role, serviceId = '' }) {
   const currentServiceType = services.find((service) => service.id === serviceId)?.type || businessType || null;
-  const historicalFuel = currentServiceType === 'fuel_station' && services.some((service) => (!serviceId || service.id === serviceId) && service.config?.migrationStockPending === true);
   const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   return menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (!item.liveOnly || !historicalFuel) && (!item.historicalOnly || historicalFuel) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((group) => group.items.length > 0);
 }
 

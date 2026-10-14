@@ -49,7 +49,7 @@ export const POST = withOrg(async (request) => {
     // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
     if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
     const selectedBranches = await prisma.branch.findMany({ where: { id: { in: branchIds }, isActive: true, service: { type: org.businessType } }, select: { id: true, service: { select: { type: true, isActive: true, config: true } } } });
-    if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive && branch.service.config?.migrationStockPending !== true)) throw new ApiError('Select available branches of this business only', 400);
+    if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive)) throw new ApiError('Select available branches of this business only', 400);
     if (org.businessType === 'fuel_station') {
       const access = await getAccessibleBranchIds(session);
       if (access && branchIds.some((id) => !access.includes(id))) throw new ApiError('You can assign users only to stations you manage', 403);

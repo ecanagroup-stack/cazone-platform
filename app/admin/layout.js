@@ -41,7 +41,7 @@ export default async function AdminLayout({ children }) {
       include: { branches: { where: { isActive: true, ...(accessibleBranches ? { id: { in: accessibleBranches } } : {}) }, orderBy: { name: 'asc' } } },
       orderBy: { createdAt: 'asc' },
     });
-  const services = allBusinessServices.filter((service) => service.isActive || (service.type === 'fuel_station' && service.config?.migrationStockPending === true));
+  const services = allBusinessServices.filter((service) => service.isActive);
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -40,7 +40,7 @@ export const POST = withOrg(async (request) => {
 
     const branchCode = slugify(branchName) || 'main';
     const result = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.create({ data: { type, name: await serviceLabel(type) } });
+      const service = await tx.service.create({ data: { type, name: await serviceLabel(type), isActive: true, config: {} } });
       const branch = await tx.branch.create({ data: { serviceId: service.id, name: branchName, code: branchCode } });
       return { service, branch };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default

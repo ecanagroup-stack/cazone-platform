@@ -21,7 +21,7 @@ export default async function TodayPage({ searchParams }) {
     prisma.user.findUnique({ where: { id: session.user.id }, select: { lastServiceId: true, lastBranchId: true } }),
   ]);
   const allBusinessServices = await prisma.service.findMany({ where: { type: organization.businessType }, include: { branches: { where: { isActive: true } } }, orderBy: { createdAt: 'asc' } });
-  const services = allBusinessServices.filter((service) => service.isActive || (service.type === 'fuel_station' && service.config?.migrationStockPending === true));
+  const services = allBusinessServices.filter((service) => service.isActive);
 
   if (organization.businessType === 'fuel_station') {
     const fuel = services[0];

@@ -52,7 +52,7 @@ export async function POST(request) {
           data: { name: orgName, slug, businessType: serviceType, currency, subscriptionStatus: 'trialing', trialEndsAt },
         });
         const service = await tx.service.create({
-          data: { organizationId: org.id, type: serviceType, name: await serviceLabel(serviceType) },
+          data: { organizationId: org.id, type: serviceType, name: await serviceLabel(serviceType), isActive: true, config: {} },
         });
         const branch = await tx.branch.create({
           data: { organizationId: org.id, serviceId: service.id, name: branchName, code: branchCode },

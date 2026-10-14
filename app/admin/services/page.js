@@ -119,9 +119,7 @@ export default function ServicesPage() {
                 <p className="font-semibold text-sm">{s.name || s.type}</p>
                 <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'}</p>
               </div>
-              {s.config?.migrationStockPending === true
-                ? <span className="text-xs font-medium text-amber-700">Historical review · opening stock pending</span>
-                : <button
+              {<button
                     onClick={() => { setAddBranchFor(s); setNewBranchName(''); setNewBranchNote(''); }}
                     className={tableActionCls}
                   >
@@ -138,9 +136,9 @@ export default function ServicesPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <StatusPill status={b.isActive ? 'Active' : 'Inactive'} color={b.isActive ? 'green' : 'gray'} />
-                    {s.config?.migrationStockPending !== true && <button onClick={() => s.type === 'fuel_station' ? (setFuelBranchChange(b), setFuelBranchReason('')) : toggleBranch(b)} className={tableActionCls}>
+                    <button onClick={() => s.type === 'fuel_station' ? (setFuelBranchChange(b), setFuelBranchReason('')) : toggleBranch(b)} className={tableActionCls}>
                       {b.isActive ? 'Deactivate' : 'Reactivate'}
-                    </button>}
+                    </button>
                   </div>
                 </div>
               ))}
