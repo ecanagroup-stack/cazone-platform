@@ -4,8 +4,11 @@
 UPDATE "Service"
 SET "isActive" = TRUE,
     "config" = COALESCE("config", '{}'::jsonb) - 'migrationStockPending'
-WHERE "type" = 'fuel_station'
+FROM "Organization" o
+WHERE "Service"."organizationId" = o."id"
+  AND "Service"."type" = o."businessType"
+  AND "Service"."type" = 'fuel_station'
   AND (
-    "isActive" = FALSE
-    OR COALESCE("config", '{}'::jsonb) ? 'migrationStockPending'
+    "Service"."isActive" = FALSE
+    OR COALESCE("Service"."config", '{}'::jsonb) ? 'migrationStockPending'
   );

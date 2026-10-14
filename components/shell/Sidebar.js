@@ -43,7 +43,6 @@ const GROUPS = [
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck, roles: ['owner', 'manager', 'materials_manager', 'atc_manager', 'staff'] },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
         { href: '/admin/fuel/products', label: 'Fuel Products', icon: FiBox, pack: 'fuel_station', roles: ['owner', 'manager'] },
-      { href: '/admin/fuel/backfill', label: 'Historical Backfill', icon: FiClock, pack: 'fuel_station' },
       { href: '/admin/materials/cement-brands', label: 'Cement Brands', icon: FiBox, pack: 'shop' },
       { href: '/admin/materials/stonedust', label: 'Aggregate', icon: FiLayers, pack: 'shop' },
       { href: '/admin/materials/quarries', label: 'Quarries', icon: FiMap, pack: 'shop' },
@@ -82,6 +81,7 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/attendant-performance', label: 'Staff Report', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor'] },
     { href: '/admin/exceptions', label: 'Flags', icon: FiAlertTriangle, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/audit', label: 'Audit Logs', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/services', label: 'Services & Branches', icon: FiLayers, roles: ['owner', 'manager'] },
   ] },
   { label: 'Station work', items: [
     { href: '/admin/fuel/tanks', label: 'Station Config', icon: FiSettings, roles: ['owner', 'manager'], liveOnly: true },
@@ -99,7 +99,6 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/shift', label: 'End Day', icon: FiClock, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/deliveries', label: 'Truck Offload', icon: FiTruck, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/fuel/tank-stock', label: 'Closing Stock', icon: FiDroplet, roles: ['owner', 'manager', 'auditor', 'daily_auditor'], liveOnly: true },
-    { href: '/admin/fuel/backfill', label: 'Historical Entries', icon: FiClock, roles: ['owner', 'manager', 'supervisor', 'cashier'] },
   ] },
   { label: 'Reports', items: [
     { href: '/admin/fuel/summary-book', label: 'Daily Report', icon: FiFileText, roles: ['supervisor', 'daily_auditor', 'external_auditor', 'auditor'] },
