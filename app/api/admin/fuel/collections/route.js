@@ -26,7 +26,7 @@ export const GET = withOrg(async (request) => {
       date = displayedFuelOperatingDate([open, recent].filter(Boolean));
     }
     const shifts = await prisma.shift.findMany({ where: { branchId, operatingDate: date }, orderBy: { openedAt: 'asc' } });
-    if (!shifts.length) return NextResponse.json({ success: true, data: { date, rows: [], byProduct: [], shifts: [], deposits: [] } });
+    if (!shifts.length) return NextResponse.json({ success: true, data: { date, rows: [], byProduct: [], dailyTotal: { litres: 0, expectedAmount: 0 }, shifts: [], deposits: [] } });
     const shiftIds = shifts.map((shift) => shift.id);
     const [readings, collections, assignments, terminals, deposits] = await Promise.all([
       prisma.meterReading.findMany({ where: { shiftId: { in: shiftIds } }, include: {
@@ -62,7 +62,11 @@ export const GET = withOrg(async (request) => {
       acc[row.productName] = summary;
       return acc;
     }, {}));
-    return NextResponse.json({ success: true, data: { date, rows, byProduct, terminals, shifts, deposits } });
+    const dailyTotal = byProduct.reduce((total, product) => ({
+      litres: total.litres + product.litres,
+      expectedAmount: total.expectedAmount + product.expectedAmount,
+    }), { litres: 0, expectedAmount: 0 });
+    return NextResponse.json({ success: true, data: { date, rows, byProduct, dailyTotal, terminals, shifts, deposits } });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: error.status || 400 });
   }

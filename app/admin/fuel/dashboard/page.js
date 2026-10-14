@@ -5,6 +5,7 @@ import { getAccessibleBranchIds } from '@/lib/branchAccess';
 import { requireOrg } from '@/lib/tenantScope';
 import { Card } from '@/components/ui';
 import FuelQuickPriceUpdate from '@/components/fuel/FuelQuickPriceUpdate';
+import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 const ROLE_VIEW = {
   owner: { title: 'Station Overview', subtitle: 'Shifts, sales, cash collections and review across your stations' },
@@ -53,11 +54,47 @@ export default async function FuelDashboard({ searchParams }) {
 
   const openShift = await prisma.shift.findFirst({ where: { branchId: selectedBranch.id, status: 'open' }, select: { id: true, shiftLabel: true, operatingDate: true, openedAt: true }, orderBy: { openedAt: 'desc' } });
   const operatingDate = openShift?.operatingDate || new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date());
-  const [sales, collections, deposits, pending] = await Promise.all([
+  const [sales, collections, deposits, pending, cashierRows] = await Promise.all([
     prisma.meterReading.aggregate({ where: { branchId: selectedBranch.id, shift: { operatingDate }, ...(role === 'supervisor' ? { recordedBy: session.user.id } : {}), litres: { gt: 0 } }, _sum: { litres: true, expectedAmount: true }, _count: true }),
     prisma.fuelCollection.aggregate({ where: { branchId: selectedBranch.id, operatingDate, voidedAt: null, ...(role === 'cashier' ? { recordedBy: session.user.id } : {}) }, _sum: { totalAmount: true }, _count: true }),
     prisma.cashDeposit.aggregate({ where: { branchId: selectedBranch.id, operatingDate, ...(role === 'cashier' ? { initiatedBy: session.user.id } : {}) }, _sum: { amount: true }, _count: true }),
     prisma.meterReading.count({ where: { branchId: selectedBranch.id, shift: { operatingDate }, reviewStatus: 'pending', closing: { not: null } } }),
+    role === 'cashier' ? (async () => {
+      const shifts = await prisma.shift.findMany({ where: { branchId: selectedBranch.id, operatingDate }, select: { id: true, status: true, shiftLabel: true } });
+      const shiftIds = shifts.map((shift) => shift.id);
+      if (!shiftIds.length) return { rows: [], litres: 0, expectedAmount: 0 };
+      const [readings, assignments, handovers] = await Promise.all([
+        prisma.meterReading.findMany({
+          where: { shiftId: { in: shiftIds }, closing: { not: null } },
+          include: { dispenser: { include: { tank: { include: { product: true } } } } },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.attendantAssignment.findMany({ where: { shiftId: { in: shiftIds } }, include: { attendant: true }, orderBy: { assignedAt: 'desc' } }),
+        prisma.fuelCollection.findMany({ where: { shiftId: { in: shiftIds }, voidedAt: null }, orderBy: { createdAt: 'asc' } }),
+      ]);
+      const shiftById = Object.fromEntries(shifts.map((shift) => [shift.id, shift]));
+      const rows = readings.map((reading) => {
+        const history = handovers.filter((handover) => handover.meterReadingId === reading.id);
+        const assignment = assignments.find((item) => item.shiftId === reading.shiftId && item.dispenserId === reading.dispenserId);
+        return {
+          shiftId: reading.shiftId,
+          shiftStatus: shiftById[reading.shiftId].status,
+          shiftLabel: shiftById[reading.shiftId].shiftLabel,
+          dispenserId: reading.dispenserId,
+          dispenserLabel: reading.dispenser.label,
+          productName: reading.dispenser.tank?.product?.name || 'Fuel',
+          attendantName: assignment?.attendant.name || 'Unassigned',
+          litres: reading.litres || 0,
+          expectedAmount: reading.expectedAmount || 0,
+          ...summarizePumpCollection(reading.expectedAmount || 0, history),
+        };
+      });
+      return {
+        rows,
+        litres: rows.reduce((sum, row) => sum + row.litres, 0),
+        expectedAmount: rows.reduce((sum, row) => sum + row.expectedAmount, 0),
+      };
+    })() : null,
   ]);
 
   return <div className="space-y-6">
@@ -70,6 +107,29 @@ export default async function FuelDashboard({ searchParams }) {
       <Card className="p-5"><p className="text-xs text-gray-500">Recorded collections</p><p className="mt-1 text-2xl font-bold">{money(collections._sum.totalAmount || 0)}</p><p className="text-xs text-gray-500">{collections._count} handovers</p></Card>
       <Card className="p-5"><p className="text-xs text-gray-500">Bank deposits</p><p className="mt-1 text-2xl font-bold">{money(deposits._sum.amount || 0)}</p><p className="text-xs text-gray-500">{deposits._count} records</p></Card>
     </div>
+    {role === 'cashier' && cashierRows && <Card className="overflow-hidden border-brand-200">
+      <div className="border-b bg-brand-50 px-5 py-4">
+        <h2 className="font-semibold text-gray-900">Cashier handover · {operatingDate}</h2>
+        <p className="mt-1 text-sm text-gray-600">{cashierRows.litres.toLocaleString('en-NG')} L sold · {money(cashierRows.expectedAmount)} expected from all pumps</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b text-left"><th className="px-5 py-3">Pump</th><th className="px-5 py-3">Attendant</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Litres</th><th className="px-5 py-3">Expected</th><th className="px-5 py-3">Collected</th><th className="px-5 py-3" /></tr></thead>
+          <tbody className="divide-y">
+            {cashierRows.rows.map((row) => <tr key={`${row.shiftId}-${row.dispenserId}`}>
+              <td className="px-5 py-3 font-medium">{row.dispenserLabel}<span className="block text-xs text-gray-500">{row.shiftLabel || 'Shift'}</span></td>
+              <td className="px-5 py-3">{row.attendantName}</td>
+              <td className="px-5 py-3">{row.productName}</td>
+              <td className="px-5 py-3">{row.litres.toLocaleString('en-NG')} L</td>
+              <td className="px-5 py-3">{money(row.expectedAmount)}</td>
+              <td className="px-5 py-3">{money(row.collected)}</td>
+              <td className="px-5 py-3 text-right"><Link href={link('/admin/fuel/collections')} className="font-semibold text-brand-700">Record cash/POS</Link></td>
+            </tr>)}
+            {cashierRows.rows.length === 0 && <tr><td colSpan={7} className="px-5 py-6 text-center text-gray-500">No supervisor pump readings have been submitted for this day.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </Card>}
     {['manager', 'owner'].includes(role) && pending > 0 && <Link href={link('/admin/fuel/shift')} className="block rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-900">{pending} pump {pending === 1 ? 'entry needs' : 'entries need'} manager review →</Link>}
     <div><h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">Your work</h2><div className="grid gap-3 sm:grid-cols-2">{(ACTIONS[role] || []).map(([label, path]) => <Link key={`${label}-${path}`} href={link(path)} className="rounded-xl border bg-white p-5 font-medium text-gray-900 shadow-sm transition hover:border-brand-500 hover:shadow-md">{label}<span className="float-right text-brand-600">→</span></Link>)}</div></div>
   </div>;

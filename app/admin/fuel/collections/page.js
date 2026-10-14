@@ -90,12 +90,21 @@ export default function FuelCollectionsPage() {
     <Card className="p-4"><Field label="Operating date"><input type="date" value={date || data?.date || todayInLagos()} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field></Card>
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {!data ? <Loader /> : <>
-      {data.byProduct.length > 0 && <Card className="p-4">
-        <h2 className="font-semibold mb-2">Supervisor sales</h2>
-        <div className="grid sm:grid-cols-3 gap-3">{data.byProduct.map((p) => <div key={p.product}>
-          <p className="text-sm text-gray-500">{p.product}</p>
-          <p className="font-medium">{p.litres.toLocaleString()} L · ₦{(p.expectedAmount / 100).toLocaleString()}</p>
-        </div>)}</div>
+      {data.byProduct.length > 0 && <Card className="border-brand-200 bg-brand-50 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Total supervisor sales · {data.date}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">₦{(data.dailyTotal.expectedAmount / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
+            <p className="mt-1 text-sm text-gray-600">{data.dailyTotal.litres.toLocaleString()} L sold across all pumps</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {data.byProduct.map((p) => <div key={p.product} className="rounded-lg bg-white/80 px-3 py-2">
+              <p className="text-xs text-gray-500">{p.product}</p>
+              <p className="font-medium">{p.litres.toLocaleString()} L</p>
+              <p className="text-gray-600">₦{(p.expectedAmount / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
+            </div>)}
+          </div>
+        </div>
       </Card>}
       {data.rows.some((row) => row.collections.length) && <Card className="p-4">
         <h2 className="font-semibold mb-2">Recent collections · {data.date}</h2>
