@@ -6,12 +6,21 @@ import { setPrice } from '@/lib/pricing';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 
+async function getOwnedService(serviceId, organizationId) {
+  if (!serviceId) throw new ApiError('serviceId is required', 400);
+  const service = await prisma.service.findFirst({ where: { id: serviceId, organizationId }, select: { id: true, type: true } });
+  if (!service) throw new ApiError('Service not found for this organization', 404);
+  if (!['fuel_station', 'shop', 'general_store'].includes(service.type)) throw new ApiError('Products are not supported for this service', 400);
+  return service;
+}
+
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
     const url = new URL(request.url);
     const serviceId = url.searchParams.get('serviceId');
     const branchId = url.searchParams.get('branchId'); // optional — on-hand is per-branch
-    if (!serviceId) throw new ApiError('serviceId is required', 400);
+    await getOwnedService(serviceId, session.user.organizationId);
 
     const products = await prisma.product.findMany({
       where: { serviceId },
@@ -41,7 +50,8 @@ export const POST = withOrg(async (request) => {
     const unit = (body.unit || '').trim();
     const price = Math.round(Number(body.price));
 
-    if (!serviceId || !name || !unit) throw new ApiError('Service, name and unit are required', 400);
+    await getOwnedService(serviceId, session.user.organizationId);
+    if (!name || !unit) throw new ApiError('Service, name and unit are required', 400);
     if (!Number.isFinite(price) || price < 0) throw new ApiError('Invalid price', 400);
 
     const product = await prisma.$transaction(async (tx) => {

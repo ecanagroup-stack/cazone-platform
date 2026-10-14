@@ -42,6 +42,7 @@ const GROUPS = [
       { href: '/admin/messages', label: 'Messages', icon: FiMessageSquare, roles: ['owner', 'manager', 'materials_manager'] },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck, roles: ['owner', 'manager', 'materials_manager', 'atc_manager', 'staff'] },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
+        { href: '/admin/fuel/products', label: 'Fuel Products', icon: FiBox, pack: 'fuel_station', roles: ['owner', 'manager'] },
       { href: '/admin/fuel/backfill', label: 'Historical Backfill', icon: FiClock, pack: 'fuel_station' },
       { href: '/admin/materials/cement-brands', label: 'Cement Brands', icon: FiBox, pack: 'shop' },
       { href: '/admin/materials/stonedust', label: 'Aggregate', icon: FiLayers, pack: 'shop' },

@@ -14,9 +14,12 @@ export const PATCH = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
     const body = await request.json();
+    const existingProduct = await prisma.product.findFirst({ where: { id }, select: { id: true, serviceId: true } });
+    if (!existingProduct) throw new ApiError('Product not found', 404);
     const update = {};
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim();
+    if (typeof body.unit === 'string' && body.unit.trim()) update.unit = body.unit.trim();
     if (body.attributes && typeof body.attributes === 'object') update.attributes = body.attributes;
 
     let pricePending = false;
