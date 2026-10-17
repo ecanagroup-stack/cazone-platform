@@ -68,11 +68,13 @@ async function loadBackfillShift(shiftId, session) {
 
 async function handleShift(session, body, date) {
   const branchId = body.branchId;
+  const organizationId = session.user.organizationId;
   const openTime = /^\d{2}:\d{2}$/.test(body.openTime || '') ? body.openTime : '08:00';
   const closeTime = /^\d{2}:\d{2}$/.test(body.closeTime || '') ? body.closeTime : '20:00';
   const shiftLabel = (body.shiftLabel || '').trim() || null;
   const openingFloat = Math.round(Number(body.openingFloat) || 0);
   const assignments = Array.isArray(body.assignments) ? body.assignments : [];
+  const tankOpenings = Array.isArray(body.tankOpenings) ? body.tankOpenings : [];
   if (!branchId) throw new ApiError('branchId is required', 400);
   if (assignments.length === 0) throw new ApiError('At least one pump assignment is required', 400);
 
@@ -95,20 +97,29 @@ async function handleShift(session, body, date) {
     throw new ApiError('Every pump must be linked to a tank at this branch', 400);
   }
   const dispenserById = Object.fromEntries(dispensers.map((dispenser) => [dispenser.id, dispenser]));
+  const tanks = await prisma.tank.findMany({ where: { branchId, isActive: true } });
+  if (tankOpenings.length !== tanks.length || new Set(tankOpenings.map((entry) => entry.tankId)).size !== tankOpenings.length
+    || tankOpenings.some((entry) => !tanks.some((tank) => tank.id === entry.tankId) || !Number.isFinite(Number(entry.measured)) || Number(entry.measured) < 0)) {
+    throw new ApiError('Enter one valid opening stock reading for every active tank at this branch', 400);
+  }
 
   const shift = await prisma.$transaction(async (tx) => {
     const created = await tx.shift.create({
-      data: { branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt, operatingDate: date, isBackfill: true, shiftLabel, shiftOrder },
+      data: { organizationId, branchId, openedBy: session.user.id, openingFloat, status: 'closed', openedAt, closedAt, operatingDate: date, isBackfill: true, shiftLabel, shiftOrder },
     });
+    await tx.fuelTankDip.createMany({ data: tankOpenings.map((entry) => ({
+      organizationId, branchId, shiftId: created.id, tankId: entry.tankId, operatingDate: date, period: 'opening',
+      measured: Number(entry.measured), recordedBy: session.user.id,
+    })) });
     for (const a of assignments) {
       if (!a.dispenserId || !a.attendantId || !Number.isFinite(Number(a.opening))) {
         throw new ApiError('Every pump assignment needs an attendant and an opening reading', 400);
       }
       await tx.attendantAssignment.create({
-        data: { branchId, dispenserId: a.dispenserId, shiftId: created.id, attendantId: a.attendantId, assignedBy: session.user.id, assignedAt: openedAt },
+        data: { organizationId, branchId, dispenserId: a.dispenserId, shiftId: created.id, attendantId: a.attendantId, assignedBy: session.user.id, assignedAt: openedAt },
       });
       await tx.meterReading.create({
-        data: { branchId, dispenserId: a.dispenserId, shiftId: created.id, opening: Number(a.opening), recordedBy: session.user.id,
+        data: { organizationId, branchId, dispenserId: a.dispenserId, shiftId: created.id, opening: Number(a.opening), recordedBy: session.user.id,
           tankIdAtShift: dispenserById[a.dispenserId].tankId, productIdAtShift: dispenserById[a.dispenserId].tank.productId },
       });
     }
@@ -128,6 +139,7 @@ async function handleShift(session, body, date) {
 // division of labor to preserve, so the reading is entered and locked in (Order + StockMove) in one
 // call, priced at whatever the admin says it was on that historical date (never today's live price).
 async function handleReading(session, body) {
+  const organizationId = session.user.organizationId;
   const shiftId = body.shiftId;
   const dispenserId = body.dispenserId;
   const closing = Number(body.closing);
@@ -168,13 +180,13 @@ async function handleReading(session, body) {
     // falls inside the shift's own window for anything that reads sales by date range.
     const order = await tx.order.create({
       data: {
-        branchId: shift.branchId, orderNumber, subtotal: expectedAmount, grandTotal: expectedAmount,
+        organizationId, branchId: shift.branchId, orderNumber, subtotal: expectedAmount, grandTotal: expectedAmount,
         paymentMethod: 'cash', createdBy: session.user.id, createdAt: shift.closedAt,
         lines: { create: [{ productId, qty: litres, unitPrice: litres > 0 ? Math.round(expectedAmount / litres) : 0, lineTotal: expectedAmount }] },
       },
     });
     await tx.stockMove.create({
-      data: { branchId: shift.branchId, productId, qty: -litres, reason: 'sale', ref: order.id, userId: session.user.id, at: shift.closedAt },
+      data: { organizationId, branchId: shift.branchId, productId, qty: -litres, reason: 'sale', ref: order.id, userId: session.user.id, at: shift.closedAt },
     });
     return tx.meterReading.update({
       where: { id: reading.id },
@@ -228,6 +240,7 @@ async function handlePayment(session, body) {
 }
 
 async function handleDelivery(session, body) {
+  const organizationId = session.user.organizationId;
   const shiftId = body.shiftId;
   const productId = body.productId;
   const quantity = Number(body.quantity);
@@ -252,13 +265,13 @@ async function handleDelivery(session, body) {
   const { delivery } = await prisma.$transaction(async (tx) => {
     let supplierId = body.supplierId || null;
     if (!supplierId && supplierName) {
-      const supplier = await tx.supplier.create({ data: { name: supplierName } });
+      const supplier = await tx.supplier.create({ data: { organizationId, name: supplierName } });
       supplierId = supplier.id;
     }
     const created = await tx.delivery.create({
-      data: { branchId, supplierId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: at, createdBy: session.user.id, createdAt: at, isBackfill: true },
+      data: { organizationId, branchId, supplierId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: at, createdBy: session.user.id, createdAt: at, isBackfill: true },
     });
-    await tx.stockMove.create({ data: { branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id, at } });
+    await tx.stockMove.create({ data: { organizationId, branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id, at } });
     return { delivery: created };
   }, { timeout: 15000 });
 
@@ -266,6 +279,7 @@ async function handleDelivery(session, body) {
 }
 
 async function handleDip(session, body) {
+  const organizationId = session.user.organizationId;
   const shiftId = body.shiftId;
   const tankId = body.tankId;
   const measured = Number(body.measured);
@@ -285,7 +299,7 @@ async function handleDip(session, body) {
     const dup = await tx.fuelTankDip.findUnique({ where: { shiftId_tankId_period: { shiftId, tankId, period: 'closing' } } });
     if (dup) return { dip: dup, reused: true };
     const dip = await tx.fuelTankDip.create({ data: {
-      branchId, shiftId, tankId, operatingDate: shift.operatingDate, period: 'closing', measured,
+      organizationId, branchId, shiftId, tankId, operatingDate: shift.operatingDate, period: 'closing', measured,
       recordedBy: session.user.id, createdAt: periodEnd,
     } });
     const tanks = await tx.tank.findMany({ where: { branchId, productId, isActive: true } });
@@ -293,19 +307,22 @@ async function handleDip(session, body) {
     if (tanks.length && dips.length === tanks.length) {
       const existing = await tx.reconciliation.findFirst({ where: { branchId, productId, isBackfill: true, periodEnd } });
       if (!existing) {
-        const [readings, purchases, openingStock, branch] = await Promise.all([
+        const [readings, purchases, openingDips, openingStock, branch] = await Promise.all([
           tx.meterReading.findMany({ where: { shiftId }, include: { dispenser: { include: { tank: true } } } }),
           tx.stockMove.findMany({ where: { branchId, productId, reason: 'purchase', at: { gte: shift.openedAt, lte: periodEnd } } }),
+          tx.fuelTankDip.findMany({ where: { shiftId, period: 'opening', tank: { productId } }, select: { measured: true } }),
           tx.stockMove.aggregate({ where: { branchId, productId, at: { lt: shift.openedAt } }, _sum: { qty: true } }),
           tx.branch.findUnique({ where: { id: branchId } }),
         ]);
         const { opening, receipts, sales, book, measured: totalMeasured } = summarizeTankProduct(
-          productId, tanks, [], dips, readings, purchases, openingStock._sum.qty || 0,
+          productId, tanks, openingDips, dips, readings, purchases, openingDips.length
+            ? openingDips.reduce((sum, dip) => sum + dip.measured, 0)
+            : openingStock._sum.qty || 0,
         );
         const tolerance = Number(branch?.config?.reconciliationTolerancePct) || 0.5;
         const { variance, variancePct, status } = evaluateVariance(book, totalMeasured, receipts, tolerance);
         await tx.reconciliation.create({ data: {
-          branchId, productId, periodStart: shift.openedAt, periodEnd,
+          organizationId, branchId, productId, periodStart: shift.openedAt, periodEnd,
           opening, receipts, sales, book, measured: totalMeasured,
           variance, variancePct, tolerance, status, isBackfill: true,
         } });

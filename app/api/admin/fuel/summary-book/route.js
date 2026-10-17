@@ -58,7 +58,14 @@ export const GET = withOrg(async (request) => {
       }
 
       for (const [productId, agg] of byProduct) {
-        const { opening, receipts, book } = await computePeriod(branchId, productId, shift.openedAt, periodEnd);
+        const period = await computePeriod(branchId, productId, shift.openedAt, periodEnd);
+        const openingDips = await prisma.fuelTankDip.findMany({
+          where: { shiftId: shift.id, period: 'opening', tank: { productId } },
+          select: { measured: true },
+        });
+        const opening = openingDips.length ? openingDips.reduce((sum, dip) => sum + dip.measured, 0) : period.opening;
+        const receipts = period.receipts;
+        const book = opening + receipts - period.sales;
 
         const closingRecon = await prisma.reconciliation.findFirst({
           where: { branchId, productId, periodEnd: { gte: shift.openedAt, lte: periodEnd } },

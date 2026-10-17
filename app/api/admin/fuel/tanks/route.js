@@ -12,8 +12,9 @@ export const GET = withOrg(async (request) => {
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
 
-    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, include: { service: { select: { type: true } } } });
     if (!branch) throw new ApiError('Branch not found', 404);
+    if (branch.service.type !== 'fuel_station') throw new ApiError('This branch is not a fuel station', 400);
 
     const [tanks, products] = await Promise.all([
       prisma.tank.findMany({ where: { branchId }, include: { dispensers: true, product: true }, orderBy: { createdAt: 'asc' } }),
@@ -68,6 +69,12 @@ export const POST = withOrg(async (request) => {
         data: { serviceId: branch.serviceId, name: newProductName, unit: 'litre' },
       });
       productId = product.id;
+    } else {
+      const product = await prisma.product.findFirst({
+        where: { id: productId, serviceId: branch.serviceId, isActive: true },
+        select: { id: true },
+      });
+      if (!product) throw new ApiError('Choose an active product from this fuel service', 400);
     }
 
     const tank = await prisma.tank.create({ data: { branchId, productId, label, capacity } });

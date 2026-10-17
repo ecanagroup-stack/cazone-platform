@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Card, EmptyState, EmptyRow, Field, Loader, Modal, PageHeader, btnPrimaryCls, inputCls, tableActionCls, tableDangerActionCls, tableScrollCls, theadCls } from '@/components/ui';
@@ -15,6 +16,7 @@ export default function FuelProductsPage() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blank);
   const [saving, setSaving] = useState(false);
+  const [branches, setBranches] = useState([]);
 
   const load = useCallback(async () => {
     if (!serviceId) return setProducts([]);
@@ -25,6 +27,11 @@ export default function FuelProductsPage() {
   }, [serviceId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch('/api/admin/services').then((response) => response.json()).then((body) => {
+      if (body.success) setBranches(body.data.find((service) => service.id === serviceId)?.branches || []);
+    });
+  }, [serviceId]);
 
   const openCreate = () => { setEditing(null); setForm(blank); setShowModal(true); };
   const openEdit = (product) => {
@@ -55,7 +62,7 @@ export default function FuelProductsPage() {
   };
 
   const deactivate = async (product) => {
-    if (!confirm(`Deactivate ${product.name}? It will remain available in existing records.`)) return;
+    if (!confirm(`Deactivate ${product.name}? It will remain available in existing records, but cannot be assigned to new tanks.`)) return;
     const response = await fetch(`/api/admin/materials/products/${product.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: false }),
     });
@@ -68,20 +75,27 @@ export default function FuelProductsPage() {
 
   return (
     <div>
-      <PageHeader title="Fuel Products" subtitle="Manage the products sold by this Petrol Station" action={<button onClick={openCreate} className={btnPrimaryCls}>Add Product</button>} />
+      <PageHeader title="Fuel Products" subtitle="Catalog products here, then assign them to a station tank." action={<button onClick={openCreate} className={btnPrimaryCls}>Add Product</button>} />
       <Card className="overflow-hidden">
         <div className={tableScrollCls}>
           <table className="w-full text-sm">
-            <thead className={theadCls}><tr><th className="px-4 py-3 text-left font-medium">Product</th><th className="px-4 py-3 text-left font-medium">Unit</th><th className="px-4 py-3 text-right font-medium">Current price</th><th className="px-4 py-3 text-right font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Actions</th></tr></thead>
+            <thead className={theadCls}><tr><th className="px-4 py-3 text-left font-medium">Product</th><th className="px-4 py-3 text-left font-medium">Used at</th><th className="px-4 py-3 text-left font-medium">Unit</th><th className="px-4 py-3 text-right font-medium">Current price</th><th className="px-4 py-3 text-right font-medium">Status</th><th className="px-4 py-3 text-right font-medium">Actions</th></tr></thead>
             <tbody className="divide-y">
-              {products.length === 0 && <EmptyRow colSpan={5} text="No fuel products yet" />}
+              {products.length === 0 && <EmptyRow colSpan={6} text="No fuel products yet" />}
               {products.map((product) => (
                 <tr key={product.id}>
                   <td className="px-4 py-3 font-medium">{product.name}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {product.tanks?.length ? product.tanks.map((tank) => `${tank.branch.name} — ${tank.label}`).join(', ') : 'Not assigned'}
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{product.unit}</td>
                   <td className="px-4 py-3 text-right">{product.currentPrice == null ? '—' : `₦${(product.currentPrice / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`}</td>
                   <td className="px-4 py-3 text-right">{product.isActive ? 'Active' : 'Inactive'}</td>
-                  <td className="px-4 py-3 text-right"><button onClick={() => openEdit(product)} className={`${tableActionCls} mr-3`}>Edit</button>{product.isActive && <button onClick={() => deactivate(product)} className={tableDangerActionCls}>Deactivate</button>}</td>
+                  <td className="px-4 py-3 text-right">
+                    {product.isActive && branches.map((branch) => <Link key={branch.id} href={`/admin/fuel/tanks?branch=${branch.id}&product=${product.id}`} className={`${tableActionCls} mr-3`}>Assign to station</Link>)}
+                    <button onClick={() => openEdit(product)} className={`${tableActionCls} mr-3`}>Edit</button>
+                    {product.isActive && <button onClick={() => deactivate(product)} className={tableDangerActionCls}>Deactivate</button>}
+                  </td>
                 </tr>
               ))}
             </tbody>

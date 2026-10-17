@@ -24,7 +24,7 @@ export const GET = withOrg(async (request) => {
 
     const products = await prisma.product.findMany({
       where: { serviceId },
-      include: { priceRules: { where: { validTo: null } } },
+      include: { priceRules: { where: { validTo: null } }, tanks: { include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } } },
       orderBy: { name: 'asc' },
     });
     const onHand = branchId ? await getOnHandByProduct(branchId, products.map((p) => p.id)) : {};

@@ -69,7 +69,7 @@ export const GET = withOrg(async (request) => {
       prisma.tank.findMany({ where: { branchId, isActive: true }, include: { product: true }, orderBy: { label: 'asc' } }),
     ]);
 
-    const productIds = [...new Set(dispensers.map((d) => d.tank?.productId).filter(Boolean))];
+    const productIds = [...new Set(tanks.map((tank) => tank.productId).filter(Boolean))];
     const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
     const priceRules = await prisma.priceRule.findMany({ where: { productId: { in: productIds }, branchId, validTo: null }, orderBy: { validFrom: 'asc' } });
     const legacyRules = await prisma.priceRule.findMany({ where: { productId: { in: productIds }, branchId: null, validTo: null }, orderBy: { validFrom: 'asc' } });

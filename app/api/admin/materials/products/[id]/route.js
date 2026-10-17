@@ -21,6 +21,10 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim();
     if (typeof body.unit === 'string' && body.unit.trim()) update.unit = body.unit.trim();
     if (body.attributes && typeof body.attributes === 'object') update.attributes = body.attributes;
+    if (body.isActive === false) {
+      const activeTankCount = await prisma.tank.count({ where: { productId: id, isActive: true } });
+      if (activeTankCount > 0) throw new ApiError('Deactivate this product\'s active station tanks first', 400);
+    }
 
     let pricePending = false;
     const updated = await prisma.$transaction(async (tx) => {

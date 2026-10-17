@@ -25,6 +25,7 @@ export default function FuelSetupPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branch') || '';
+  const productIdFromUrl = searchParams.get('product') || '';
   const tabParam = searchParams.get('tab');
   const activeTab = ['attendants', 'terminals', 'config'].includes(tabParam) ? tabParam : 'tanks';
 
@@ -42,7 +43,7 @@ export default function FuelSetupPage() {
       {!branchId ? (
         <Card><EmptyState title="Pick a branch" subtitle="Choose a branch from the switcher at the top of the page to see and manage its fuel setup." /></Card>
       ) : activeTab === 'tanks' ? (
-        <TanksTab branchId={branchId} />
+        <TanksTab branchId={branchId} productIdFromUrl={productIdFromUrl} />
       ) : activeTab === 'attendants' ? (
         <AttendantsTab branchId={branchId} />
       ) : activeTab === 'terminals' ? (
@@ -57,7 +58,7 @@ export default function FuelSetupPage() {
 const blankTank = { label: '', capacity: '', productId: '', newProductName: '' };
 const blankDispenser = { label: '' };
 
-function TanksTab({ branchId }) {
+function TanksTab({ branchId, productIdFromUrl }) {
   const [data, setData] = useState(null); // { tanks, products }
   const [showTankModal, setShowTankModal] = useState(false);
   const [tankForm, setTankForm] = useState(blankTank);
@@ -82,6 +83,12 @@ function TanksTab({ branchId }) {
   }, [branchId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (data && productIdFromUrl && data.products.some((product) => product.id === productIdFromUrl)) {
+      setTankForm((current) => ({ ...current, productId: productIdFromUrl, newProductName: '' }));
+      setShowTankModal(true);
+    }
+  }, [data, productIdFromUrl]);
 
   const handleAddTank = async (e) => {
     e.preventDefault();

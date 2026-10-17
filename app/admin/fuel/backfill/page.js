@@ -39,13 +39,14 @@ export default function BackfillPage() {
   const [step, setStep] = useState('setup');
   const [date, setDate] = useState(yesterdayIso());
   const [branchId, setBranchId] = useState(branchIdFromUrl);
-  const [reference, setReference] = useState(null); // dispensers, attendants, products
+  const [reference, setReference] = useState(null); // dispensers, attendants, products, tanks
   const [existingShifts, setExistingShifts] = useState(null);
   const [activeShift, setActiveShift] = useState(null); // the shift currently being added to
 
   const [otp, setOtp] = useState('');
   const [shiftForm, setShiftForm] = useState(blankShiftForm);
   const [assignForm, setAssignForm] = useState({}); // dispenserId -> { attendantId, opening }
+  const [tankOpenings, setTankOpenings] = useState({}); // tankId -> opening dip in litres
   const [submitting, setSubmitting] = useState(false);
 
   const [readingForm, setReadingForm] = useState({ dispenserId: '', closing: '', rtt: '0', price: '' });
@@ -105,13 +106,17 @@ export default function BackfillPage() {
     if (incomplete) return toast.error('Every pump you started filling in needs both an attendant and an opening reading — finish it or clear both fields to skip it');
     const assignments = touched.map(([dispenserId, v]) => ({ dispenserId, attendantId: v.attendantId, opening: v.opening }));
     if (assignments.length === 0) return toast.error('Assign at least one pump — pick an attendant and enter an opening reading for at least one row above');
+    const activeTanks = reference?.tanks || [];
+    const missingTankOpening = activeTanks.find((tank) => tankOpenings[tank.id] === undefined || tankOpenings[tank.id] === '');
+    if (missingTankOpening) return toast.error(`Enter the opening stock for ${missingTankOpening.label}`);
+    const tankOpeningEntries = activeTanks.map((tank) => ({ tankId: tank.id, measured: tankOpenings[tank.id] }));
     const data = await submitStep({
       type: 'shift', branchId, shiftLabel: shiftForm.shiftLabel, openTime: shiftForm.openTime, closeTime: shiftForm.closeTime,
-      openingFloat: Number(shiftForm.openingFloat) || 0, assignments, otp,
+      openingFloat: Number(shiftForm.openingFloat) || 0, assignments, tankOpenings: tankOpeningEntries, otp,
     });
     if (data) {
       toast.success(data.reused ? 'Continuing that shift' : 'Shift added');
-      setActiveShift(data); setOtp(''); setShiftForm(blankShiftForm); setAssignForm({});
+      setActiveShift(data); setOtp(''); setShiftForm(blankShiftForm); setAssignForm({}); setTankOpenings({});
       setStep('readings');
     }
   };
@@ -238,6 +243,16 @@ export default function BackfillPage() {
                 <NumberInput value={shiftForm.openingFloat} onChange={(e) => setShiftForm({ ...shiftForm, openingFloat: e.target.value })} placeholder="Cash that was in the till at the start of this shift" />
               </Field>
               <div>
+                <p className="text-sm font-medium mb-2">Opening tank stock</p>
+                <p className="text-xs text-gray-500 mb-3">Enter the physical litres in every active tank at the start of this historical shift.</p>
+                <div className="space-y-3 mb-5">
+                  {(reference.tanks || []).map((tank) => (
+                    <div key={tank.id} className="grid grid-cols-2 gap-3 items-center">
+                      <p className="text-sm">{tank.label} <span className="text-xs text-gray-400">— {tank.product?.name}</span></p>
+                      <NumberInput value={tankOpenings[tank.id] ?? ''} onChange={(e) => setTankOpenings({ ...tankOpenings, [tank.id]: e.target.value })} placeholder="Opening litres" required />
+                    </div>
+                  ))}
+                </div>
                 <p className="text-sm font-medium mb-2">Pump assignments</p>
                 <p className="text-xs text-gray-500 mb-3">Every pump you enter needs both an attendant and an opening reading. Leave a pump's row completely untouched to skip it for this shift.</p>
                 <div className="space-y-3">
