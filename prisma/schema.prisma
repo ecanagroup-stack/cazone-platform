@@ -65,7 +65,7 @@ model ServiceCatalog {
   sortOrder        Int           @default(0)
   // Inert placeholder until per-service billing lands — same spirit as Organization's unused
   // Paystack fields. Org-level billing (Organization.monthlyPrice) is still the only thing enforced.
-  basePriceMonthly Int           @default(0)
+  basePriceMonthly BigInt        @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -126,7 +126,7 @@ model Organization {
   subscriptionStatus       SubscriptionStatus @default(trialing)
   trialEndsAt              DateTime?
   subscriptionEndsAt       DateTime?
-  monthlyPrice             Int                @default(0)
+  monthlyPrice             BigInt             @default(0)
   freeForever              Boolean            @default(false)
   paystackCustomerCode     String?
   paystackSubscriptionCode String?
@@ -135,7 +135,7 @@ model Organization {
   // an extra Paystack API round-trip on every subscribe click; a price change creates a NEW plan
   // rather than mutating the old one (Paystack plans are immutable in practice once subscribers exist).
   paystackPlanCode         String?
-  paystackPlanAmount       Int?
+  paystackPlanAmount       BigInt?
 
   // Customer payment collection — separate from the subscription billing above (that's this org
   // paying Cazone; this is Cazone collecting on this org's behalf from ITS customers). Opt-in per
@@ -244,7 +244,7 @@ model ProvisioningRequest {
   note         String?
   requestedBy  String?
   status       String    @default("pending") // pending | quoted | approved | rejected
-  quotedAmount Int? // whole currency units (Naira), same convention as Organization.monthlyPrice
+  quotedAmount BigInt? // whole currency units (Naira), same convention as Organization.monthlyPrice
   quotedAt     DateTime?
   decisionNote String?
   decidedBy    String? // null when decided automatically by a Paystack payment, not a super_admin
@@ -269,7 +269,7 @@ model BusinessAddon {
   status         BusinessAddonStatus @default(active)
   branchId       String?             @unique
   branch         Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  price          Int?
+  price          BigInt?
   startsAt       DateTime            @default(now())
   endsAt         DateTime?
   createdAt      DateTime            @default(now())
@@ -434,17 +434,17 @@ model Customer {
 
   // null = unlimited credit; 0 = zero debt tolerance (strictly enforced). Never treat null and 0
   // as interchangeable defaults — see lib/credit.js.
-  creditLimit   Int?
+  creditLimit   BigInt?
   onHold        Boolean @default(false)
   // Standing delivery cost for this customer's own self-service Shop orders (lib/sale.js's
   // createPendingOrder/confirmPendingOrder) — added once per order, same flat/not-split-per-line
   // semantics as the manual sale flows' transport fee. null = no standing rate (Shop shows no
   // transport line at all); 0 = free delivery, shown explicitly. Never set on staff-recorded sales
   // (Cement/Aggregate Sale pages) — those keep their own free-form per-sale entry untouched.
-  transportRate Int?
+  transportRate BigInt?
   // Cache only — Order/Payment rows are the source of truth (core-algorithms skill §3). Recompute
   // and alert on drift; never let this field be the only record of a balance.
-  balance       Int     @default(0)
+  balance       BigInt  @default(0)
 
   isActive  Boolean  @default(true)
   createdBy String?
@@ -496,10 +496,10 @@ model CustomerAdjustment {
 
   type          String // surcharge | refund
   method        String? // per_unit | flat_total | transport | shortfall — surcharge/refund-on-sale only
-  amount        Int
+  amount        BigInt
   reason        String?
-  balanceBefore Int
-  balanceAfter  Int
+  balanceBefore BigInt
+  balanceAfter  BigInt
   createdBy     String?
   createdAt     DateTime @default(now())
   saleDate      DateTime? // Actual business date for Building Material sales; null on legacy orders.
@@ -520,7 +520,7 @@ model Payment {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  amount     Int
+  amount     BigInt
   method     String // cash | transfer | pos | cheque | paystack
   reference  String?
   recordedBy String?
@@ -540,7 +540,7 @@ model PaymentAllocation {
   payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  amount    Int
+  amount    BigInt
   createdAt DateTime @default(now())
 
   @@index([paymentId])
@@ -627,7 +627,7 @@ model PriceRule {
 
   qtyBandMin Float?
   qtyBandMax Float?
-  price      Int
+  price      BigInt
   validFrom  DateTime  @default(now())
   validTo    DateTime?
   createdBy  String?
@@ -755,8 +755,8 @@ model PriceHistory {
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
   branchId       String?
 
-  oldPrice   Int?
-  newPrice   Int
+  oldPrice   BigInt?
+  newPrice   BigInt
   reason     String?
   status     String    @default("approved") // pending | approved | rejected
   changedBy  String?
@@ -788,8 +788,8 @@ model Order {
   // active | void | pending (self-service portal orders sit pending until staff confirms them —
   // stock/credit only apply once active, see app/api/admin/materials/pending-orders).
   status        String   @default("active")
-  subtotal      Int
-  discount      Int      @default(0)
+  subtotal      BigInt
+  discount      BigInt   @default(0)
   // Cement/aggregate sales only (ecana_shop-app's Sale.transportFee) — added on top of subtotal,
   // not subtracted like discount. Zero everywhere else. All three of transportFee/labourFee/otherFee
   // are the order-level total of whatever was entered per line (see OrderLine.transportFee and
@@ -797,10 +797,10 @@ model Order {
   // cement ATC and an aggregate truck are two different deliveries with their own costs), and these
   // are the sum, kept here too so every existing receipt/report reading Order.transportFee etc.
   // keeps working unchanged.
-  transportFee  Int      @default(0)
-  labourFee     Int      @default(0)
-  otherFee      Int      @default(0)
-  grandTotal    Int
+  transportFee  BigInt   @default(0)
+  labourFee     BigInt   @default(0)
+  otherFee      BigInt   @default(0)
+  grandTotal    BigInt
   paymentMethod String? // cash | credit | pos | transfer | paystack
   offlineId     String?
   createdBy     String?
@@ -848,9 +848,9 @@ model OrderLine {
   qty          Float
   // Physical quantity deducted from stock or an ATC; may differ from billed qty.
   stockQty     Float?
-  unitPrice    Int
-  managerUnitPrice Int? // Explicit price approved for a pending customer order; retained on confirmation.
-  lineTotal    Int
+  unitPrice    BigInt
+  managerUnitPrice BigInt? // Explicit price approved for a pending customer order; retained on confirmation.
+  lineTotal    BigInt
   // Sale-time snapshots for transaction reports; truck and supplier records can change later.
   sourceTruckNumber String?
   sourceDriverName  String?
@@ -858,7 +858,7 @@ model OrderLine {
   quality           String?
   // This line's own transport cost (a combined cement+aggregate sale prices transport per item, not
   // once for the whole order — see Order.transportFee above) — 0 everywhere else.
-  transportFee Int             @default(0)
+  transportFee BigInt          @default(0)
   costs        OrderLineCost[]
 
   @@index([orderId])
@@ -875,7 +875,7 @@ model OrderLineCost {
   orderLineId String
   orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
   type        String // labour | other
-  amount      Int
+  amount      BigInt
   detail      String?
   createdAt   DateTime  @default(now())
 
@@ -929,7 +929,7 @@ model Delivery {
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   quantity          Float
-  costPerUnit       Int?
+  costPerUnit       BigInt?
   totalCost         BigInt?
   status            String? // pending | assigned | loaded | arrived | received | closed
   // Set (to `quantity`) only when this delivery starts life as a not-yet-received allocation — a
@@ -1022,11 +1022,11 @@ model Shift {
   branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   openedBy     String
-  openingFloat Int     @default(0)
-  countedCash  Int?
-  countedFloat Int?
-  expectedCash Int?
-  difference   Int?
+  openingFloat BigInt  @default(0)
+  countedCash  BigInt?
+  countedFloat BigInt?
+  expectedCash BigInt?
+  difference   BigInt?
   status       String  @default("open") // open | closed
   note         String?
 
@@ -1075,7 +1075,7 @@ model CashDeposit {
   shift          Shift?       @relation(fields: [shiftId], references: [id])
   operatingDate  String?
 
-  amount        Int
+  amount        BigInt
   bankName      String?
   accountNumber String?
   initiatedBy   String
@@ -1288,10 +1288,10 @@ model MeterReading {
   // litres * the price in effect then) so a manager reviewing later compares against what was true
   // at submission, not whatever the price happens to be now.
   litres         Float?
-  expectedAmount Int?
+  expectedAmount BigInt?
 
   // Cashier's separate entry — cash plus itemized POS lines (posPayments below).
-  cashCollected     Int?
+  cashCollected     BigInt?
   paymentRecordedBy String?
   paymentRecordedAt DateTime?
 
@@ -1334,7 +1334,7 @@ model PosPayment {
   terminalId     String
   terminal       PosTerminal  @relation(fields: [terminalId], references: [id])
 
-  amount    Int
+  amount    BigInt
   createdAt DateTime @default(now())
 
   @@index([organizationId])
@@ -1356,12 +1356,12 @@ model FuelCollection {
   dispenserId    String
   attendantId    String?
   operatingDate  String
-  cashAmount     Int
-  posAmount      Int
-  totalAmount    Int
+  cashAmount     BigInt
+  posAmount      BigInt
+  totalAmount    BigInt
   posEntries     Json
-  expectedAmount Int
-  outstandingAfter Int
+  expectedAmount BigInt
+  outstandingAfter BigInt
   collectionType String // initial | supplemental | post_close_settlement
   recordedBy     String
   requestId      String?
