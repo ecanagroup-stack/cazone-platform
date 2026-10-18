@@ -188,7 +188,7 @@ function DayDetail({ branchId, date, onBack }) {
 
   const openCorrect = (delivery) => {
     setCorrectingDelivery(delivery);
-    setCorrectForm({ quantity: delivery.quantity.toString(), costPerUnit: (delivery.costPerUnit / 100).toString(), reason: '' });
+    setCorrectForm({ quantity: delivery.quantity.toString(), costPerUnit: delivery.costPerUnit == null ? '' : (delivery.costPerUnit / 100).toString(), reason: '' });
   };
 
   const submitCorrect = async (e) => {
@@ -197,7 +197,7 @@ function DayDetail({ branchId, date, onBack }) {
     try {
       const r = await fetch(`/api/admin/deliveries/${correctingDelivery.id}/correct`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: Number(correctForm.quantity), costPerUnit: Math.round(Number(correctForm.costPerUnit) * 100), reason: correctForm.reason }),
+        body: JSON.stringify({ quantity: Number(correctForm.quantity), costPerUnit: correctForm.costPerUnit === '' ? null : Math.round(Number(correctForm.costPerUnit) * 100), reason: correctForm.reason }),
       });
       const d = await r.json();
       if (d.success) { toast.success('Delivery corrected'); setCorrectingDelivery(null); load(); }
@@ -548,8 +548,8 @@ function DayDetail({ branchId, date, onBack }) {
             <Field label="Quantity" required>
               <NumberInput value={correctForm.quantity} onChange={(e) => setCorrectForm({ ...correctForm, quantity: e.target.value })} required />
             </Field>
-            <Field label="Cost per unit" required>
-              <NumberInput value={correctForm.costPerUnit} onChange={(e) => setCorrectForm({ ...correctForm, costPerUnit: e.target.value })} required />
+            <Field label="Cost per unit (optional)">
+              <NumberInput value={correctForm.costPerUnit} onChange={(e) => setCorrectForm({ ...correctForm, costPerUnit: e.target.value })} />
             </Field>
           </div>
           <Field label="Reason" required>

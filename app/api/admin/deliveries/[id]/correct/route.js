@@ -29,12 +29,14 @@ export const POST = withOrg(async (request, { params }) => {
     if (delivery.qtyRemaining != null) throw new ApiError('Only a received delivery can be corrected — this one is still an allocation', 400);
 
     const newQuantity = body.quantity !== undefined ? Number(body.quantity) : delivery.quantity;
-    const newCostPerUnit = body.costPerUnit !== undefined ? Math.round(Number(body.costPerUnit)) : delivery.costPerUnit;
+    const newCostPerUnit = body.costPerUnit === null || body.costPerUnit === ''
+      ? null
+      : body.costPerUnit !== undefined ? Math.round(Number(body.costPerUnit)) : delivery.costPerUnit;
     if (!Number.isFinite(newQuantity) || newQuantity <= 0) throw new ApiError('Quantity must be a positive number', 400);
-    if (!Number.isFinite(newCostPerUnit) || newCostPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
+    if (newCostPerUnit != null && (!Number.isFinite(newCostPerUnit) || newCostPerUnit < 0)) throw new ApiError('Invalid cost per unit', 400);
 
     const quantityDelta = newQuantity - delivery.quantity;
-    const newTotalCost = Math.round(newQuantity * newCostPerUnit);
+    const newTotalCost = newCostPerUnit == null ? null : Math.round(newQuantity * newCostPerUnit);
 
     const updated = await prisma.$transaction(async (tx) => {
       if (quantityDelta !== 0) {
