@@ -363,7 +363,7 @@ function SuppliersTab() {
   const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
-    const r = await fetch('/api/admin/materials/suppliers');
+    const r = await fetch('/api/admin/suppliers');
     const d = await r.json();
     if (d.success) setSuppliers(d.data);
     else toast.error(d.error || 'Failed to load');
@@ -375,7 +375,7 @@ function SuppliersTab() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const r = await fetch('/api/admin/materials/suppliers', {
+      const r = await fetch('/api/admin/suppliers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       const d = await r.json();
@@ -387,7 +387,7 @@ function SuppliersTab() {
   };
 
   const toggleActive = async (s) => {
-    const r = await fetch(`/api/admin/materials/suppliers/${s.id}`, {
+    const r = await fetch(`/api/admin/suppliers/${s.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !s.isActive }),
     });
     const d = await r.json();
