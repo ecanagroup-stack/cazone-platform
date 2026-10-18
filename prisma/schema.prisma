@@ -40,6 +40,17 @@ enum CatalogStatus {
   retired
 }
 
+enum BusinessAddonType {
+  shop
+  petrol_station
+  distributor
+}
+
+enum BusinessAddonStatus {
+  active
+  canceled
+}
+
 // Platform-wide, not tenant-scoped (no organizationId — every organization sees the same catalog).
 // This is what makes "add a service without a code deploy" real for the subscribe/availability
 // layer: super_admin manages rows here instead of a hardcoded array. `key` is what Service.type
@@ -185,6 +196,7 @@ model Organization {
   legacyFuelRecords    LegacyFuelRecord[]
 
   provisioningRequests ProvisioningRequest[]
+  addons               BusinessAddon[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -222,10 +234,11 @@ model ProvisioningRequest {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  type        String // 'service' | 'branch'
+  type        String // 'service' | 'branch' | 'addon'
   serviceType String? // ServiceCatalog.key — required when type='service'
   serviceId   String? // which existing Service a new branch belongs to — required when type='branch'
   service     Service? @relation(fields: [serviceId], references: [id])
+  addonType   BusinessAddonType? // required when type='addon'
   branchName  String? // proposed name for the branch/first branch, captured up front so approval is one click
 
   note         String?
@@ -246,6 +259,25 @@ model ProvisioningRequest {
   @@index([organizationId])
 }
 
+// Paid capabilities that sit under the organization's one registered business type.
+// shop and petrol_station add a branch; distributor enables petroleum distribution without one.
+model BusinessAddon {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           BusinessAddonType
+  status         BusinessAddonStatus @default(active)
+  branchId       String?             @unique
+  branch         Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  price          Int?
+  startsAt       DateTime            @default(now())
+  endsAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([organizationId, type, status])
+}
+
 // A branch of a specific service — "branches will be handled the way petrol-station-app handles
 // different stations under one admin." organizationId is denormalized from the parent Service so
 // tenant-scoped queries never need to join through Service just to filter by tenant.
@@ -257,17 +289,19 @@ model Branch {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  name     String
-  code     String
-  address  String?
-  isActive Boolean @default(true)
-  config   Json    @default("{}")
+  name      String
+  code      String
+  addonType BusinessAddonType?
+  address   String?
+  isActive  Boolean            @default(true)
+  config    Json               @default("{}")
 
   createdAt DateTime @default(now())
 
   userAccess     UserBranchAccess[]
   customerAccess CustomerAccess[]
   chatMessages   ChatMessage[]
+  addon          BusinessAddon?
 
   orders          Order[]
   stockMoves      StockMove[]

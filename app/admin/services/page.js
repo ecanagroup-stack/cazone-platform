@@ -12,14 +12,12 @@ export default function ServicesPage() {
   const [services, setServices] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [businessType, setBusinessType] = useState('');
+  const [addons, setAddons] = useState([]);
   const [requests, setRequests] = useState(null);
   const [enableModal, setEnableModal] = useState(null); // catalog entry { key, name }
   const [branchName, setBranchName] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [addBranchFor, setAddBranchFor] = useState(null); // service object
-  const [newBranchName, setNewBranchName] = useState('');
-  const [newBranchNote, setNewBranchNote] = useState('');
   const [fuelBranchChange, setFuelBranchChange] = useState(null);
   const [fuelBranchReason, setFuelBranchReason] = useState('');
 
@@ -28,7 +26,7 @@ export default function ServicesPage() {
       fetch('/api/admin/services').then((r) => r.json()),
       fetch('/api/admin/provisioning-requests').then((r) => r.json()),
     ]);
-    if (sr.success) { setServices(sr.data); setBusinessType(sr.businessType); } else toast.error(sr.error || 'Failed to load');
+    if (sr.success) { setServices(sr.data); setAddons(sr.addons || []); setBusinessType(sr.businessType); } else toast.error(sr.error || 'Failed to load');
     if (rr.success) setRequests(rr.data);
   };
 
@@ -59,20 +57,16 @@ export default function ServicesPage() {
     }
   };
 
-  const handleRequestBranch = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const r = await fetch('/api/admin/provisioning-requests', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'branch', serviceId: addBranchFor.id, branchName: newBranchName, note: newBranchNote }),
-      });
-      const d = await r.json();
-      if (d.success) { toast.success('Request sent — we\'ll quote this branch shortly'); setAddBranchFor(null); setNewBranchName(''); setNewBranchNote(''); load(); }
-      else toast.error(d.error);
-    } finally {
-      setSubmitting(false);
-    }
+  const requestAddon = async (addonType, requiresBranch) => {
+    const branchName = requiresBranch ? window.prompt(addonType === 'petrol_station' ? 'Name the additional petrol station' : 'Name the additional shop') : null;
+    if (requiresBranch && !branchName?.trim()) return;
+    const r = await fetch('/api/admin/provisioning-requests', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'addon', addonType, branchName: branchName?.trim() || '', note: '' }),
+    });
+    const d = await r.json();
+    if (d.success) { toast.success('Add-on request sent for quotation'); load(); }
+    else toast.error(d.error || 'Could not request add-on');
   };
 
   const toggleBranch = async (branch, reason = '') => {
@@ -98,15 +92,36 @@ export default function ServicesPage() {
       {openRequests.length > 0 && (
         <Card className="p-5 mb-6">
           <h3 className="font-semibold text-sm mb-1">Pending requests</h3>
-          <p className="text-xs text-gray-500 mb-4">We'll send a quote — pay it the same way you pay your subscription (bank transfer, then let us know), and it's provisioned right after.</p>
+          <p className="text-xs text-gray-500 mb-4">We’ll send a quote for this add-on. It is enabled after payment and approval.</p>
           <div className="space-y-2">
             {openRequests.map((r) => (
               <div key={r.id} className="flex items-center justify-between text-sm">
-                <span>{r.type === 'service' ? `New business: ${catalog.find((c) => c.key === r.serviceType)?.name || r.serviceType}` : `New branch: ${r.branchName} (${r.service?.name || r.service?.type})`}</span>
+                <span>{r.type === 'service' ? `New business: ${catalog.find((c) => c.key === r.serviceType)?.name || r.serviceType}` : r.type === 'addon' ? `Add-on: ${r.addonType}${r.branchName ? ` — ${r.branchName}` : ''}` : `New branch: ${r.branchName} (${r.service?.name || r.service?.type})`}</span>
                 <StatusPill status={r.status} color={REQUEST_STATUS_COLOR[r.status]} />
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {services.length > 0 && (
+        <Card className="p-5 mb-8">
+          <h3 className="font-semibold text-sm mb-1">Business add-ons</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Your registered business type stays unchanged. Add-ons give you extra locations or petroleum capabilities at an additional cost.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {businessType === 'shop' && (
+              <button onClick={() => requestAddon('shop', true)} className={tableActionCls}>Request additional shop</button>
+            )}
+            {businessType === 'fuel_station' && (
+              <>
+                <button onClick={() => requestAddon('petrol_station', true)} className={tableActionCls}>Request additional petrol station</button>
+                {!addons.some((a) => a.type === 'distributor') && <button onClick={() => requestAddon('distributor', false)} className={tableActionCls}>Request distributor add-on</button>}
+              </>
+            )}
+          </div>
+          {addons.length > 0 && <p className="text-xs text-gray-500 mt-3">Active add-ons: {addons.map((a) => a.type).join(', ')}</p>}
         </Card>
       )}
 
@@ -121,12 +136,6 @@ export default function ServicesPage() {
                 <p className="font-semibold text-sm">{s.name || s.type}</p>
                 <p className="text-xs text-gray-500">{s.branches.length} branch{s.branches.length === 1 ? '' : 'es'} · Active service</p>
               </div>
-              {<button
-                    onClick={() => { setAddBranchFor(s); setNewBranchName(''); setNewBranchNote(''); }}
-                    className={tableActionCls}
-                  >
-                    Request Branch
-                  </button>}
             </div>
             <div className="divide-y">
               {s.branches.length === 0 && <p className="px-4 py-4 text-sm text-gray-500">No branches yet.</p>}
@@ -189,17 +198,6 @@ export default function ServicesPage() {
         </form>
       </Modal>
 
-      <Modal open={!!addBranchFor} onClose={() => setAddBranchFor(null)} title={`Request a branch for ${addBranchFor ? (addBranchFor.name || addBranchFor.type) : ''}`}>
-        <form onSubmit={handleRequestBranch} className="space-y-4">
-          <Field label="Branch name" required>
-            <input type="text" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className={inputCls} required autoFocus />
-          </Field>
-          <Field label="Note (optional)">
-            <input type="text" value={newBranchNote} onChange={(e) => setNewBranchNote(e.target.value)} className={inputCls} placeholder="Location, why you need it, etc." />
-          </Field>
-          <FormButtons onCancel={() => setAddBranchFor(null)} submitting={submitting} submitLabel="Send Request" />
-        </form>
-      </Modal>
     </div>
   );
 }
