@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Building Material-only reports (M6) — ported from ecana_shop-app's reports/products,
 // reports/trucks and reports/quarry-purchases, each collapsed into one route selected by `type`
@@ -35,13 +36,13 @@ export const GET = withOrg(async (request) => {
       const byVehicle = new Map();
       for (const d of deliveries) {
         const key = d.vehicleId;
-        const row = byVehicle.get(key) || { plateNumber: d.vehicle.plateNumber, driverName: d.vehicle.driverName || '—', trips: 0, totalCost: 0 };
+        const row = byVehicle.get(key) || { plateNumber: d.vehicle.plateNumber, driverName: d.vehicle.driverName || '—', trips: 0, totalCost: 0n };
         row.trips += 1;
-        row.totalCost += d.totalCost;
+        row.totalCost = row.totalCost == null || d.totalCost == null ? null : row.totalCost + d.totalCost;
         byVehicle.set(key, row);
       }
       const rows = [...byVehicle.values()].sort((a, b) => a.plateNumber.localeCompare(b.plateNumber));
-      return NextResponse.json({ success: true, data: rows });
+      return NextResponse.json(jsonSafe({ success: true, data: rows }));
     }
 
     if (type === 'quarry-purchases') {
@@ -59,8 +60,11 @@ export const GET = withOrg(async (request) => {
         costPerUnit: d.costPerUnit,
         totalCost: d.totalCost,
       }));
-      const totals = { quantity: rows.reduce((s, r) => s + r.quantity, 0), cost: rows.reduce((s, r) => s + r.totalCost, 0) };
-      return NextResponse.json({ success: true, data: rows, totals });
+      const totals = {
+        quantity: rows.reduce((s, r) => s + r.quantity, 0),
+        cost: rows.some((r) => r.totalCost == null) ? null : rows.reduce((s, r) => s + r.totalCost, 0n),
+      };
+      return NextResponse.json(jsonSafe({ success: true, data: rows, totals }));
     }
 
     // type === 'products'

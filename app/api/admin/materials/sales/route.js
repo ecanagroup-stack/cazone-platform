@@ -9,6 +9,7 @@ import { verifyOtp } from '@/lib/otp';
 import { notifyReviewers } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates } from '@/lib/saleDates.mjs';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // A combined materials sale — one customer, one order, any mix of cement (sold down a pre-recorded
 // ATC allocation, see sales/cement) and aggregate (bought off the truck from the quarry and sold in
@@ -124,11 +125,13 @@ export const POST = withOrg(async (request) => {
     for (const r of resolved) {
       if (r.kind !== 'aggregate') continue;
       const { productId, supplierId, vehicleId, actualQty, costPerUnit } = r.purchase;
+      const totalCostNumber = Math.round(actualQty * costPerUnit);
+      if (!Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
       const delivery = await prisma.$transaction(async (tx) => {
         const d = await tx.delivery.create({
           data: {
             branchId, supplierId, vehicleId, productId,
-            quantity: actualQty, costPerUnit, totalCost: Math.round(actualQty * costPerUnit),
+            quantity: actualQty, costPerUnit, totalCost: BigInt(totalCostNumber),
             status: 'received', receivedAt: new Date(), createdBy: session.user.id,
           },
         });
@@ -160,7 +163,7 @@ export const POST = withOrg(async (request) => {
       type: 'sale_discount', relatedType: 'Order', relatedId: result.order.id,
     });
 
-    return NextResponse.json({ success: true, data: { order: result.order, deliveries, flagged: result.flagged } }, { status: 201 });
+    return NextResponse.json(jsonSafe({ success: true, data: { order: result.order, deliveries, flagged: result.flagged } }), { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

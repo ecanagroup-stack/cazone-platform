@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Ported from petrol-station-app's admin Reports Day Detail (Manager/Supervisor/Cashier tabs) — a
 // read-only drill-in from Summary Book for one day, one branch. Unlike the old app, this never lets
@@ -67,10 +68,10 @@ export const GET = withOrg(async (request) => {
       deposits: deposits.filter((d) => d.shiftId === shift.id),
     }));
 
-    return NextResponse.json({ success: true, data: {
+    return NextResponse.json(jsonSafe({ success: true, data: {
       shifts: byShift, deliveries, reconciliations, tankDips,
       auditComments: auditComments.map((comment) => ({ ...comment, auditorName: authorById[comment.raisedBy] || 'Auditor' })),
-    } });
+    } }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

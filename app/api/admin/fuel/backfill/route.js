@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/apiError';
 import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput, exactMeterSale } from '@/lib/fuelCollections.mjs';
 import { evaluateVariance } from '@/lib/reconciliation';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Shared historical station entry — one step per call (Date & Branch -> Shift -> Pump Readings ->
 // Deliveries -> Tank Dips -> Payments -> Bank Deposits), with OTP verification for each new shift.
@@ -256,11 +257,13 @@ async function handleDelivery(session, body) {
   // computing this specific shift's period.
   const at = new Date((shift.openedAt.getTime() + shift.closedAt.getTime()) / 2);
 
-  const totalCost = Math.round(quantity * costPerUnit);
+  const totalCostNumber = Math.round(quantity * costPerUnit);
+  if (!Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
+  const totalCost = BigInt(totalCostNumber);
   const dup = await prisma.delivery.findFirst({
     where: { branchId, productId, quantity, costPerUnit, isBackfill: true, createdAt: { gte: shift.openedAt, lte: shift.closedAt } },
   });
-  if (dup) return NextResponse.json({ success: true, data: dup, reused: true });
+  if (dup) return NextResponse.json(jsonSafe({ success: true, data: dup, reused: true }));
 
   const { delivery } = await prisma.$transaction(async (tx) => {
     let supplierId = body.supplierId || null;
@@ -275,7 +278,7 @@ async function handleDelivery(session, body) {
     return { delivery: created };
   }, { timeout: 15000 });
 
-  return NextResponse.json({ success: true, data: delivery }, { status: 201 });
+  return NextResponse.json(jsonSafe({ success: true, data: delivery }), { status: 201 });
 }
 
 async function handleDip(session, body) {

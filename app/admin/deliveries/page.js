@@ -7,7 +7,7 @@ import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
   inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar, NumberInput,
 } from '@/components/ui';
-import { formatMoney, formatDate } from '@/lib/format';
+import { formatMoney, formatDate, formatMinorMoney, minorUnitsToDecimal } from '@/lib/format';
 
 const TABS = [
   { key: 'deliveries', label: 'Deliveries' },
@@ -75,7 +75,7 @@ function DeliveriesTab({ branchId }) {
       const r = await fetch('/api/admin/deliveries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, ...form, costPerUnit: Math.round(Number(form.costPerUnit || 0) * 100),
+          branchId, ...form, costPerUnit: form.costPerUnit === '' ? null : Math.round(Number(form.costPerUnit) * 100),
           tankId: form.useDip ? form.tankId : undefined,
           openingDip: form.useDip ? form.openingDip : undefined,
           closingDip: form.useDip ? form.closingDip : undefined,
@@ -157,7 +157,7 @@ function DeliveriesTab({ branchId }) {
             { key: 'supplier.name', label: 'Supplier' },
             { key: 'product.name', label: 'Product' },
             { key: 'quantity', label: 'Quantity' },
-            { key: 'totalCost', label: 'Cost', value: (r) => (r.totalCost / 100).toFixed(2) },
+            { key: 'totalCost', label: 'Cost', value: (r) => minorUnitsToDecimal(r.totalCost) },
             { key: 'vehicle.plateNumber', label: 'Vehicle' },
             { key: 'status', label: 'Status', value: (r) => (r.qtyRemaining != null ? r.status : 'received') },
           ]}
@@ -212,7 +212,7 @@ function DeliveriesTab({ branchId }) {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">{formatMoney(d.totalCost / 100)}</td>
+                    <td className="px-4 py-3 text-right">{formatMinorMoney(d.totalCost)}</td>
                     <td className="px-4 py-3 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
                     <td className="px-4 py-3">
                       {isAllocation ? <StatusPill status={ALLOCATION_STATUS_LABEL[d.status]} color={ALLOCATION_STATUS_COLOR[d.status]} /> : <StatusPill status="Received" color="green" />}
@@ -254,9 +254,9 @@ function DeliveriesTab({ branchId }) {
               <p className="text-xs text-gray-500 mb-2">No suppliers yet — name one below.</p>
             )}
             {!form.supplierId && (
-              <input
+                <input
                 type="text" value={form.newSupplierName} onChange={(e) => setForm({ ...form, newSupplierName: e.target.value })}
-                className={`${inputCls} mt-2`} placeholder="e.g., Lafarge Depot" required={!form.supplierId}
+                  className={`${inputCls} mt-2`} placeholder="Depot Name" required={!form.supplierId}
               />
             )}
           </Field>
@@ -304,8 +304,8 @@ function DeliveriesTab({ branchId }) {
                 <Field label="Declared load (per waybill)" required>
                   <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
                 </Field>
-                <Field label="Cost per unit" required>
-                  <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
+                <Field label="Cost per unit (optional)">
+                  <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
                 </Field>
               </div>
             </>
@@ -314,8 +314,8 @@ function DeliveriesTab({ branchId }) {
               <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
                 <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
               </Field>
-              <Field label="Cost per unit" required>
-                <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} required />
+              <Field label="Cost per unit (optional)">
+                <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
               </Field>
             </div>
           )}

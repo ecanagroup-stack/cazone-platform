@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Assign a vehicle to go collect a pending allocation — pending -> assigned. Mirrors the old shop
 // app's ATC "assign" step: creates the Vehicle by plate if it doesn't exist yet.
@@ -31,7 +32,7 @@ export const POST = withOrg(async (request, { params }) => {
       });
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json(jsonSafe({ success: true, data: updated }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

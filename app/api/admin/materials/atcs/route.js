@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { autoArriveDueAllocations } from '@/lib/allocation';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Ported from ecana_shop-app's /api/atcs — an ATC is a Delivery allocation (qtyRemaining set) whose
 // product is a cement brand (abbreviation set, see prisma/schema.prisma's Product comment). The
@@ -43,7 +44,7 @@ export const GET = withOrg(async (request) => {
       orderLines: undefined,
     }));
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(jsonSafe({ success: true, data }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
@@ -74,13 +75,13 @@ export const POST = withOrg(async (request) => {
     const atc = await prisma.delivery.create({
       data: {
         branchId, productId, atcNumber, notes: (body.notes || '').trim() || null,
-        quantity: bagsPaidFor, qtyRemaining: bagsPaidFor, costPerUnit: 0, totalCost: 0,
+        quantity: bagsPaidFor, qtyRemaining: bagsPaidFor, costPerUnit: 0, totalCost: 0n,
         status: 'pending', createdBy: session.user.id,
       },
       include: { product: true, vehicle: true },
     });
 
-    return NextResponse.json({ success: true, data: atc }, { status: 201 });
+    return NextResponse.json(jsonSafe({ success: true, data: atc }), { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

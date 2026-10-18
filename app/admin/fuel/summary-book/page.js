@@ -8,7 +8,7 @@ import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, StatusPill, Modal, FormButtons, Field,
   inputCls, tableActionCls, theadCls, tableScrollCls, ReportToolbar, NumberInput,
 } from '@/components/ui';
-import { formatMoney, formatDate } from '@/lib/format';
+import { formatMoney, formatDate, formatMinorMoney } from '@/lib/format';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 function todayIso() {
@@ -461,7 +461,7 @@ function DayDetail({ branchId, date, onBack }) {
                               <span className="block text-xs text-amber-700">{d.offloadVariance > 0 ? '+' : ''}{d.offloadVariance.toFixed(1)}L vs declared</span>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-right">{formatMoney(d.totalCost / 100)}</td>
+                          <td className="px-4 py-2 text-right">{formatMinorMoney(d.totalCost)}</td>
                           <td className="px-4 py-2 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
                           <td className="px-4 py-2 text-right">
                             {d.qtyRemaining == null && <button onClick={() => openCorrect(d)} className={tableActionCls}>Correct</button>}

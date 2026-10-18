@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 // Explicit manual mark-arrived — loaded -> arrived, ahead of the 6h auto-arrive if staff know the
 // vehicle is already back.
@@ -23,7 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
       include: { supplier: true, vehicle: true, product: true },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json(jsonSafe({ success: true, data: updated }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

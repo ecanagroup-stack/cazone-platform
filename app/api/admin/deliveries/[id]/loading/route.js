@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { LOADING_WINDOW_MS } from '@/lib/allocation';
 import { ApiError } from '@/lib/apiError';
+import { jsonSafe } from '@/lib/jsonSafe';
 
 const HOURS_AGO_OPTIONS = [0, 1, 2, 3, 4, 5];
 
@@ -36,7 +37,7 @@ export const POST = withOrg(async (request, { params }) => {
       include: { supplier: true, vehicle: true, product: true },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json(jsonSafe({ success: true, data: updated }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

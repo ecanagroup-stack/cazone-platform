@@ -895,8 +895,8 @@ model Delivery {
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   quantity          Float
-  costPerUnit       Int
-  totalCost         Int
+  costPerUnit       Int?
+  totalCost         BigInt?
   status            String? // pending | assigned | loaded | arrived | received | closed
   // Set (to `quantity`) only when this delivery starts life as a not-yet-received allocation — a
   // batch already paid for but not yet counted as on-hand stock, drawn down directly by sales that
