@@ -717,7 +717,7 @@ function TrucksReport({ scope, from, to }) {
                 <td className="px-4 py-3 font-medium">{r.plateNumber}</td>
                 <td className="px-4 py-3 text-gray-500">{r.driverName}</td>
                 <td className="px-4 py-3 text-right">{r.trips}</td>
-                <td className="px-4 py-3 text-right font-medium">{r.totalCost == null ? '—' : formatMoney(r.totalCost / 100)}</td>
+                <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalCost / 100)}</td>
               </tr>
             ))}
           </tbody>
@@ -749,7 +749,7 @@ function QuarryPurchasesReport({ scope, from, to }) {
         </Card>
         <Card className="p-4">
           <p className="text-xs text-gray-500">Total Cost</p>
-          <p className="text-xl font-bold mt-1">{data.totals.cost == null ? '— (some costs unrecorded)' : formatMoney(data.totals.cost / 100)}</p>
+          <p className="text-xl font-bold mt-1">{formatMoney(data.totals.cost / 100)}</p>
         </Card>
       </div>
       <Card className="overflow-hidden">
@@ -775,8 +775,8 @@ function QuarryPurchasesReport({ scope, from, to }) {
                   <td className="px-4 py-3">{r.product}</td>
                   <td className="px-4 py-3 text-gray-500">{r.truckPlate}</td>
                   <td className="px-4 py-3 text-right">{r.quantity.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right">{r.costPerUnit == null ? '—' : formatMoney(r.costPerUnit / 100)}</td>
-                  <td className="px-4 py-3 text-right font-medium">{r.totalCost == null ? '—' : formatMoney(r.totalCost / 100)}</td>
+                  <td className="px-4 py-3 text-right">{formatMoney(r.costPerUnit / 100)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{formatMoney(r.totalCost / 100)}</td>
                 </tr>
               ))}
             </tbody>

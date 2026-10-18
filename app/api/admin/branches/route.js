@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { slugify } from '@/lib/format';
+import { logAudit } from '@/lib/audit';
 
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
@@ -20,7 +22,24 @@ export const POST = withOrg(async (request) => {
     if (!service) throw new ApiError('Service not found', 404);
     const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
     if (!service.isActive || service.type !== org.businessType) throw new ApiError('This branch does not belong to the registered business', 403);
-    throw new ApiError('Additional locations must be purchased as business add-ons', 400);
+
+    let code = slugify(name) || 'branch';
+    let suffix = 1;
+    // Uniqueness is per-organization (@@unique([organizationId, code])); Branch is tenant-scoped so
+    // this lookup is already confined to the current org.
+    while (await prisma.branch.findFirst({ where: { code } })) {
+      suffix += 1;
+      code = `${slugify(name) || 'branch'}-${suffix}`;
+    }
+
+    const branch = await prisma.branch.create({ data: { serviceId, name, address: address || null, code } });
+
+    await logAudit({
+      organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,
+      action: 'branch.created', entityType: 'Branch', entityId: branch.id, after: { name, serviceId },
+    });
+
+    return NextResponse.json({ success: true, data: branch }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }

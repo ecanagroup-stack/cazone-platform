@@ -189,7 +189,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-left font-medium">Name</th>
                 <th className="px-4 py-3 text-left font-medium">Role</th>
                 <th className="px-4 py-3 text-left font-medium">Login</th>
-                <th className="px-4 py-3 text-left font-medium">{fuelBusiness ? 'Stations' : 'Shops / branches'}</th>
+                <th className="px-4 py-3 text-left font-medium">Branches</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
@@ -229,8 +229,8 @@ export default function UsersPage() {
             label="Email, username or phone" mode="identifier" required
             value={form.identifier} onChange={(v) => setForm({ ...form, identifier: v })}
           />
-          <Field label={fuelBusiness ? 'Stations' : 'Shops / branches'} required>
-            <p className="text-xs text-gray-500 mb-2">Select the locations this user can access.</p>
+          <Field label="Branches" required>
+            <p className="text-xs text-gray-500 mb-2">Pick branches first — the role options below depend on what kind of business they belong to.</p>
             <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto">
               {allBranches.map((b) => (
                 <label key={b.id} className="flex items-center gap-2 text-sm">

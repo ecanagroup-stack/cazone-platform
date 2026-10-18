@@ -26,7 +26,7 @@ export const GET = withOrg(async (request) => {
       date = displayedFuelOperatingDate([open, recent].filter(Boolean));
     }
     const shifts = await prisma.shift.findMany({ where: { branchId, operatingDate: date }, orderBy: { openedAt: 'asc' } });
-    if (!shifts.length) return NextResponse.json({ success: true, data: { date, rows: [], byProduct: [], dailyTotal: { litres: 0, expectedAmount: 0 }, collectionTotals: { cash: 0, pos: 0, total: 0 }, shifts: [], deposits: [] } });
+    if (!shifts.length) return NextResponse.json({ success: true, data: { date, rows: [], byProduct: [], dailyTotal: { litres: 0, expectedAmount: 0 }, shifts: [], deposits: [] } });
     const shiftIds = shifts.map((shift) => shift.id);
     const [readings, collections, assignments, terminals, deposits] = await Promise.all([
       prisma.meterReading.findMany({ where: { shiftId: { in: shiftIds } }, include: {
@@ -37,15 +37,6 @@ export const GET = withOrg(async (request) => {
       prisma.posTerminal.findMany({ where: { branchId, isActive: true }, orderBy: { label: 'asc' } }),
       prisma.cashDeposit.findMany({ where: { shiftId: { in: shiftIds } }, orderBy: { createdAt: 'desc' } }),
     ]);
-    const posPayments = await prisma.posPayment.findMany({
-      where: { meterReadingId: { in: readings.map((reading) => reading.id) } },
-      include: { terminal: { select: { label: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
-    const posByReading = posPayments.reduce((acc, payment) => {
-      (acc[payment.meterReadingId] ||= []).push({ terminalLabel: payment.terminal.label, amount: payment.amount });
-      return acc;
-    }, {});
     const shiftById = Object.fromEntries(shifts.map((shift) => [shift.id, shift]));
     const historicalProductIds = [...new Set(readings.map((reading) => reading.productIdAtShift).filter(Boolean))];
     const historicalProducts = await prisma.product.findMany({ where: { id: { in: historicalProductIds } }, select: { id: true, name: true } });
@@ -59,11 +50,7 @@ export const GET = withOrg(async (request) => {
         dispenserLabel: reading.dispenser.label, productName: historicalProductById[reading.productIdAtShift]?.name || reading.dispenser.tank?.product?.name || 'Unknown',
         attendantName: assignment?.attendant.name || null, readingStatus: reading.reviewStatus,
         litres: reading.closing == null ? null : reading.litres, expectedAmount: reading.expectedAmount,
-        ...summarizePumpCollection(reading.expectedAmount, history),
-        collections: history.map((collection) => ({
-          ...collection,
-          posDetails: posByReading[reading.id] || [],
-        })),
+        ...summarizePumpCollection(reading.expectedAmount, history), collections: history,
         collectionCoverage: reading.collectionCoverage,
         ...(reading.collectionCoverage === 'unknown' ? { outstanding: null } : {}),
       };
@@ -79,14 +66,7 @@ export const GET = withOrg(async (request) => {
       litres: total.litres + product.litres,
       expectedAmount: total.expectedAmount + product.expectedAmount,
     }), { litres: 0, expectedAmount: 0 });
-    const collectionTotals = collections.reduce((total, collection) => {
-      if (collection.voidedAt) return total;
-      total.cash += collection.cashAmount || 0;
-      total.pos += collection.posAmount || 0;
-      total.total += collection.totalAmount || 0;
-      return total;
-    }, { cash: 0, pos: 0, total: 0 });
-    return NextResponse.json({ success: true, data: { date, rows, byProduct, dailyTotal, collectionTotals, terminals, shifts, deposits } });
+    return NextResponse.json({ success: true, data: { date, rows, byProduct, dailyTotal, terminals, shifts, deposits } });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: error.status || 400 });
   }

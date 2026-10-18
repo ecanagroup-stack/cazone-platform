@@ -56,13 +56,13 @@ export default async function FuelDashboard({ searchParams }) {
   const operatingDate = openShift?.operatingDate || new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date());
   const [sales, collections, deposits, pending, cashierRows] = await Promise.all([
     prisma.meterReading.aggregate({ where: { branchId: selectedBranch.id, shift: { operatingDate }, ...(role === 'supervisor' ? { recordedBy: session.user.id } : {}), litres: { gt: 0 } }, _sum: { litres: true, expectedAmount: true }, _count: true }),
-    prisma.fuelCollection.aggregate({ where: { branchId: selectedBranch.id, operatingDate, voidedAt: null, ...(role === 'cashier' ? { recordedBy: session.user.id } : {}) }, _sum: { cashAmount: true, posAmount: true, totalAmount: true }, _count: true }),
+    prisma.fuelCollection.aggregate({ where: { branchId: selectedBranch.id, operatingDate, voidedAt: null, ...(role === 'cashier' ? { recordedBy: session.user.id } : {}) }, _sum: { totalAmount: true }, _count: true }),
     prisma.cashDeposit.aggregate({ where: { branchId: selectedBranch.id, operatingDate, ...(role === 'cashier' ? { initiatedBy: session.user.id } : {}) }, _sum: { amount: true }, _count: true }),
     prisma.meterReading.count({ where: { branchId: selectedBranch.id, shift: { operatingDate }, reviewStatus: 'pending', closing: { not: null } } }),
     role === 'cashier' ? (async () => {
       const shifts = await prisma.shift.findMany({ where: { branchId: selectedBranch.id, operatingDate }, select: { id: true, status: true, shiftLabel: true } });
       const shiftIds = shifts.map((shift) => shift.id);
-      if (!shiftIds.length) return { rows: [], litres: 0, expectedAmount: 0, cash: 0, pos: 0 };
+      if (!shiftIds.length) return { rows: [], litres: 0, expectedAmount: 0 };
       const [readings, assignments, handovers] = await Promise.all([
         prisma.meterReading.findMany({
           where: { shiftId: { in: shiftIds }, closing: { not: null } },
@@ -93,8 +93,6 @@ export default async function FuelDashboard({ searchParams }) {
         rows,
         litres: rows.reduce((sum, row) => sum + row.litres, 0),
         expectedAmount: rows.reduce((sum, row) => sum + row.expectedAmount, 0),
-        cash: rows.reduce((sum, row) => sum + row.cash, 0),
-        pos: rows.reduce((sum, row) => sum + row.pos, 0),
       };
     })() : null,
   ]);
@@ -106,17 +104,17 @@ export default async function FuelDashboard({ searchParams }) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Card className="p-5"><p className="text-xs text-gray-500">Pump sales</p><p className="mt-1 text-2xl font-bold">{(sales._sum.litres || 0).toLocaleString('en-NG')} L</p><p className="text-xs text-gray-500">{sales._count} recorded entries</p></Card>
       <Card className="p-5"><p className="text-xs text-gray-500">Expected sales value</p><p className="mt-1 text-2xl font-bold">{money(sales._sum.expectedAmount || 0)}</p></Card>
-      <Card className="p-5"><p className="text-xs text-gray-500">Recorded collections</p><p className="mt-1 text-2xl font-bold">{money(collections._sum.totalAmount || 0)}</p><p className="text-xs text-gray-500">Cash {money(collections._sum.cashAmount || 0)} · POS {money(collections._sum.posAmount || 0)}</p></Card>
+      <Card className="p-5"><p className="text-xs text-gray-500">Recorded collections</p><p className="mt-1 text-2xl font-bold">{money(collections._sum.totalAmount || 0)}</p><p className="text-xs text-gray-500">{collections._count} handovers</p></Card>
       <Card className="p-5"><p className="text-xs text-gray-500">Bank deposits</p><p className="mt-1 text-2xl font-bold">{money(deposits._sum.amount || 0)}</p><p className="text-xs text-gray-500">{deposits._count} records</p></Card>
     </div>
     {role === 'cashier' && cashierRows && <Card className="overflow-hidden border-brand-200">
       <div className="border-b bg-brand-50 px-5 py-4">
         <h2 className="font-semibold text-gray-900">Cashier handover · {operatingDate}</h2>
-        <p className="mt-1 text-sm text-gray-600">{cashierRows.litres.toLocaleString('en-NG')} L sold · {money(cashierRows.expectedAmount)} expected from all pumps · Cash {money(cashierRows.cash)} · POS {money(cashierRows.pos)}</p>
+        <p className="mt-1 text-sm text-gray-600">{cashierRows.litres.toLocaleString('en-NG')} L sold · {money(cashierRows.expectedAmount)} expected from all pumps</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b text-left"><th className="px-5 py-3">Pump</th><th className="px-5 py-3">Attendant</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Litres</th><th className="px-5 py-3">Expected</th><th className="px-5 py-3">Cash</th><th className="px-5 py-3">POS</th><th className="px-5 py-3">Collected</th><th className="px-5 py-3" /></tr></thead>
+          <thead><tr className="border-b text-left"><th className="px-5 py-3">Pump</th><th className="px-5 py-3">Attendant</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Litres</th><th className="px-5 py-3">Expected</th><th className="px-5 py-3">Collected</th><th className="px-5 py-3" /></tr></thead>
           <tbody className="divide-y">
             {cashierRows.rows.map((row) => <tr key={`${row.shiftId}-${row.dispenserId}`}>
               <td className="px-5 py-3 font-medium">{row.dispenserLabel}<span className="block text-xs text-gray-500">{row.shiftLabel || 'Shift'}</span></td>
@@ -124,12 +122,10 @@ export default async function FuelDashboard({ searchParams }) {
               <td className="px-5 py-3">{row.productName}</td>
               <td className="px-5 py-3">{row.litres.toLocaleString('en-NG')} L</td>
               <td className="px-5 py-3">{money(row.expectedAmount)}</td>
-              <td className="px-5 py-3">{money(row.cash)}</td>
-              <td className="px-5 py-3">{money(row.pos)}</td>
               <td className="px-5 py-3">{money(row.collected)}</td>
               <td className="px-5 py-3 text-right"><Link href={link('/admin/fuel/collections')} className="font-semibold text-brand-700">Record cash/POS</Link></td>
             </tr>)}
-            {cashierRows.rows.length === 0 && <tr><td colSpan={9} className="px-5 py-6 text-center text-gray-500">No supervisor pump readings have been submitted for this day.</td></tr>}
+            {cashierRows.rows.length === 0 && <tr><td colSpan={7} className="px-5 py-6 text-center text-gray-500">No supervisor pump readings have been submitted for this day.</td></tr>}
           </tbody>
         </table>
       </div>

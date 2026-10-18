@@ -55,9 +55,7 @@ export const POST = withOrg(async (request) => {
     const body = await request.json();
     const branchId = body.branchId;
     const productId = body.productId;
-    const costPerUnit = body.costPerUnit === '' || body.costPerUnit == null
-      ? null
-      : Math.round(Number(body.costPerUnit));
+    const costPerUnit = Math.round(Number(body.costPerUnit));
     const vehiclePlate = (body.vehiclePlate || '').trim();
     // 'allocation' = paid-for batch not yet on hand — see lib/allocation.js. A vehicle isn't required
     // yet in that mode (it's picked at the assign step, once one is actually sent to collect it).
@@ -85,7 +83,7 @@ export const POST = withOrg(async (request) => {
 
     if (!branchId || !productId) throw new ApiError('Branch and product are required', 400);
     if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) throw new ApiError('Quantity must be positive', 400);
-    if (costPerUnit != null && (!Number.isFinite(costPerUnit) || costPerUnit < 0)) throw new ApiError('Invalid cost per unit', 400);
+    if (!Number.isFinite(costPerUnit) || costPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
     if (!body.supplierId && !body.newSupplierName) throw new ApiError('Choose a supplier or name a new one', 400);
 
     const { delivery, flagged } = await prisma.$transaction(async (tx) => {
@@ -101,7 +99,7 @@ export const POST = withOrg(async (request) => {
         vehicleId = existing ? existing.id : (await tx.vehicle.create({ data: { plateNumber: vehiclePlate } })).id;
       }
 
-      const totalCost = costPerUnit == null ? null : Math.round(totalQuantity * costPerUnit);
+      const totalCost = Math.round(totalQuantity * costPerUnit);
       const dipFields = useDip ? { tankId: body.tankId, declaredLoad, openingDip, closingDip, offloadVariance } : {};
       const created = await tx.delivery.create({
         data: asAllocation

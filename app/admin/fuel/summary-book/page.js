@@ -461,7 +461,7 @@ function DayDetail({ branchId, date, onBack }) {
                               <span className="block text-xs text-amber-700">{d.offloadVariance > 0 ? '+' : ''}{d.offloadVariance.toFixed(1)}L vs declared</span>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-right">{d.totalCost == null ? '—' : formatMoney(d.totalCost / 100)}</td>
+                          <td className="px-4 py-2 text-right">{formatMoney(d.totalCost / 100)}</td>
                           <td className="px-4 py-2 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
                           <td className="px-4 py-2 text-right">
                             {d.qtyRemaining == null && <button onClick={() => openCorrect(d)} className={tableActionCls}>Correct</button>}
