@@ -40,6 +40,17 @@ enum CatalogStatus {
   retired
 }
 
+enum BusinessAddonType {
+  shop
+  petrol_station
+  distributor
+}
+
+enum BusinessAddonStatus {
+  active
+  canceled
+}
+
 // Platform-wide, not tenant-scoped (no organizationId — every organization sees the same catalog).
 // This is what makes "add a service without a code deploy" real for the subscribe/availability
 // layer: super_admin manages rows here instead of a hardcoded array. `key` is what Service.type
@@ -81,9 +92,9 @@ model PlatformSettings {
 // The tenant. Everything else in the system belongs to exactly one Organization
 // (except User, which is null-organization only for the super_admin platform operator).
 model Organization {
-  id   String @id @default(cuid())
-  name String
-  slug String @unique
+  id           String @id @default(cuid())
+  name         String
+  slug         String @unique
   // Chosen at registration. The database rejects later changes and services of another type.
   businessType String
 
@@ -185,6 +196,7 @@ model Organization {
   legacyFuelRecords    LegacyFuelRecord[]
 
   provisioningRequests ProvisioningRequest[]
+  addons               BusinessAddon[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -222,10 +234,11 @@ model ProvisioningRequest {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  type        String // 'service' | 'branch'
+  type        String // 'service' | 'branch' | 'addon'
   serviceType String? // ServiceCatalog.key — required when type='service'
   serviceId   String? // which existing Service a new branch belongs to — required when type='branch'
-  service     Service? @relation(fields: [serviceId], references: [id])
+  service     Service?           @relation(fields: [serviceId], references: [id])
+  addonType   BusinessAddonType? // required when type='addon'
   branchName  String? // proposed name for the branch/first branch, captured up front so approval is one click
 
   note         String?
@@ -246,6 +259,27 @@ model ProvisioningRequest {
   @@index([organizationId])
 }
 
+// Paid capabilities that sit under the organization's one registered business type.
+// `shop` and `petrol_station` are location add-ons; `distributor` is a petroleum
+// capability and does not require a branch.
+model BusinessAddon {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           BusinessAddonType
+  status         BusinessAddonStatus @default(active)
+  branchId       String?             @unique
+  branch         Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  price          Int?
+  startsAt       DateTime            @default(now())
+  endsAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([organizationId, branchId])
+  @@index([organizationId, type, status])
+}
+
 // A branch of a specific service — "branches will be handled the way petrol-station-app handles
 // different stations under one admin." organizationId is denormalized from the parent Service so
 // tenant-scoped queries never need to join through Service just to filter by tenant.
@@ -257,11 +291,14 @@ model Branch {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  name     String
-  code     String
-  address  String?
-  isActive Boolean @default(true)
-  config   Json    @default("{}")
+  name      String
+  code      String
+  // core is the branch included with the primary subscription; other values are
+  // paid add-on locations.
+  addonType BusinessAddonType?
+  address   String?
+  isActive  Boolean            @default(true)
+  config    Json               @default("{}")
 
   createdAt DateTime @default(now())
 
@@ -276,6 +313,7 @@ model Branch {
   shifts          Shift[]
   cashDeposits    CashDeposit[]
   flags           Flag[]
+  addon           BusinessAddon?
 
   // Fuel pack
   tanks                Tank[]
@@ -467,7 +505,7 @@ model CustomerAdjustment {
   balanceBefore Int
   balanceAfter  Int
   createdBy     String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
   saleDate      DateTime? // Actual business date for Building Material sales; null on legacy orders.
 
   @@index([organizationId])
@@ -685,7 +723,7 @@ model ChatMessage {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   branchId   String?
-  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   fromCustomer Boolean // true = the customer sent it; false = staff sent it
   // Loose reference, not a relation — same convention as Customer.createdBy — so a staff login being
@@ -750,12 +788,12 @@ model Order {
   customerId     String?
   customer       Customer?    @relation(fields: [customerId], references: [id])
 
-  orderNumber   String
+  orderNumber      String
   // active | void | pending (self-service portal orders sit pending until staff confirms them —
   // stock/credit only apply once active, see app/api/admin/materials/pending-orders).
-  status        String   @default("active")
-  subtotal      Int
-  discount      Int      @default(0)
+  status           String    @default("active")
+  subtotal         Int
+  discount         Int       @default(0)
   // Cement/aggregate sales only (ecana_shop-app's Sale.transportFee) — added on top of subtotal,
   // not subtracted like discount. Zero everywhere else. All three of transportFee/labourFee/otherFee
   // are the order-level total of whatever was entered per line (see OrderLine.transportFee and
@@ -763,26 +801,26 @@ model Order {
   // cement ATC and an aggregate truck are two different deliveries with their own costs), and these
   // are the sum, kept here too so every existing receipt/report reading Order.transportFee etc.
   // keeps working unchanged.
-  transportFee  Int      @default(0)
-  labourFee     Int      @default(0)
-  otherFee      Int      @default(0)
-  grandTotal    Int
-  paymentMethod String? // cash | credit | pos | transfer | paystack
-  offlineId     String?
-  createdBy     String?
+  transportFee     Int       @default(0)
+  labourFee        Int       @default(0)
+  otherFee         Int       @default(0)
+  grandTotal       Int
+  paymentMethod    String? // cash | credit | pos | transfer | paystack
+  offlineId        String?
+  createdBy        String?
   // Which side of the Materials business this sale came from — 'shop' (retail counter/self-service)
   // vs 'atc' (wholesale allocation, see lib/allocation.js) vs 'retail' (the separate General Retail
   // Store service). Null = unspecified/legacy. Lets a shared customer statement keep them
   // distinguishable without a separate ledger per channel.
-  channel       String?
-  createdAt     DateTime @default(now())
+  channel          String?
+  createdAt        DateTime  @default(now())
   // Separate from Order.status: a booked sale can still await physical delivery.
   // Existing sales are treated as delivered; new Building Material sales set this explicitly.
-  deliveryStatus   String   @default("delivered") // pending | delivered
+  deliveryStatus   String    @default("delivered") // pending | delivered
   deliveredAt      DateTime?
   deliveryDate     DateTime? // Actual delivery date; deliveredAt is the recorded-at audit timestamp.
   deliveredBy      String?
-  deliveryRevision Int      @default(0)
+  deliveryRevision Int       @default(0)
 
   lines       OrderLine[]
   allocations PaymentAllocation[]
@@ -811,12 +849,12 @@ model OrderLine {
   allocationId String?
   allocation   Delivery?  @relation(fields: [allocationId], references: [id])
 
-  qty          Float
+  qty               Float
   // Physical quantity deducted from stock or an ATC; may differ from billed qty.
-  stockQty     Float?
-  unitPrice    Int
-  managerUnitPrice Int? // Explicit price approved for a pending customer order; retained on confirmation.
-  lineTotal    Int
+  stockQty          Float?
+  unitPrice         Int
+  managerUnitPrice  Int? // Explicit price approved for a pending customer order; retained on confirmation.
+  lineTotal         Int
   // Sale-time snapshots for transaction reports; truck and supplier records can change later.
   sourceTruckNumber String?
   sourceDriverName  String?
@@ -824,8 +862,8 @@ model OrderLine {
   quality           String?
   // This line's own transport cost (a combined cement+aggregate sale prices transport per item, not
   // once for the whole order — see Order.transportFee above) — 0 everywhere else.
-  transportFee Int             @default(0)
-  costs        OrderLineCost[]
+  transportFee      Int             @default(0)
+  costs             OrderLineCost[]
 
   @@index([orderId])
   @@index([productId])
@@ -895,8 +933,8 @@ model Delivery {
   product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   quantity          Float
-  costPerUnit       Int
-  totalCost         Int
+  costPerUnit       Int?
+  totalCost         Float?
   status            String? // pending | assigned | loaded | arrived | received | closed
   // Set (to `quantity`) only when this delivery starts life as a not-yet-received allocation — a
   // batch already paid for but not yet counted as on-hand stock, drawn down directly by sales that
@@ -996,11 +1034,11 @@ model Shift {
   status       String  @default("open") // open | closed
   note         String?
 
-  openedAt   DateTime  @default(now())
+  openedAt      DateTime  @default(now())
   operatingDate String? // YYYY-MM-DD in the station's operating timezone; retained across midnight
-  closedAt   DateTime?
-  reopenedBy String?
-  reopenedAt DateTime?
+  closedAt      DateTime?
+  reopenedBy    String?
+  reopenedAt    DateTime?
 
   // Multi-shift-per-day labeling (petrol-station-app's shiftKey/shiftOrder/totalShiftsPlanned) — all
   // optional. A branch that just runs one shift at a time leaves these unset and nothing changes;
@@ -1174,8 +1212,8 @@ model Tank {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  dispensers Dispenser[]
-  deliveries Delivery[]
+  dispensers   Dispenser[]
+  deliveries   Delivery[]
   fuelTankDips FuelTankDip[]
 
   @@unique([branchId, label])
@@ -1209,24 +1247,24 @@ model Dispenser {
 // three-way check per core-algorithms skill §5/§6 — cash, sales records and pump meter movement
 // must agree — is computed from this plus the shift's Order/StockMove rows, not stored here.
 model MeterReading {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branchId       String
-  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  dispenserId    String
-  dispenser      Dispenser    @relation(fields: [dispenserId], references: [id], onDelete: Cascade)
-  shiftId        String
-  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId           String
+  branch             Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dispenserId        String
+  dispenser          Dispenser    @relation(fields: [dispenserId], references: [id], onDelete: Cascade)
+  shiftId            String
+  shift              Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   // Set when this reading is closed — the Order it produced, so shift-end cash-up can sum exactly
   // this shift's sales instead of approximating by timestamp.
-  orderId        String?      @unique
+  orderId            String?      @unique
   // Imported older records can prove the sale without proving a pump-level
   // collection. Such a row must never be shown as an unpaid attendant debt.
-  collectionCoverage String @default("verified") // verified | unknown
-  legacySourceId String? @unique
-  tankIdAtShift  String?
-  productIdAtShift String?
+  collectionCoverage String       @default("verified") // verified | unknown
+  legacySourceId     String?      @unique
+  tankIdAtShift      String?
+  productIdAtShift   String?
 
   opening      Float
   closing      Float?
@@ -1261,7 +1299,7 @@ model MeterReading {
   paymentRecordedBy String?
   paymentRecordedAt DateTime?
 
-  posPayments PosPayment[]
+  posPayments     PosPayment[]
   fuelCollections FuelCollection[]
 
   @@unique([shiftId, dispenserId])
@@ -1310,32 +1348,32 @@ model PosPayment {
 // Each cashier handover is immutable. Later payments against a short collection create another
 // row, including after a shift closes; no pump's overpayment offsets another pump's balance.
 model FuelCollection {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branchId       String
-  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  shiftId        String
-  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  meterReadingId String
-  meterReading   MeterReading @relation(fields: [meterReadingId], references: [id], onDelete: Cascade)
-  dispenserId    String
-  attendantId    String?
-  operatingDate  String
-  cashAmount     Int
-  posAmount      Int
-  totalAmount    Int
-  posEntries     Json
-  expectedAmount Int
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branchId         String
+  branch           Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shiftId          String
+  shift            Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  meterReadingId   String
+  meterReading     MeterReading @relation(fields: [meterReadingId], references: [id], onDelete: Cascade)
+  dispenserId      String
+  attendantId      String?
+  operatingDate    String
+  cashAmount       Int
+  posAmount        Int
+  totalAmount      Int
+  posEntries       Json
+  expectedAmount   Int
   outstandingAfter Int
-  collectionType String // initial | supplemental | post_close_settlement
-  recordedBy     String
-  requestId      String?
-  note           String?
-  voidedAt       DateTime?
-  voidedBy       String?
-  voidReason     String?
-  createdAt      DateTime @default(now())
+  collectionType   String // initial | supplemental | post_close_settlement
+  recordedBy       String
+  requestId        String?
+  note             String?
+  voidedAt         DateTime?
+  voidedBy         String?
+  voidReason       String?
+  createdAt        DateTime     @default(now())
 
   @@unique([organizationId, requestId])
   @@index([organizationId, shiftId, dispenserId])
@@ -1359,7 +1397,7 @@ model FuelTankDip {
   period         String // opening | closing
   measured       Float
   recordedBy     String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   @@unique([shiftId, tankId, period])
   @@index([organizationId, branchId, operatingDate])

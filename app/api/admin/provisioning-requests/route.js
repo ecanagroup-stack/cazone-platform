@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { isValidServiceType, serviceLabel } from '@/lib/services';
 import { ApiError } from '@/lib/apiError';
+import { assertAddonAllowed } from '@/lib/businessAddons';
 
 // Requesting a new service or branch — not creating one directly. An org picks what it runs at
 // signup with one branch included; wanting more is a request cazone quotes a price for, same manual
@@ -25,7 +26,7 @@ export const POST = withOrg(async (request) => {
   }
   try {
     const body = await request.json();
-    const type = body.type; // 'service' | 'branch'
+    const type = body.type; // 'service' | 'branch' | 'addon'
     const note = (body.note || '').trim() || null;
     const branchName = (body.branchName || '').trim();
     if (!branchName) throw new ApiError('Name the branch you want', 400);
@@ -47,14 +48,46 @@ export const POST = withOrg(async (request) => {
     }
 
     if (type === 'branch') {
-      const serviceId = body.serviceId;
-      const service = await prisma.service.findUnique({ where: { id: serviceId } });
-      if (!service) throw new ApiError('Service not found', 404);
-      const pendingDup = await prisma.provisioningRequest.findFirst({ where: { type: 'branch', serviceId, branchName, status: { in: ['pending', 'quoted'] } } });
-      if (pendingDup) throw new ApiError('A request for this branch is already pending', 400);
+      throw new ApiError('Additional locations must be requested as paid business add-ons', 400);
+    }
 
+    if (type === 'addon') {
+      const addonType = body.addonType;
+      const org = await prisma.organization.findUnique({
+        where: { id: session.user.organizationId },
+        select: { businessType: true },
+      });
+      const addon = assertAddonAllowed(org.businessType, addonType);
+      if (addon.requiresBranch && !branchName) throw new ApiError(`Name the ${addon.label.toLowerCase()}`, 400);
+      const pendingDup = await prisma.provisioningRequest.findFirst({
+        where: {
+          organizationId: session.user.organizationId,
+          type: 'addon',
+          addonType,
+          status: { in: ['pending', 'quoted'] },
+        },
+      });
+      if (pendingDup) throw new ApiError('A request for this add-on is already pending', 400);
+      if (addonType === 'distributor') {
+        const active = await prisma.businessAddon.findFirst({
+          where: { organizationId: session.user.organizationId, type: addonType, status: 'active' },
+        });
+        if (active) throw new ApiError('The distributor add-on is already active', 400);
+      }
+      const service = await prisma.service.findFirst({
+        where: { organizationId: session.user.organizationId, type: org.businessType },
+        select: { id: true },
+      });
+      if (!service) throw new ApiError('Your primary business service is not active', 400);
       const created = await prisma.provisioningRequest.create({
-        data: { type: 'branch', serviceId, branchName, note, requestedBy: session.user.id },
+        data: {
+          type: 'addon',
+          addonType,
+          serviceId: service.id,
+          branchName: addon.requiresBranch ? branchName : null,
+          note,
+          requestedBy: session.user.id,
+        },
       });
       return NextResponse.json({ success: true, data: created }, { status: 201 });
     }

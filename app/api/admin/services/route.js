@@ -13,10 +13,16 @@ export const GET = withOrg(async () => {
   const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { businessType: true } });
   const services = await prisma.service.findMany({
     where: { organizationId, type: org.businessType },
-    include: { branches: { orderBy: { name: 'asc' } } },
+    include: {
+      branches: { orderBy: { name: 'asc' }, include: { addon: true } },
+    },
     orderBy: { createdAt: 'asc' },
   });
-  return NextResponse.json({ success: true, data: services, businessType: org.businessType });
+  const addons = await prisma.businessAddon.findMany({
+    where: { organizationId, status: 'active' },
+    orderBy: { createdAt: 'asc' },
+  });
+  return NextResponse.json({ success: true, data: services, addons, businessType: org.businessType });
 });
 
 // Enabling a service also creates its first branch in the same step — a service with zero branches

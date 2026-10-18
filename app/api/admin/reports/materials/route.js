@@ -37,7 +37,7 @@ export const GET = withOrg(async (request) => {
         const key = d.vehicleId;
         const row = byVehicle.get(key) || { plateNumber: d.vehicle.plateNumber, driverName: d.vehicle.driverName || '—', trips: 0, totalCost: 0 };
         row.trips += 1;
-        row.totalCost += d.totalCost;
+        row.totalCost = row.totalCost == null || d.totalCost == null ? null : row.totalCost + d.totalCost;
         byVehicle.set(key, row);
       }
       const rows = [...byVehicle.values()].sort((a, b) => a.plateNumber.localeCompare(b.plateNumber));
@@ -59,7 +59,10 @@ export const GET = withOrg(async (request) => {
         costPerUnit: d.costPerUnit,
         totalCost: d.totalCost,
       }));
-      const totals = { quantity: rows.reduce((s, r) => s + r.quantity, 0), cost: rows.reduce((s, r) => s + r.totalCost, 0) };
+      const totals = {
+        quantity: rows.reduce((s, r) => s + r.quantity, 0),
+        cost: rows.some((r) => r.totalCost == null) ? null : rows.reduce((s, r) => s + r.totalCost, 0),
+      };
       return NextResponse.json({ success: true, data: rows, totals });
     }
 

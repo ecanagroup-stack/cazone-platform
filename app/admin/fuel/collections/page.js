@@ -111,9 +111,14 @@ export default function FuelCollectionsPage() {
         <div className="divide-y text-sm">{data.rows.flatMap((row) => row.collections.map((collection) => ({ ...collection, dispenserLabel: row.dispenserLabel, attendantName: row.attendantName })))
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5).map((collection) =>
             <div key={collection.id} className={`flex justify-between gap-3 py-2 ${collection.voidedAt ? 'text-gray-400 line-through' : ''}`}>
-              <span>{collection.dispenserLabel} · {collection.attendantName || 'Unassigned'} · Cash ₦{(collection.cashAmount / 100).toLocaleString()} · POS ₦{(collection.posAmount / 100).toLocaleString()}</span>
+              <span>{collection.dispenserLabel} · {collection.attendantName || 'Unassigned'} · Cash ₦{(collection.cashAmount / 100).toLocaleString()} · POS ₦{(collection.posAmount / 100).toLocaleString()}{collection.posDetails?.length ? ` (${collection.posDetails.map((entry) => `${entry.terminalLabel}: ₦${(entry.amount / 100).toLocaleString()}`).join(', ')})` : ''}</span>
               <strong>₦{(collection.totalAmount / 100).toLocaleString()}</strong>
             </div>)}</div>
+        <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
+          <div className="rounded-lg bg-emerald-50 px-3 py-2"><p className="text-xs text-emerald-700">Total cash</p><p className="font-semibold text-emerald-900">₦{(data.collectionTotals.cash / 100).toLocaleString()}</p></div>
+          <div className="rounded-lg bg-blue-50 px-3 py-2"><p className="text-xs text-blue-700">Total POS</p><p className="font-semibold text-blue-900">₦{(data.collectionTotals.pos / 100).toLocaleString()}</p></div>
+          <div className="rounded-lg bg-gray-50 px-3 py-2"><p className="text-xs text-gray-600">Total collections</p><p className="font-semibold text-gray-900">₦{(data.collectionTotals.total / 100).toLocaleString()}</p></div>
+        </div>
       </Card>}
       <Card className="overflow-x-auto"><table className="w-full text-sm">
         <thead><tr className="border-b text-left"><th className="p-3">Pump / attendant</th><th className="p-3">Sale</th><th className="p-3">Collected</th><th className="p-3">Outstanding</th><th className="p-3">Handover history</th><th className="p-3" /></tr></thead>
@@ -123,7 +128,7 @@ export default function FuelCollectionsPage() {
           <td className="p-3">₦{(row.collected / 100).toLocaleString()}</td>
           <td className="p-3">{row.collectionCoverage === 'unknown' ? 'Unknown (legacy)' : `₦${(row.outstanding / 100).toLocaleString()}`}</td>
           <td className="p-3">{row.collections.length ? row.collections.map((c) => <div key={c.id} className={c.voidedAt ? 'line-through text-gray-400' : ''}>
-            {c.collectionType.replaceAll('_', ' ')}: ₦{(c.totalAmount / 100).toLocaleString()}{c.voidedAt ? ' (corrected)' : ''}
+            {c.collectionType.replaceAll('_', ' ')}: Cash ₦{(c.cashAmount / 100).toLocaleString()} · POS ₦{(c.posAmount / 100).toLocaleString()} · Total ₦{(c.totalAmount / 100).toLocaleString()}{c.voidedAt ? ' (corrected)' : ''}
             {session?.user?.role === 'owner' && row.shiftStatus === 'open' && !c.voidedAt && <button onClick={() => { setVoiding(c); setVoidReason(''); }} className="ml-2 text-red-600 text-xs">Correct</button>}
           </div>) : 'None'}</td>
           <td className="p-3">{canCollect && row.collectionCoverage !== 'unknown' && row.litres > 0 && (row.shiftStatus === 'open' || (row.collections.length > 0 && row.outstanding > 0)) && <button onClick={() => openCollection(row)} className="text-brand-600 font-medium">{row.shiftStatus === 'closed' ? 'Settle' : 'Collect'}</button>}</td>
