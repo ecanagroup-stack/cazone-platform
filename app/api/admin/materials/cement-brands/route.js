@@ -16,7 +16,7 @@ export const GET = withOrg(async (request) => {
 
     const brands = await prisma.product.findMany({
       where: { serviceId, isActive: true, abbreviation: { not: null } },
-      include: { priceRules: { where: { validTo: null } } },
+      include: { priceRules: { where: { customerId: null, branchId: null, validTo: null }, orderBy: { validFrom: 'desc' }, take: 1 } }, // list price only, as resolvePrice charges it
       orderBy: { name: 'asc' },
     });
     const data = brands.map((b) => ({ ...b, currentPrice: b.priceRules[0]?.price ?? null, priceRules: undefined }));

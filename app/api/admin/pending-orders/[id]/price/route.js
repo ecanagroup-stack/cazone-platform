@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
+import { verifyOtp } from '@/lib/otp';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+
+// The only place a unit price can be changed by hand (sales forms, counters and the pending-sale edit all
+// charge the price list), so it needs a verification code and tells the oversight roles. sale_discount
+// is the code's purpose: a manager lowering a customer's price is a discount by another name.
 
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
@@ -37,6 +43,8 @@ export const PATCH = withOrg(async (request, { params }) => {
       const claim = await tx.order.updateMany({ where: { id, status: 'pending', deliveryRevision: order.deliveryRevision },
         data: { deliveryRevision: { increment: 1 } } });
       if (claim.count !== 1) throw new ApiError('This order changed; reload it', 409);
+      // Spent only once the claim has succeeded; a wrong code rolls the claim back with the throw.
+      await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.otp });
       for (const { line, cents, lineTotal } of prices) await tx.orderLine.update({ where: { id: line.id },
         data: { unitPrice: cents, managerUnitPrice: cents === line.unitPrice ? line.managerUnitPrice : cents,
           priceRuleId: cents === line.unitPrice ? line.priceRuleId : null, lineTotal } });
@@ -48,6 +56,11 @@ export const PATCH = withOrg(async (request, { params }) => {
           prices: prices.map(({ line, cents }) => ({ id: line.id, unitPrice: cents })) } } });
       return updated;
     }, { timeout: 15000, isolationLevel: 'Serializable' });
+    await notifyAlteration({
+      actor: session.user, branchId: order.branchId, type: 'sale_discount', title: 'Pending order prices edited',
+      message: `${session.user.name} changed the prices on pending order ${order.orderNumber}. Reason: ${reason}`,
+      relatedType: 'Order', relatedId: id,
+    });
     return NextResponse.json({ success: true, data: result });
   } catch (error) { return NextResponse.json({ error: error.message }, { status: error.status || (error.code === 'P2034' ? 409 : 400) }); }
 });

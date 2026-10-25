@@ -6,6 +6,7 @@ import { verifyOtp } from '@/lib/otp';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates } from '@/lib/saleDates.mjs';
+import { toCents } from '@/lib/money.mjs';
 
 // Cement Warehouse's "Record Sale" tab (ecana_shop-app's app/admin/shop's sell tab + /api/sales'
 // itemType==='shop' branch) — the one Cement Warehouse flow that's a real cart (multiple lines),
@@ -25,25 +26,24 @@ export const POST = withOrg(async (request) => {
     if (body.delivered != null && typeof body.delivered !== 'boolean') throw new ApiError('Delivered must be true or false', 400);
     const { saleDate, deliveryDate } = materialSaleDates(body);
     const lines = Array.isArray(body.lines) ? body.lines : [];
-    const transportFee = Math.round(Number(body.transportFee) || 0) * 100;
+    const transportFee = toCents(body.transportFee);
 
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (lines.length === 0) throw new ApiError('Add at least one item', 400);
     if (!customerId && paymentMethod === 'credit') throw new ApiError('Walk-in sales must be paid immediately — select a customer to move this to their account', 400);
 
+    // No unit price here on purpose: createSaleOrder prices every line from the price list.
     const priceLines = lines.map((l) => ({
       productId: l.productId,
       qty: Number(l.billQty ?? l.qty), // billed drives price
       stockQty: Number(l.qty), // actual supplied drives the stock move
-      unitPrice: Math.round(Number(l.unitPrice) * 100),
     }));
-
-    if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
 
     const result = await createSaleOrder({
       session, branchId, customerId, paymentMethod,
       lines: priceLines,
       overrideCredit: !!body.overrideCredit,
+      beforeWrite: body.overrideCredit ? () => verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp }) : undefined,
       transportFee, channel: 'shop',
       deliveryStatus: body.delivered ? 'delivered' : 'pending',
       saleDate, deliveryDate,

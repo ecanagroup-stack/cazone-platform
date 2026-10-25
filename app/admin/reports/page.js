@@ -380,7 +380,7 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Field label={`Physical quantity (${line.unit})`}><NumberInput required value={line.stockQty} onChange={(e) => updateLine(line.id, 'stockQty', e.target.value)} /></Field>
           <Field label={`Billed quantity (${line.unit})`}><NumberInput required value={line.qty} onChange={(e) => updateLine(line.id, 'qty', e.target.value)} /></Field>
-          <Field label="Unit price"><NumberInput required value={line.unitPrice} onChange={(e) => updateLine(line.id, 'unitPrice', e.target.value)} /></Field>
+          <Field label="Unit price"><p className={`${inputCls} bg-gray-50 text-gray-700`}>{formatMoney(Number(line.unitPrice))}</p></Field>
           <Field label="Transport"><NumberInput required value={line.transportFee} onChange={(e) => updateLine(line.id, 'transportFee', e.target.value)} /></Field>
         </div>
         {line.costs.map((cost) => <Field key={cost.id} label={`${cost.type}${cost.detail ? `: ${cost.detail}` : ''}`}><NumberInput required value={cost.amount} onChange={(e) => updateCost(line.id, cost.id, e.target.value)} /></Field>)}

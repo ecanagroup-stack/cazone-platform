@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { runUnscoped, runWithOrg } from '@/lib/tenantScope';
 import { verifySignature } from '@/lib/paystack';
 import { provisionRequest } from '@/lib/provisioning';
-import { createSaleOrder } from '@/lib/sale';
+import { createSaleOrder, priceLines } from '@/lib/sale';
 import { allocatePayment } from '@/lib/payments';
 import { logAudit } from '@/lib/audit';
 import { loadOrgCustomerFlags } from '@/lib/orgLookup';
@@ -149,20 +149,34 @@ async function handleBalancePayment(data, metadata) {
 // A customer paying for a Shop order immediately, in full, rather than placing it on credit
 // (app/api/portal/shop/pay) — reuses createSaleOrder exactly like a staff-recorded cash sale would:
 // stock decrements now, nothing added to the customer's balance (paymentMethod isn't 'credit'), no
-// staff confirmation step to wait on since the money's already real. Lines are re-priced from
-// scratch here (never trusted from the client's earlier prepare-time total — core-algorithms skill
-// §1), so a price that changed between checkout and this webhook firing is what actually gets billed.
+// staff confirmation step to wait on since the money's already real. The metadata is client-supplied,
+// so only product and quantity are taken from its lines, and the order is priced from scratch here
+// (never trusted from the client's earlier prepare-time total — core-algorithms skill §1) with the
+// customer's own transport rate. If what Paystack actually collected doesn't cover that total
+// (a tampered checkout, or a price that rose in between) no order is made: it's flagged for a refund.
 async function handleShopOrderPayment(data, metadata) {
-  const { customerId, organizationId, branchId, lines, transportFee } = metadata;
+  const { customerId, organizationId, branchId } = metadata;
   if (!(await canApplyCustomerPayment(data, metadata, 'hasOrdering'))) return;
-  if (!branchId || !Array.isArray(lines) || lines.length === 0) return;
-  await runWithOrg(organizationId, () =>
-    createSaleOrder({
+  if (!branchId || !Array.isArray(metadata.lines) || metadata.lines.length === 0) return;
+  const lines = metadata.lines.map((line) => ({ productId: line?.productId, qty: line?.qty }));
+  await runWithOrg(organizationId, async () => {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { transportRate: true } });
+    const transportFee = customer?.transportRate || 0;
+    const { subtotal } = await priceLines(lines, customerId);
+    if (!(data.amount >= subtotal + transportFee)) {
+      await prisma.flag.create({ data: {
+        targetType: 'Payment', targetId: data.reference || null, severity: 'issue', classification: 'issue',
+        reason: `A shop order payment of ${data.amount / 100} (Paystack ref ${data.reference}) was received but is less than the order total of ${(subtotal + transportFee) / 100}, so no order was created. Refund or reconcile it manually.`,
+        raisedBy: 'system:paystack',
+      } });
+      return;
+    }
+    await createSaleOrder({
       session: { user: { organizationId, id: null } },
       branchId, customerId, paymentMethod: 'paystack', lines,
-      transportFee: Number(transportFee) || 0, channel: 'shop', stockReason: 'sale',
-    })
-  );
+      transportFee, channel: 'shop', stockReason: 'sale',
+    });
+  });
 }
 
 // charge.success doesn't reliably carry the subscription_code the first time a plan-linked charge

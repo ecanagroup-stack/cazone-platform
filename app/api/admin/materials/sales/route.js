@@ -3,12 +3,14 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { resolvePrice } from '@/lib/pricing';
-import { createSaleOrder, priceLines } from '@/lib/sale';
+import { isAllocationSellable } from '@/lib/allocation';
+import { createSaleOrder, priceLines, assertCustomerAccessible } from '@/lib/sale';
 import { checkCredit } from '@/lib/credit';
 import { verifyOtp } from '@/lib/otp';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates } from '@/lib/saleDates.mjs';
+import { toCents } from '@/lib/money.mjs';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // A combined materials sale — one customer, one order, any mix of cement (sold down a pre-recorded
@@ -17,9 +19,8 @@ import { jsonSafe } from '@/lib/jsonSafe';
 // carries its own transport fee and any number of labour/other costs (a cement ATC and an aggregate
 // truck are two different deliveries with their own costs) — lib/sale.js's priceLines/createSaleOrder
 // roll those into the order's transportFee/labourFee/otherFee totals; discount stays a single
-// whole-order figure, same as the old aggregate flow.
-const toCents = (v) => Math.round(Number(v) || 0) * 100;
-const toCentsPrice = (v) => Math.round(Number(v) * 100);
+// whole-order figure, same as the old aggregate flow. Unit prices are not part of the request: they
+// are always resolved server-side from the price list (lib/sale.js priceLines).
 
 function centsCosts(costs) {
   return (Array.isArray(costs) ? costs : [])
@@ -46,23 +47,32 @@ export const POST = withOrg(async (request) => {
 
     if (!branchId || !customerId) throw new ApiError('Branch and customer are required', 400);
     if (items.length === 0) throw new ApiError('Add at least one item', 400);
+    // Checked here as well as in createSaleOrder: that runs after the codes are spent and the quarry
+    // purchases are recorded, and a sale refused then would leave both behind.
+    await assertCustomerAccessible(branchId, customerId);
 
     // Resolve every item to a productId (and, for aggregate, the purchase leg it'll need) before
     // pricing/credit — no writes yet, so a rejected sale leaves nothing behind.
     const resolved = [];
+    const drawnFromAtc = new Map(); // atcId -> bags already requested by earlier items in this sale
     for (const item of items) {
       if (item.kind === 'cement') {
         const atc = await prisma.delivery.findUnique({ where: { id: item.atcId }, include: { vehicle: true, supplier: true, product: true } });
         if (!atc || atc.qtyRemaining == null) throw new ApiError('ATC not found', 404);
         if (atc.branchId !== branchId) throw new ApiError('That ATC belongs to a different branch', 400);
         const actualQty = Number(item.actualQty);
-        const unitPrice = toCentsPrice(item.unitPrice);
         if (!Number.isFinite(actualQty) || actualQty <= 0) throw new ApiError('Quantity supplied must be a positive number', 400);
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new ApiError('Price per bag is required', 400);
+        // Same checks createSaleOrder's stock step makes, done up front so a sale that can't be
+        // fulfilled fails before a verification code is spent or a quarry purchase is recorded.
+        const atcLabel = [atc.product?.abbreviation, atc.atcNumber].filter(Boolean).join('-') || 'selected';
+        if (!isAllocationSellable(atc)) throw new ApiError(`The ${atcLabel} ATC is not available to sell from`, 400);
+        const requested = (drawnFromAtc.get(atc.id) || 0) + actualQty;
+        if (requested > atc.qtyRemaining) throw new ApiError(`Only ${atc.qtyRemaining} bags remaining on the ${atcLabel} ATC`, 400);
+        drawnFromAtc.set(atc.id, requested);
         resolved.push({
           kind: 'cement',
           line: {
-            productId: atc.productId, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, unitPrice, allocationId: atc.id,
+            productId: atc.productId, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, allocationId: atc.id,
             transportFee: toCents(item.transportFee), costs: centsCosts(item.costs),
             sourceTruckNumber: atc.vehicle?.plateNumber, sourceDriverName: atc.vehicle?.driverName,
             sourceName: atc.supplier?.name, quality: atc.product?.attributes?.grade || null,
@@ -77,15 +87,17 @@ export const POST = withOrg(async (request) => {
         if (!vehicle) throw new ApiError('Truck not found', 404);
         if (vehicle.type !== 'aggregate') throw new ApiError(`${vehicle.plateNumber} is registered for cement, not aggregates — assign an aggregate truck instead`, 400);
         const actualQty = Number(item.actualQty);
-        const unitPrice = toCentsPrice(item.unitPrice);
         if (!Number.isFinite(actualQty) || actualQty <= 0) throw new ApiError('Quantity must be a positive number', 400);
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new ApiError('Sell price per tonne is required', 400);
+        // The product's list price is the quarry's per-tonne cost (the purchase leg below), not a selling
+        // price, so an aggregate is sold at the customer's own rate for it and nothing else.
+        const sellRule = await prisma.priceRule.findFirst({ where: { productId: product.id, customerId, branchId: null, validTo: null } });
+        if (!sellRule) throw new ApiError(`No selling price set for ${product.name} for this customer — set their rate under Customers > Pricing first`, 400);
         const { price: costPerUnit } = await resolvePrice(product.id);
         resolved.push({
           kind: 'aggregate',
           purchase: { productId: product.id, supplierId: product.supplierId, vehicleId: vehicle.id, actualQty, costPerUnit },
           line: {
-            productId: product.id, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, unitPrice,
+            productId: product.id, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty,
             transportFee: toCents(item.transportFee), costs: centsCosts(item.costs),
             sourceTruckNumber: vehicle.plateNumber, sourceDriverName: vehicle.driverName,
             sourceName: product.supplier?.name, quality: product.attributes?.size || null,
@@ -114,8 +126,13 @@ export const POST = withOrg(async (request) => {
         error: `This exceeds the customer's credit limit by ${(decision.shortfall / 100).toLocaleString()} — confirm to proceed anyway`,
       });
     }
+    // Everything above can reject the sale, so the single-use codes are spent only now.
     if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
-    if (discount > 0) await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
+    let discountOtpVerified = false;
+    if (discount > 0) {
+      await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
+      discountOtpVerified = true;
+    }
 
     // The purchase leg for every aggregate item — buying straight from the quarry at its listed cost,
     // delivered by that item's truck. Not wrapped with the sale below: if the sale is rejected after
@@ -145,7 +162,7 @@ export const POST = withOrg(async (request) => {
       session, branchId, customerId, paymentMethod: 'credit',
       lines: resolved.map((r) => r.line),
       overrideCredit: !!body.overrideCredit,
-      discount, channel: 'atc', deliveryStatus, saleDate, deliveryDate,
+      discount, discountOtpVerified, channel: 'atc', deliveryStatus, saleDate, deliveryDate,
     });
 
     if (result.needsApproval) {

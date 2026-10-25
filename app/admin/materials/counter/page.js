@@ -195,7 +195,6 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   const [cartProductId, setCartProductId] = useState('');
   const [cartQty, setCartQty] = useState('');
   const [cartBillQty, setCartBillQty] = useState('');
-  const [cartPrice, setCartPrice] = useState('');
 
   const [transportHandledBy, setTransportHandledBy] = useState('');
   const [transportMeans, setTransportMeans] = useState('');
@@ -247,12 +246,17 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
     if (qty > (product.onHand || 0)) return toast.error(`Only ${(product.onHand || 0).toLocaleString()} ${product.unit} in stock`);
     const billQty = cartBillQty ? Number(cartBillQty) : qty;
     if (!billQty || billQty <= 0) return toast.error('Enter a valid bill quantity');
-    const price = cartPrice ? Number(cartPrice) : (product.currentPrice || 0) / 100;
+    if (billQty < qty) return toast.error('Bill quantity cannot be below the quantity supplied');
+    // The price is the price list's, shown read-only; the server charges it (and the customer's own
+    // rate, if they have one) regardless of what the form holds.
+    if (product.currentPrice == null) return toast.error(`No price set for ${product.name} — ask the Admin to set it`);
+    const price = product.currentPrice / 100;
 
     setCart((c) => [...c, { id: Date.now(), productId: product.id, name: product.name, unit: product.unit, qty, billQty, price, total: billQty * price }]);
-    setCartProductId(''); setCartQty(''); setCartBillQty(''); setCartPrice('');
+    setCartProductId(''); setCartQty(''); setCartBillQty('');
   };
 
+  const selectedProduct = (products || []).find((p) => p.id === cartProductId);
   const removeFromCart = (id) => setCart((c) => c.filter((l) => l.id !== id));
   const cartTotal = cart.reduce((s, l) => s + l.total, 0);
 
@@ -263,7 +267,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branchId, customerId: customer?.id || null, paymentMethod, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
-          lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, billQty: l.billQty, unitPrice: l.price })),
+          lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, billQty: l.billQty })),
           transportFee: transportHandledBy === 'us' ? (Number(transportPrice) || 0) : 0,
           overrideCredit, otp,
         }),
@@ -389,7 +393,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         <h3 className="font-medium text-sm">Add Item</h3>
         <select
           value={cartProductId}
-          onChange={(e) => { setCartProductId(e.target.value); const p = products.find((x) => x.id === e.target.value); if (p?.currentPrice != null) setCartPrice((p.currentPrice / 100).toString()); }}
+          onChange={(e) => setCartProductId(e.target.value)}
           className={inputCls}
         >
           <option value="">Choose product...</option>
@@ -398,7 +402,11 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         <div className="grid grid-cols-3 gap-3">
           <Field label="Qty (Supplied)"><NumberInput value={cartQty} onChange={(e) => setCartQty(e.target.value)} /></Field>
           <Field label="Bill Qty (optional)"><NumberInput value={cartBillQty} onChange={(e) => setCartBillQty(e.target.value)} placeholder="Defaults to Qty" /></Field>
-          <Field label="Price"><NumberInput value={cartPrice} onChange={(e) => setCartPrice(e.target.value)} /></Field>
+          <Field label="Price">
+            <p className={`${inputCls} bg-gray-50 text-gray-700`}>
+              {!cartProductId ? '—' : selectedProduct?.currentPrice != null ? formatMoney(selectedProduct.currentPrice / 100) : 'No price set'}
+            </p>
+          </Field>
         </div>
         <button type="button" onClick={addToCart} className={`w-full ${btnPrimaryCls}`}>Add to Sale</button>
       </Card>
@@ -417,6 +425,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
             </div>
           ))}
           <div className="border-t pt-2 text-right font-bold">Total: {formatMoney(cartTotal)}</div>
+          <p className="text-xs text-gray-500 text-right">Prices come from the price list; a customer's own rate is applied when the sale is recorded.</p>
         </Card>
       )}
 

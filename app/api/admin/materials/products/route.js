@@ -6,6 +6,10 @@ import { setPrice } from '@/lib/pricing';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 
+// The open list-price rule only (what resolvePrice charges when a customer has no rate of their own),
+// so currentPrice never shows a customer's or a branch's special rate as the product's price.
+const LIST_PRICE_RULE = { where: { customerId: null, branchId: null, validTo: null }, orderBy: { validFrom: 'desc' }, take: 1 };
+
 async function getOwnedService(serviceId, organizationId) {
   if (!serviceId) throw new ApiError('serviceId is required', 400);
   const service = await prisma.service.findFirst({ where: { id: serviceId, organizationId }, select: { id: true, type: true } });
@@ -24,7 +28,7 @@ export const GET = withOrg(async (request) => {
 
     const products = await prisma.product.findMany({
       where: { serviceId },
-      include: { priceRules: { where: { validTo: null } }, tanks: { include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } } },
+      include: { priceRules: LIST_PRICE_RULE, tanks: { include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } } },
       orderBy: { name: 'asc' },
     });
     const onHand = branchId ? await getOnHandByProduct(branchId, products.map((p) => p.id)) : {};

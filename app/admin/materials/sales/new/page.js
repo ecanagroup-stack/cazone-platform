@@ -102,19 +102,25 @@ export default function NewMaterialsSalePage() {
 
   const load = useCallback(async () => {
     if (!serviceId) { setAtcs(null); return; }
-    const [a, b, p, t] = await Promise.all([
+    const [a, b, t] = await Promise.all([
       fetch(`/api/admin/materials/atcs?serviceId=${serviceId}&availableForSale=true`).then((r) => r.json()),
       fetch(`/api/admin/materials/cement-brands?serviceId=${serviceId}`).then((r) => r.json()),
-      fetch(`/api/admin/materials/stonedust?serviceId=${serviceId}`).then((r) => r.json()),
       fetch('/api/admin/materials/trucks').then((r) => r.json()),
     ]);
     if (a.success) setAtcs(a.data); else toast.error(a.error || 'Failed to load ATCs');
     if (b.success) setBrands(b.data);
-    if (p.success) setAggregateProducts(p.data);
     if (t.success) setTrucks(t.data.filter((x) => x.type === 'aggregate'));
   }, [serviceId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // An aggregate sells at the customer's own rate (the product's list price is what the quarry charges
+  // us), so these are loaded per customer.
+  useEffect(() => {
+    if (!serviceId) return;
+    const q = customer ? `&customerId=${customer.id}` : '';
+    fetch(`/api/admin/materials/stonedust?serviceId=${serviceId}${q}`).then((r) => r.json()).then((p) => { if (p.success) setAggregateProducts(p.data); });
+  }, [serviceId, customer]);
 
   useEffect(() => {
     if (customerQuery.trim().length < 2 || !branchId) { setCustomerResults([]); return; }
@@ -153,7 +159,7 @@ export default function NewMaterialsSalePage() {
           branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
           items: cart.map((i) => ({
             kind: i.kind, atcId: i.atcId, productId: i.productId, vehicleId: i.vehicleId,
-            actualQty: i.actualQty, billQty: i.billQty, unitPrice: i.unitPrice,
+            actualQty: i.actualQty, billQty: i.billQty,
             transportFee: i.transportFee, costs: i.costs.map((c) => ({ type: c.type, amount: c.amount, detail: c.detail })),
           })),
           overrideCredit, otp,
@@ -202,7 +208,7 @@ export default function NewMaterialsSalePage() {
             {customer ? (
               <div className="flex items-center justify-between bg-brand-50 rounded px-3 py-2 text-sm">
                 <span>{customer.name}{customer.phone ? ` — ${customer.phone}` : ''} · Balance: {formatMoney(customer.balance / 100)}</span>
-                <button type="button" onClick={() => setCustomer(null)} className="text-xs text-gray-500 hover:text-gray-700">Change</button>
+                <button type="button" onClick={() => { setCustomer(null); setCart((c) => c.filter((i) => i.kind !== 'aggregate')); }} className="text-xs text-gray-500 hover:text-gray-700">Change</button>
               </div>
             ) : (
               <div className="relative">
@@ -228,12 +234,13 @@ export default function NewMaterialsSalePage() {
           </div>
           {itemKind === 'cement'
             ? <AddCementItem atcs={atcs} brands={brands} cart={cart} onAdd={addToCart} />
-            : <AddAggregateItem products={aggregateProducts} trucks={trucks} onAdd={addToCart} />}
+            : <AddAggregateItem products={aggregateProducts} trucks={trucks} customer={customer} onAdd={addToCart} />}
         </Card>
 
         {cart.length > 0 && (
           <Card className="p-4 space-y-3">
             <h3 className="font-semibold text-sm">Sale Items ({cart.length})</h3>
+            <p className="text-xs text-gray-500">Prices come from the price list; the customer's own rate, if they have one, is applied when the sale is recorded.</p>
             <div className="space-y-2">
               {cart.map((i) => (
                 <div key={i.id} className="border rounded p-3 bg-gray-50">
@@ -328,7 +335,6 @@ function AddCementItem({ atcs, brands, cart, onAdd }) {
   const [showAtcDrop, setShowAtcDrop] = useState(false);
   const [qty, setQty] = useState('');
   const [billQty, setBillQty] = useState('');
-  const [price, setPrice] = useState('');
   const [transportFee, setTransportFee] = useState('');
   const [costs, setCosts] = useState([]);
 
@@ -347,15 +353,20 @@ function AddCementItem({ atcs, brands, cart, onAdd }) {
   const alreadyInCart = cart.filter((i) => i.kind === 'cement' && i.atcId === selectedAtcId).reduce((s, i) => s + i.actualQty, 0);
   const bagsRemaining = selectedAtc ? selectedAtc.qtyRemaining - alreadyInCart : 0;
 
-  const reset = () => { setQty(''); setBillQty(''); setPrice(''); setTransportFee(''); setCosts([]); };
+  // The brand's list price, read-only: the server charges it (or the customer's own rate) regardless.
+  const listPrice = selectedAtc ? (brands.find((b) => b.id === selectedAtc.productId)?.currentPrice ?? null) : null;
+
+  const reset = () => { setQty(''); setBillQty(''); setTransportFee(''); setCosts([]); };
 
   const handleAdd = () => {
     if (!selectedAtc) return toast.error('Select an ATC');
-    if (!qty || !price) return toast.error('Enter quantity and price');
+    if (!qty) return toast.error('Enter quantity');
+    if (listPrice == null) return toast.error(`No price set for ${selectedAtc.product?.name || 'this cement brand'} — ask the Admin to set it`);
     const actualQty = Number(qty);
     const billed = billQty ? Number(billQty) : actualQty;
-    const unitPrice = Number(price);
+    const unitPrice = listPrice / 100;
     if (actualQty <= 0 || actualQty > bagsRemaining) return toast.error(`Can only add up to ${bagsRemaining.toLocaleString()} bags remaining on this ATC`);
+    if (billed < actualQty) return toast.error('Bill quantity cannot be below the quantity supplied — use the discount instead');
 
     onAdd({
       id: Date.now(), kind: 'cement', atcId: selectedAtc.id,
@@ -404,7 +415,9 @@ function AddCementItem({ atcs, brands, cart, onAdd }) {
       <div className="grid grid-cols-3 gap-3">
         <Field label="Qty Supplied"><NumberInput value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Bags" /></Field>
         <Field label="Bill Qty (optional)"><NumberInput value={billQty} onChange={(e) => setBillQty(e.target.value)} placeholder="= Qty" /></Field>
-        <Field label="Price/Bag"><NumberInput value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
+        <Field label="Price/Bag">
+          <p className={`${inputCls} bg-gray-50 text-gray-700`}>{!selectedAtc ? '—' : listPrice != null ? formatMoney(listPrice / 100) : 'No price set'}</p>
+        </Field>
       </div>
       <Field label="Transport Fee"><NumberInput value={transportFee} onChange={(e) => setTransportFee(e.target.value)} placeholder="0 if complimentary" /></Field>
 
@@ -415,14 +428,12 @@ function AddCementItem({ atcs, brands, cart, onAdd }) {
   );
 }
 
-function AddAggregateItem({ products, trucks, onAdd }) {
+function AddAggregateItem({ products, trucks, customer, onAdd }) {
   const [vehicleId, setVehicleId] = useState('');
   const [showTruckDrop, setShowTruckDrop] = useState(false);
   const [productId, setProductId] = useState('');
   const [actualQty, setActualQty] = useState('');
   const [billQty, setBillQty] = useState('');
-  const [unitPrice, setUnitPrice] = useState('');
-  const [total, setTotal] = useState('');
   const [transportFee, setTransportFee] = useState('');
   const [costs, setCosts] = useState([]);
 
@@ -430,33 +441,24 @@ function AddAggregateItem({ products, trucks, onAdd }) {
   const selectedProduct = products.find((p) => p.id === productId);
   const effectiveBillQty = billQty || actualQty;
 
-  const handleUnitPriceChange = (val) => {
-    setUnitPrice(val);
-    if (effectiveBillQty && val) setTotal((Number(effectiveBillQty) * Number(val)).toFixed(2));
-  };
-  const handleTotalChange = (val) => {
-    setTotal(val);
-    if (effectiveBillQty && val && Number(effectiveBillQty) > 0) setUnitPrice((Number(val) / Number(effectiveBillQty)).toFixed(2));
-  };
-  const handleActualQtyChange = (val) => {
-    setActualQty(val);
-    if (!billQty && unitPrice) setTotal((Number(val || 0) * Number(unitPrice)).toFixed(2));
-  };
-  const handleBillQtyChange = (val) => {
-    setBillQty(val);
-    if (unitPrice) setTotal((Number(val || actualQty || 0) * Number(unitPrice)).toFixed(2));
-  };
+  // The customer's own rate for the product, read-only: the server charges it. The list price is the
+  // quarry's cost per tonne, shown for reference only.
+  const listPrice = selectedProduct?.sellPrice ?? null;
+  const total = listPrice != null && effectiveBillQty ? Number(effectiveBillQty) * (listPrice / 100) : null;
 
   const reset = () => {
-    setActualQty(''); setBillQty(''); setUnitPrice(''); setTotal(''); setTransportFee(''); setCosts([]);
+    setActualQty(''); setBillQty(''); setTransportFee(''); setCosts([]);
   };
 
   const handleAdd = () => {
+    if (!customer) return toast.error('Select a customer first');
     if (!selectedTruck) return toast.error('Select a truck');
-    if (!productId || !actualQty || !unitPrice) return toast.error('Select product, quantity and price');
+    if (!productId || !actualQty) return toast.error('Select product and quantity');
+    if (listPrice == null) return toast.error(`No selling price set for ${selectedProduct.quarryName} — ${selectedProduct.size} for this customer — set their rate under Customers > Pricing`);
+    if (effectiveBillQty && Number(effectiveBillQty) < Number(actualQty)) return toast.error('Bill quantity cannot be below the quantity supplied — use the discount instead');
     const qty = Number(actualQty);
     const billed = Number(effectiveBillQty);
-    const price = Number(unitPrice);
+    const price = listPrice / 100;
 
     onAdd({
       id: Date.now(), kind: 'aggregate', productId, vehicleId,
@@ -498,12 +500,16 @@ function AddAggregateItem({ products, trucks, onAdd }) {
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Actual Qty (tonnes)" required><NumberInput value={actualQty} onChange={(e) => handleActualQtyChange(e.target.value)} placeholder="From quarry" /></Field>
-        <Field label="Bill Qty (tonnes, optional)"><NumberInput value={billQty} onChange={(e) => handleBillQtyChange(e.target.value)} placeholder="Defaults to Actual Qty" /></Field>
+        <Field label="Actual Qty (tonnes)" required><NumberInput value={actualQty} onChange={(e) => setActualQty(e.target.value)} placeholder="From quarry" /></Field>
+        <Field label="Bill Qty (tonnes, optional)"><NumberInput value={billQty} onChange={(e) => setBillQty(e.target.value)} placeholder="Defaults to Actual Qty" /></Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Sell Price per Tonne"><NumberInput value={unitPrice} onChange={(e) => handleUnitPriceChange(e.target.value)} /></Field>
-        <Field label="Total Amount"><NumberInput value={total} onChange={(e) => handleTotalChange(e.target.value)} /></Field>
+        <Field label="Price per Tonne (customer's rate)">
+          <p className={`${inputCls} bg-gray-50 text-gray-700`}>{!selectedProduct ? '—' : !customer ? 'Select a customer' : listPrice != null ? formatMoney(listPrice / 100) : 'No rate set for this customer'}</p>
+        </Field>
+        <Field label="Total Amount">
+          <p className={`${inputCls} bg-gray-50 text-gray-700`}>{total != null ? formatMoney(total) : '—'}</p>
+        </Field>
       </div>
       {selectedProduct?.currentPrice != null && (
         <p className="text-xs text-gray-500">Quarry cost/tonne on file: {formatMoney(selectedProduct.currentPrice / 100)}</p>

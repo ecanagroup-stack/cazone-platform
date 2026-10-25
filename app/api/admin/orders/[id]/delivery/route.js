@@ -58,7 +58,10 @@ export const PATCH = withOrg(async (request, { params }) => {
       const input = incomingById.get(line.id);
       const qty = positiveQuantity(input.qty, 'Billed quantity');
       const stockQty = positiveQuantity(input.stockQty, 'Physical quantity');
-      const unitPrice = cents(input.unitPrice, 'Unit price');
+      // Unit prices come from the price list; changing one here would be a discount that skips the
+      // verification code, so only the line's recorded price is accepted.
+      const unitPrice = line.unitPrice;
+      if (input.unitPrice != null && cents(input.unitPrice, 'Unit price') !== unitPrice) throw new ApiError('Unit prices cannot be changed — record a discount instead', 400);
       const transportFee = cents(input.transportFee, 'Transport fee');
       if (!Array.isArray(input.costs)) throw new ApiError('Sale costs are required', 400);
       const costInputs = new Map(input.costs.map((cost) => [cost.id, cost]));
@@ -66,6 +69,8 @@ export const PATCH = withOrg(async (request, { params }) => {
         throw new ApiError('Sale costs do not match this transaction', 400);
       }
       const costs = line.costs.map((cost) => ({ ...cost, amount: cents(costInputs.get(cost.id).amount, 'Cost amount') }));
+      // Billing less than was supplied is a discount too, so it can't widen beyond what was already recorded.
+      if (stockQty - qty > Math.max(0, line.stockQty - line.qty)) throw new ApiError('Billed quantity cannot be below the quantity supplied — record the difference as a discount', 400);
       const lineTotal = Math.round(qty * unitPrice);
       if (!Number.isSafeInteger(lineTotal)) throw new ApiError('Sale line total is too large', 400);
       return { line, qty, stockQty, unitPrice, transportFee, costs, lineTotal };
@@ -182,6 +187,11 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (discountOtpUsed) await notifyAlteration({
       actor: session.user, branchId: existing.branchId, type: 'sale_discount', title: 'Pending sale discount edited',
       message: `${session.user.name} changed the discount on sale ${existing.orderNumber}. Reason: ${reason}`,
+      relatedType: 'Order', relatedId: id,
+    });
+    if (!discountOtpUsed && grandTotal < existing.grandTotal) await notifyAlteration({
+      actor: session.user, branchId: existing.branchId, type: 'sale_discount', title: 'Pending sale reduced',
+      message: `${session.user.name} reduced sale ${existing.orderNumber} from ${(existing.grandTotal / 100).toFixed(2)} to ${(grandTotal / 100).toFixed(2)}. Reason: ${reason}`,
       relatedType: 'Order', relatedId: id,
     });
     if (creditOverrideUsed) await notifyAlteration({

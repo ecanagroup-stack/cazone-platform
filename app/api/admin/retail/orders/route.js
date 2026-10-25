@@ -16,14 +16,15 @@ export const POST = withOrg(async (request) => {
   }
   try {
     const body = await request.json();
-    if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
     const result = await createSaleOrder({
       session,
       branchId: body.branchId,
       customerId: body.customerId || null,
       paymentMethod: body.paymentMethod || 'cash',
-      lines: Array.isArray(body.lines) ? body.lines : [],
+      // Only product and quantity from the client: prices (and stock sources) are the server's call.
+      lines: Array.isArray(body.lines) ? body.lines.map((l) => ({ productId: l.productId, qty: l.qty })) : [],
       overrideCredit: !!body.overrideCredit,
+      beforeWrite: body.overrideCredit ? () => verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp }) : undefined,
       channel: 'retail',
     });
 

@@ -181,11 +181,12 @@ function PendingOrdersTab() {
 
   const savePrices = async (event) => {
     event.preventDefault();
+    if (!editing.otp) return toast.error('Send and enter the verification code first');
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/pending-orders/${editing.id}/price`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revision: editing.revision, reason: editing.reason,
+        body: JSON.stringify({ revision: editing.revision, reason: editing.reason, otp: editing.otp,
           lines: editing.lines.map((line) => ({ id: line.id, unitPrice: line.unitPrice })) }),
       });
       const d = await r.json();
@@ -246,7 +247,7 @@ function PendingOrdersTab() {
               )}
 
               <div className="flex gap-2">
-                {canEditPrice && <button onClick={() => setEditing({ id: o.id, revision: o.deliveryRevision, reason: '',
+                {canEditPrice && <button onClick={() => setEditing({ id: o.id, revision: o.deliveryRevision, reason: '', otp: '',
                   lines: o.lines.map((line) => ({ id: line.id, name: line.product.name, qty: line.qty, unitPrice: (line.unitPrice / 100).toFixed(2) })) })}
                   disabled={submitting} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Edit Prices</button>}
                 <button onClick={() => confirm(o.id, false)} disabled={submitting} className={btnPrimaryCls}>Confirm</button>
@@ -258,12 +259,13 @@ function PendingOrdersTab() {
       )}
       <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit Requested Prices">
         {editing && <form onSubmit={savePrices} className="space-y-4">
-          <p className="text-sm text-gray-600">The customer request stays pending until staff confirms it. Enter the agreed unit prices.</p>
+          <p className="text-sm text-gray-600">The customer request stays pending until staff confirms it. Enter the agreed unit prices. Changing a price needs a verification code, and the Admin and managers are told.</p>
           {editing.lines.map((line, index) => <Field key={line.id} label={`${line.name} · ${line.qty} units`}>
             <NumberInput required min="0" step="0.01" value={line.unitPrice} onChange={(event) => setEditing((current) => ({ ...current,
               lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item) }))} />
           </Field>)}
           <Field label="Reason"><input required minLength={3} value={editing.reason} onChange={(event) => setEditing((current) => ({ ...current, reason: event.target.value }))} className={inputCls} /></Field>
+          <OtpField purpose="sale_discount" value={editing.otp} onChange={(otp) => setEditing((current) => ({ ...current, otp }))} />
           <FormButtons onCancel={() => setEditing(null)} submitting={submitting} submitLabel="Save Prices" />
         </form>}
       </Modal>

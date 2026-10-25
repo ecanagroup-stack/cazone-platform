@@ -10,16 +10,27 @@ import { ApiError } from '@/lib/apiError';
 // brand (abbreviation set instead) or a plain shop item (neither set).
 export const GET = withOrg(async (request) => {
   try {
-    const serviceId = new URL(request.url).searchParams.get('serviceId');
+    const params = new URL(request.url).searchParams;
+    const serviceId = params.get('serviceId');
+    // With a customerId, each product also carries that customer's own rate (`sellPrice`). The product's
+    // one list price is what the quarry charges us, so a sale is priced from the customer's rate alone
+    // (see sales/route.js) — the sale form shows it read-only.
+    const customerId = params.get('customerId');
     if (!serviceId) throw new ApiError('serviceId is required', 400);
 
     const products = await prisma.product.findMany({
       where: { serviceId, isActive: true, supplierId: { not: null } },
-      include: { priceRules: { where: { validTo: null } }, supplier: true },
+      include: {
+        priceRules: { where: { branchId: null, validTo: null, OR: [{ customerId: null }, ...(customerId ? [{ customerId }] : [])] }, orderBy: { validFrom: 'desc' } },
+        supplier: true,
+      },
       orderBy: { name: 'asc' },
     });
     const data = products.map((p) => ({
-      ...p, currentPrice: p.priceRules[0]?.price ?? null, priceRules: undefined,
+      ...p,
+      currentPrice: p.priceRules.find((r) => r.customerId === null)?.price ?? null,
+      sellPrice: customerId ? p.priceRules.find((r) => r.customerId === customerId)?.price ?? null : null,
+      priceRules: undefined,
       quarryName: p.supplier?.name, quarry: p.supplierId, supplier: undefined,
       size: p.attributes?.size,
     }));
