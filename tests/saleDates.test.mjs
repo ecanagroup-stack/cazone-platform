@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertNotFuture, businessToday, isBackdated, materialSaleDates, optionalBusinessDate, parseBusinessDate } from '../lib/saleDates.mjs';
+import { assertNotBefore, assertNotFuture, backdatedAt, businessToday, isBackdated, materialSaleDates, optionalBusinessDate, parseBusinessDate } from '../lib/saleDates.mjs';
 
 test('late sale and delivery retain separate business dates', () => {
   const dates = materialSaleDates({ saleDate: '2026-09-28', deliveryDate: '2026-10-02', delivered: true });
@@ -42,4 +42,19 @@ test('optionalBusinessDate leaves a blank date null and still blocks the future'
   assert.equal(optionalBusinessDate('2026-09-30', 'Payment date', now).toISOString(), '2026-09-30T00:00:00.000Z');
   assert.throws(() => optionalBusinessDate('2026-10-03', 'Payment date', now), /Payment date cannot be in the future/);
   assert.throws(() => optionalBusinessDate('yesterday', 'Payment date', now), /valid date/);
+});
+
+test('backdatedAt returns the date only for a past day', () => {
+  const now = new Date('2026-10-01T23:30:00Z');
+  const past = parseBusinessDate('2026-09-30', 'Date');
+  assert.equal(backdatedAt(past, now), past);
+  assert.equal(backdatedAt('2026-10-02', now), undefined);
+  assert.equal(backdatedAt(null, now), undefined);
+  assert.equal(backdatedAt('', now), undefined);
+});
+
+test('a later stage cannot be dated before the stage it follows', () => {
+  assert.equal(assertNotBefore('2026-09-30', '2026-09-30', 'Loading date'), '2026-09-30');
+  assert.equal(assertNotBefore('2026-10-01', null, 'Loading date'), '2026-10-01');
+  assert.throws(() => assertNotBefore(parseBusinessDate('2026-09-29', 'Date'), '2026-09-30', 'Loading date'), /Loading date cannot be before 2026-09-30/);
 });

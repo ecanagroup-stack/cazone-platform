@@ -83,10 +83,11 @@ function useProducts(serviceId, branchId) {
 // Description note says), just opened from two different places. A plain StockMove, same as either
 // call site always did (see app/api/admin/materials/products/[id]/stock-in).
 function StockInModal({ open, onClose, products, branchId, onAdded, initialProductId = '' }) {
-  const [form, setForm] = useState({ productId: initialProductId, quantity: '', description: '' });
+  const blankForm = () => ({ productId: initialProductId, quantity: '', description: '', stockDate: todayLocalDate(), backdateOtp: '' });
+  const [form, setForm] = useState(blankForm);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { if (open) setForm({ productId: initialProductId, quantity: '', description: '' }); }, [open, initialProductId]);
+  useEffect(() => { if (open) setForm(blankForm()); }, [open, initialProductId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -94,7 +95,7 @@ function StockInModal({ open, onClose, products, branchId, onAdded, initialProdu
     try {
       const r = await fetch(`/api/admin/materials/products/${form.productId}/stock-in`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branchId, quantity: Number(form.quantity), description: form.description }),
+        body: JSON.stringify({ branchId, quantity: Number(form.quantity), description: form.description, stockDate: form.stockDate, backdateOtp: form.backdateOtp }),
       });
       const d = await r.json();
       if (d.success) { toast.success('Stock added'); onAdded(); }
@@ -121,6 +122,8 @@ function StockInModal({ open, onClose, products, branchId, onAdded, initialProdu
             <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputCls} placeholder="Source / supplier / note" />
           </Field>
         </div>
+        <BusinessDateField label="Date received" value={form.stockDate} onChange={(stockDate) => setForm({ ...form, stockDate })}
+          otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))} />
         <FormButtons onCancel={onClose} submitting={submitting} submitLabel="Add Stock" />
       </form>
     </Modal>

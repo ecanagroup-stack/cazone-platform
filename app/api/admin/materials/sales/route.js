@@ -10,7 +10,7 @@ import { verifyOtp } from '@/lib/otp';
 import { notifyAlteration } from '@/lib/notify';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { ApiError } from '@/lib/apiError';
-import { materialSaleDates, isBackdated } from '@/lib/saleDates.mjs';
+import { materialSaleDates, backdatedAt } from '@/lib/saleDates.mjs';
 import { toCents } from '@/lib/money.mjs';
 import { jsonSafe } from '@/lib/jsonSafe';
 
@@ -143,7 +143,7 @@ export const POST = withOrg(async (request) => {
     // this point, the truckload has already physically arrived and been paid for, same as the old
     // single-item aggregate flow — nothing to "unbuy."
     // For a back-dated sale the truckload arrived on the sale's day, so the stock-in matches the stock-out.
-    const purchaseAt = isBackdated(saleDate) ? saleDate : undefined;
+    const purchaseAt = backdatedAt(saleDate);
     const deliveries = [];
     for (const r of resolved) {
       if (r.kind !== 'aggregate') continue;
@@ -155,7 +155,7 @@ export const POST = withOrg(async (request) => {
           data: {
             branchId, supplierId, vehicleId, productId,
             quantity: actualQty, costPerUnit, totalCost: BigInt(totalCostNumber),
-            status: 'received', receivedAt: purchaseAt || new Date(), createdBy: session.user.id,
+            status: 'received', receivedAt: purchaseAt || new Date(), createdBy: session.user.id, businessDate: purchaseAt,
           },
         });
         await tx.stockMove.create({ data: { branchId, productId, qty: actualQty, reason: 'purchase', ref: d.id, userId: session.user.id, ...(purchaseAt ? { at: purchaseAt } : {}) } });

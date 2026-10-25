@@ -6,6 +6,9 @@ import { getOnHandByProduct } from '@/lib/stock';
 import { autoArriveDueAllocations } from '@/lib/allocation';
 import { evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { optionalBusinessDate, backdatedAt } from '@/lib/saleDates.mjs';
+import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // Fuel tanker offloads run well under 1% variance (core-algorithms skill §5) — same default the
@@ -22,7 +25,7 @@ export const GET = withOrg(async (request) => {
 
     await autoArriveDueAllocations();
 
-    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, include: { service: { select: { type: true } } } });
     if (!branch) throw new ApiError('Branch not found', 404);
 
     const [deliveries, suppliers, products, tanks] = await Promise.all([
@@ -41,7 +44,7 @@ export const GET = withOrg(async (request) => {
 
     const onHand = await getOnHandByProduct(branchId, products.map((p) => p.id));
 
-    return NextResponse.json(jsonSafe({ success: true, data: { deliveries, suppliers, products, onHand, tanks } }));
+    return NextResponse.json(jsonSafe({ success: true, data: { deliveries, suppliers, products, onHand, tanks, serviceType: branch.service.type } }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
@@ -87,7 +90,19 @@ export const POST = withOrg(async (request) => {
     if (!branchId || !productId) throw new ApiError('Branch and product are required', 400);
     if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) throw new ApiError('Quantity must be positive', 400);
     if (costPerUnit != null && (!Number.isFinite(costPerUnit) || costPerUnit < 0)) throw new ApiError('Invalid cost per unit', 400);
+    const totalCostNumber = costPerUnit == null ? null : Math.round(totalQuantity * costPerUnit);
+    if (totalCostNumber != null && !Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
     if (!body.supplierId && !body.newSupplierName) throw new ApiError('Choose a supplier or name a new one', 400);
+
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, include: { service: { select: { type: true } } } });
+    if (!branch || !canAccessBranch(await getAccessibleBranchIds(session), branchId)) throw new ApiError('Branch not found', 404);
+    // A delivery logged late carries the day it actually arrived. Fuel branches keep their tank, shift
+    // and reconciliation records per day, so a past fuel delivery goes through Historical Entries.
+    const deliveryDate = optionalBusinessDate(body.deliveryDate, 'Delivery date');
+    const at = backdatedAt(deliveryDate);
+    if (at && branch.service.type === 'fuel_station') throw new ApiError('Use Historical Entries to record a past fuel delivery', 400);
+    assertBackdateOtpPresent(deliveryDate, body.backdateOtp);
+    const backdated = await requireBackdateOtp({ userId: session.user.id, date: deliveryDate, otp: body.backdateOtp });
 
     const { delivery, flagged } = await prisma.$transaction(async (tx) => {
       let supplierId = body.supplierId;
@@ -102,14 +117,12 @@ export const POST = withOrg(async (request) => {
         vehicleId = existing ? existing.id : (await tx.vehicle.create({ data: { plateNumber: vehiclePlate } })).id;
       }
 
-      const totalCostNumber = costPerUnit == null ? null : Math.round(totalQuantity * costPerUnit);
-      if (totalCostNumber != null && !Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
       const totalCost = totalCostNumber == null ? null : BigInt(totalCostNumber);
       const dipFields = useDip ? { tankId: body.tankId, declaredLoad, openingDip, closingDip, offloadVariance } : {};
       const created = await tx.delivery.create({
         data: asAllocation
-          ? { branchId, supplierId, vehicleId, productId, quantity: totalQuantity, costPerUnit, totalCost, status: 'pending', qtyRemaining: totalQuantity, createdBy: session.user.id, ...dipFields }
-          : { branchId, supplierId, vehicleId, productId, quantity: totalQuantity, costPerUnit, totalCost, status: 'received', receivedAt: new Date(), createdBy: session.user.id, ...dipFields },
+          ? { branchId, supplierId, vehicleId, productId, quantity: totalQuantity, costPerUnit, totalCost, status: 'pending', qtyRemaining: totalQuantity, createdBy: session.user.id, businessDate: deliveryDate, ...dipFields }
+          : { branchId, supplierId, vehicleId, productId, quantity: totalQuantity, costPerUnit, totalCost, status: 'received', receivedAt: at || new Date(), createdBy: session.user.id, businessDate: deliveryDate, ...dipFields },
         include: { supplier: true, vehicle: true, product: true, tank: true },
       });
 
@@ -118,7 +131,7 @@ export const POST = withOrg(async (request) => {
       // instant case — that's the traceable link in practice, so linkedStockMoveId is left unset.
       if (!asAllocation) {
         await tx.stockMove.create({
-          data: { branchId, productId, qty: totalQuantity, reason: 'purchase', ref: created.id, userId: session.user.id },
+          data: { branchId, productId, qty: totalQuantity, reason: 'purchase', ref: created.id, userId: session.user.id, ...(at ? { at } : {}) },
         });
       }
 
@@ -142,6 +155,11 @@ export const POST = withOrg(async (request) => {
 
       return { delivery: created, flagged };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
+
+    if (backdated) await notifyBackdated({
+      actor: session.user, branchId, date: deliveryDate, relatedType: 'Delivery', relatedId: delivery.id,
+      what: `${asAllocation ? 'an allocation' : 'a delivery'} of ${totalQuantity} ${delivery.product.unit} of ${delivery.product.name}`,
+    });
 
     return NextResponse.json(jsonSafe({ success: true, data: { ...delivery, flagged } }), { status: 201 });
   } catch (e) {

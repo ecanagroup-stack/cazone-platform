@@ -5,9 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyState, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill,
-  btnPrimaryCls, tableActionCls, theadCls, tableScrollCls, NumberInput,
+  btnPrimaryCls, tableActionCls, theadCls, tableScrollCls, NumberInput, BusinessDateField,
 } from '@/components/ui';
 import { formatDate } from '@/lib/format';
+import { todayLocalDate } from '@/lib/saleDates.mjs';
 
 const STATUS_COLOR = { pending: 'blue', assigned: 'amber', loaded: 'green', arrived: 'green', closed: 'gray' };
 const STATUS_SORT = { arrived: 0, loaded: 1, assigned: 2, pending: 3, closed: 4 };
@@ -19,7 +20,8 @@ const LOADING_HOURS_AGO = [
 const formatAtcNumber = (atc) => `${atc.product?.abbreviation || '???'}-${atc.atcNumber}`;
 const getStatusLabel = (atc) => atc.status[0].toUpperCase() + atc.status.slice(1);
 
-const blankForm = { cementBrand: '', atcNumber: '', bagsPaidFor: '', notes: '' };
+const blankForm = () => ({ cementBrand: '', atcNumber: '', bagsPaidFor: '', notes: '', atcDate: todayLocalDate(), backdateOtp: '' });
+const blankStage = () => ({ date: todayLocalDate(), backdateOtp: '', arrivalDate: '' }); // an assign / loading / arrival date, with its back-dating code
 
 // Ported from ecana_shop-app's app/admin/atcs/page.js — status-tab-filtered view over the shared
 // allocation lifecycle (lib/allocation.js), cement-framed. Assign/Loading/Arrive reuse the existing
@@ -41,8 +43,12 @@ export default function AtcsPage() {
 
   const [assignFor, setAssignFor] = useState(null);
   const [selectedTruck, setSelectedTruck] = useState('');
+  const [assignStage, setAssignStage] = useState(blankStage);
   const [loadingFor, setLoadingFor] = useState(null);
   const [hoursAgo, setHoursAgo] = useState(0);
+  const [loadingStage, setLoadingStage] = useState(blankStage);
+  const [arriveFor, setArriveFor] = useState(null);
+  const [arriveStage, setArriveStage] = useState(blankStage);
 
   const load = useCallback(async () => {
     if (!serviceId) { setAtcs(null); return; }
@@ -73,7 +79,7 @@ export default function AtcsPage() {
         body: JSON.stringify({ ...form, branchId, bagsPaidFor: Number(form.bagsPaidFor) }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('ATC recorded'); setShowCreate(false); setForm(blankForm); load(); }
+      if (d.success) { toast.success('ATC recorded'); setShowCreate(false); setForm(blankForm()); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -86,27 +92,31 @@ export default function AtcsPage() {
     const truck = trucks.find((t) => t.id === selectedTruck);
     const r = await fetch(`/api/admin/deliveries/${assignFor.id}/assign`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vehiclePlate: truck.plateNumber, driverName: truck.driverName, driverPhone: truck.driverPhone }),
+      body: JSON.stringify({ vehiclePlate: truck.plateNumber, driverName: truck.driverName, driverPhone: truck.driverPhone, date: assignStage.date, backdateOtp: assignStage.backdateOtp }),
     });
     const d = await r.json();
-    if (d.success) { toast.success('Truck assigned'); setAssignFor(null); setSelectedTruck(''); load(); }
+    if (d.success) { toast.success('Truck assigned'); setAssignFor(null); setSelectedTruck(''); setAssignStage(blankStage()); load(); }
     else toast.error(d.error);
   };
 
   const handleLoading = async (e) => {
     e.preventDefault();
     const r = await fetch(`/api/admin/deliveries/${loadingFor.id}/loading`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hoursAgo }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hoursAgo: loadingStage.date === todayLocalDate() ? hoursAgo : 0, date: loadingStage.date, arrivalDate: loadingStage.arrivalDate, backdateOtp: loadingStage.backdateOtp }),
     });
     const d = await r.json();
-    if (d.success) { toast.success('Loading updated'); setLoadingFor(null); setHoursAgo(0); load(); }
+    if (d.success) { toast.success('Loading updated'); setLoadingFor(null); setHoursAgo(0); setLoadingStage(blankStage()); load(); }
     else toast.error(d.error);
   };
 
-  const handleArrive = async (atc) => {
-    const r = await fetch(`/api/admin/deliveries/${atc.id}/arrive`, { method: 'POST' });
+  const handleArrive = async (e) => {
+    e.preventDefault();
+    const r = await fetch(`/api/admin/deliveries/${arriveFor.id}/arrive`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: arriveStage.date, backdateOtp: arriveStage.backdateOtp }),
+    });
     const d = await r.json();
-    if (d.success) { toast.success('Marked arrived'); load(); }
+    if (d.success) { toast.success('Marked arrived'); setArriveFor(null); setArriveStage(blankStage()); load(); }
     else toast.error(d.error);
   };
 
@@ -129,7 +139,7 @@ export default function AtcsPage() {
         action={
           brands.length === 0
             ? <span className="text-sm text-gray-500">Add a cement brand first</span>
-            : <button onClick={() => { setForm(blankForm); setShowCreate(true); }} className={btnPrimaryCls}>Record ATC</button>
+            : <button onClick={() => { setForm(blankForm()); setShowCreate(true); }} className={btnPrimaryCls}>Record ATC</button>
         }
       />
 
@@ -174,7 +184,7 @@ export default function AtcsPage() {
               {filtered.map((a) => (
                 <tr key={a.id}>
                   <td className="px-4 py-3 font-medium">{formatAtcNumber(a)}</td>
-                  <td className="px-3 py-3 text-gray-500">{formatDate(a.createdAt)}</td>
+                  <td className="px-3 py-3 text-gray-500">{formatDate(a.businessDate ? a.businessDate.slice(0, 10) : a.createdAt)}</td>
                   <td className="px-3 py-3 text-gray-500">{a.assignedAt ? formatDate(a.assignedAt) : '—'}</td>
                   <td className="px-4 py-3 text-right font-medium whitespace-nowrap">{a.qtyRemaining.toLocaleString()}/{a.quantity.toLocaleString()}</td>
                   <td className="px-3 py-3 align-top">
@@ -188,16 +198,16 @@ export default function AtcsPage() {
                   <td className="px-3 py-3"><StatusPill status={getStatusLabel(a)} color={STATUS_COLOR[a.status]} /></td>
                   <td className="px-3 py-3 text-right">
                     {a.status === 'pending' && !a.vehicleId && (
-                      <button onClick={() => { setAssignFor(a); setSelectedTruck(''); }} className={`${tableActionCls} mr-3`}>Assign Truck</button>
+                      <button onClick={() => { setAssignFor(a); setSelectedTruck(''); setAssignStage(blankStage()); }} className={`${tableActionCls} mr-3`}>Assign Truck</button>
                     )}
                     {a.status === 'assigned' && (
                       <>
-                        <button onClick={() => { setAssignFor(a); setSelectedTruck(''); }} className={`${tableActionCls} mr-3`}>Reassign</button>
-                        <button onClick={() => { setLoadingFor(a); setHoursAgo(0); }} className={`${tableActionCls} mr-3`}>Loading</button>
+                        <button onClick={() => { setAssignFor(a); setSelectedTruck(''); setAssignStage(blankStage()); }} className={`${tableActionCls} mr-3`}>Reassign</button>
+                        <button onClick={() => { setLoadingFor(a); setHoursAgo(0); setLoadingStage(blankStage()); }} className={`${tableActionCls} mr-3`}>Loading</button>
                       </>
                     )}
                     {a.status === 'loaded' && (
-                      <button onClick={() => handleArrive(a)} className={tableActionCls}>Mark Arrived</button>
+                      <button onClick={() => { setArriveFor(a); setArriveStage(blankStage()); }} className={tableActionCls}>Mark Arrived</button>
                     )}
                   </td>
                 </tr>
@@ -232,6 +242,10 @@ export default function AtcsPage() {
           <Field label="Notes">
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputCls} rows={2} />
           </Field>
+          <BusinessDateField
+            label="ATC date" value={form.atcDate} onChange={(atcDate) => setForm({ ...form, atcDate })}
+            otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))}
+          />
           <FormButtons onCancel={() => setShowCreate(false)} submitting={submitting} submitLabel="Record ATC" />
         </form>
       </Modal>
@@ -253,6 +267,10 @@ export default function AtcsPage() {
                 ))}
               </select>
             </Field>
+            <BusinessDateField
+              label="Date assigned" value={assignStage.date} onChange={(date) => setAssignStage({ ...assignStage, date })}
+              otp={assignStage.backdateOtp} onOtpChange={(backdateOtp) => setAssignStage((s) => ({ ...s, backdateOtp }))}
+            />
             <FormButtons onCancel={() => setAssignFor(null)} submitLabel="Assign" />
           </form>
         )}
@@ -266,12 +284,39 @@ export default function AtcsPage() {
               <p><span className="text-gray-500">Truck:</span> <span className="font-medium">{loadingFor.vehicle?.plateNumber || '—'}</span></p>
               <p><span className="text-gray-500">Remaining:</span> <span className="font-medium">{loadingFor.qtyRemaining.toLocaleString()}/{loadingFor.quantity.toLocaleString()}</span></p>
             </div>
-            <Field label="Loaded" required>
-              <select value={hoursAgo} onChange={(e) => setHoursAgo(Number(e.target.value))} className={inputCls}>
-                {LOADING_HOURS_AGO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
+            <BusinessDateField
+              label="Date loaded" value={loadingStage.date} onChange={(date) => setLoadingStage({ ...loadingStage, date })}
+              otp={loadingStage.backdateOtp} onOtpChange={(backdateOtp) => setLoadingStage((s) => ({ ...s, backdateOtp }))}
+            />
+            {loadingStage.date === todayLocalDate() && (
+              <Field label="Loaded" required>
+                <select value={hoursAgo} onChange={(e) => setHoursAgo(Number(e.target.value))} className={inputCls}>
+                  {LOADING_HOURS_AGO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+            )}
+            {loadingStage.date < todayLocalDate() && (
+              <Field label="Date arrived (optional)">
+                <input type="date" min={loadingStage.date} max={todayLocalDate()} value={loadingStage.arrivalDate} onChange={(e) => setLoadingStage({ ...loadingStage, arrivalDate: e.target.value })} className={inputCls} />
+                <p className="text-xs text-gray-500 mt-1">Covered by the same code. Left blank, it is recorded as arrived 6 hours after loading.</p>
+              </Field>
+            )}
             <FormButtons onCancel={() => setLoadingFor(null)} submitLabel="Save Loading" />
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!arriveFor} onClose={() => setArriveFor(null)} title="Mark Arrived">
+        {arriveFor && (
+          <form onSubmit={handleArrive} className="space-y-4">
+            <div className="bg-gray-50 p-3 rounded text-sm">
+              <p><span className="text-gray-500">ATC:</span> <span className="font-medium">{formatAtcNumber(arriveFor)}</span></p>
+            </div>
+            <BusinessDateField
+              label="Date arrived" value={arriveStage.date} onChange={(date) => setArriveStage({ ...arriveStage, date })}
+              otp={arriveStage.backdateOtp} onOtpChange={(backdateOtp) => setArriveStage((s) => ({ ...s, backdateOtp }))}
+            />
+            <FormButtons onCancel={() => setArriveFor(null)} submitLabel="Mark Arrived" />
           </form>
         )}
       </Modal>

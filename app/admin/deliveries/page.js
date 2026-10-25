@@ -5,9 +5,10 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
-  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar, NumberInput,
+  inputCls, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, StatusPill, ReportToolbar, NumberInput, BusinessDateField,
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney, minorUnitsToDecimal } from '@/lib/format';
+import { todayLocalDate } from '@/lib/saleDates.mjs';
 
 const TABS = [
   { key: 'deliveries', label: 'Deliveries' },
@@ -40,7 +41,9 @@ export default function DeliveriesPage() {
   );
 }
 
-const blankDelivery = { mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '', useDip: false, tankId: '', openingDip: '', closingDip: '' };
+const blankDelivery = () => ({ mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '', useDip: false, tankId: '', openingDip: '', closingDip: '', deliveryDate: todayLocalDate(), backdateOtp: '' });
+const blankAssign = () => ({ vehiclePlate: '', driverName: '', driverPhone: '', date: todayLocalDate(), backdateOtp: '' });
+const blankStage = () => ({ date: todayLocalDate(), backdateOtp: '', arrivalDate: '' }); // a loading / arrival date, with its back-dating code
 const ALLOCATION_STATUS_COLOR = { pending: 'gray', assigned: 'blue', loaded: 'amber', arrived: 'green', closed: 'gray' };
 const ALLOCATION_STATUS_LABEL = { pending: 'Pending', assigned: 'Assigned', loaded: 'Loaded', arrived: 'Arrived', closed: 'Closed (sold out)' };
 const LOADING_HOURS_AGO = [
@@ -54,9 +57,12 @@ function DeliveriesTab({ branchId }) {
   const [form, setForm] = useState(blankDelivery);
   const [submitting, setSubmitting] = useState(false);
   const [assignFor, setAssignFor] = useState(null); // delivery
-  const [assignForm, setAssignForm] = useState({ vehiclePlate: '', driverName: '', driverPhone: '' });
+  const [assignForm, setAssignForm] = useState(blankAssign);
   const [loadingFor, setLoadingFor] = useState(null); // delivery
   const [hoursAgo, setHoursAgo] = useState(0);
+  const [loadingStage, setLoadingStage] = useState(blankStage);
+  const [arriveFor, setArriveFor] = useState(null); // delivery
+  const [arriveStage, setArriveStage] = useState(blankStage);
 
   const load = useCallback(async () => {
     if (!branchId) { setData(null); return; }
@@ -87,7 +93,7 @@ function DeliveriesTab({ branchId }) {
           d.data.flagged ? 'Delivery recorded — offload variance flagged for review'
             : form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded'
         );
-        setShowModal(false); setForm(blankDelivery); load();
+        setShowModal(false); setForm(blankDelivery()); load();
       } else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -102,7 +108,7 @@ function DeliveriesTab({ branchId }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(assignForm),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Vehicle assigned'); setAssignFor(null); setAssignForm({ vehiclePlate: '', driverName: '', driverPhone: '' }); load(); }
+      if (d.success) { toast.success('Vehicle assigned'); setAssignFor(null); setAssignForm(blankAssign()); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -114,22 +120,26 @@ function DeliveriesTab({ branchId }) {
     setSubmitting(true);
     try {
       const r = await fetch(`/api/admin/deliveries/${loadingFor.id}/loading`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hoursAgo }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hoursAgo: loadingStage.date === todayLocalDate() ? hoursAgo : 0, date: loadingStage.date, arrivalDate: loadingStage.arrivalDate, backdateOtp: loadingStage.backdateOtp }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Marked loaded'); setLoadingFor(null); setHoursAgo(0); load(); }
+      if (d.success) { toast.success('Marked loaded'); setLoadingFor(null); setHoursAgo(0); setLoadingStage(blankStage()); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleArrive = async (delivery) => {
+  const handleArrive = async (e) => {
+    e.preventDefault();
     setSubmitting(true);
     try {
-      const r = await fetch(`/api/admin/deliveries/${delivery.id}/arrive`, { method: 'POST' });
+      const r = await fetch(`/api/admin/deliveries/${arriveFor.id}/arrive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: arriveStage.date, backdateOtp: arriveStage.backdateOtp }),
+      });
       const d = await r.json();
-      if (d.success) { toast.success('Marked arrived'); load(); }
+      if (d.success) { toast.success('Marked arrived'); setArriveFor(null); setArriveStage(blankStage()); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -142,7 +152,7 @@ function DeliveriesTab({ branchId }) {
 
   if (!data) return <Loader />;
 
-  const { deliveries, suppliers, products, onHand, tanks } = data;
+  const { deliveries, suppliers, products, onHand, tanks, serviceType } = data;
   const tanksForProduct = (tanks || []).filter((t) => t.productId === form.productId);
 
   return (
@@ -153,7 +163,7 @@ function DeliveriesTab({ branchId }) {
           csvFilename="deliveries"
           csvRows={deliveries}
           csvColumns={[
-            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.businessDate ? r.businessDate.slice(0, 10) : r.createdAt) },
             { key: 'supplier.name', label: 'Supplier' },
             { key: 'product.name', label: 'Product' },
             { key: 'quantity', label: 'Quantity' },
@@ -162,7 +172,7 @@ function DeliveriesTab({ branchId }) {
             { key: 'status', label: 'Status', value: (r) => (r.qtyRemaining != null ? r.status : 'received') },
           ]}
         />
-        <button onClick={() => { setForm(blankDelivery); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>
+        <button onClick={() => { setForm(blankDelivery()); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>
       </div>
 
       {products.length > 0 && (
@@ -200,7 +210,7 @@ function DeliveriesTab({ branchId }) {
                 const isAllocation = d.qtyRemaining != null;
                 return (
                   <tr key={d.id}>
-                    <td className="px-4 py-3 text-gray-500">{formatDate(d.createdAt)}</td>
+                    <td className="px-4 py-3 text-gray-500">{formatDate(d.businessDate ? d.businessDate.slice(0, 10) : d.createdAt)}</td>
                     <td className="px-4 py-3 font-medium">{d.supplier?.name || '—'}</td>
                     <td className="px-4 py-3">{d.product.name}</td>
                     <td className="px-4 py-3 text-right">
@@ -219,13 +229,13 @@ function DeliveriesTab({ branchId }) {
                     </td>
                     <td className="px-4 py-3 text-right">
                       {isAllocation && d.status === 'pending' && (
-                        <button onClick={() => { setAssignFor(d); setAssignForm({ vehiclePlate: '', driverName: '', driverPhone: '' }); }} className={tableActionCls}>Assign vehicle</button>
+                        <button onClick={() => { setAssignFor(d); setAssignForm(blankAssign()); }} className={tableActionCls}>Assign vehicle</button>
                       )}
                       {isAllocation && d.status === 'assigned' && (
-                        <button onClick={() => { setLoadingFor(d); setHoursAgo(0); }} className={tableActionCls}>Mark loaded</button>
+                        <button onClick={() => { setLoadingFor(d); setHoursAgo(0); setLoadingStage(blankStage()); }} className={tableActionCls}>Mark loaded</button>
                       )}
                       {isAllocation && d.status === 'loaded' && (
-                        <button onClick={() => handleArrive(d)} disabled={submitting} className={tableActionCls}>Mark arrived</button>
+                        <button onClick={() => { setArriveFor(d); setArriveStage(blankStage()); }} className={tableActionCls}>Mark arrived</button>
                       )}
                     </td>
                   </tr>
@@ -319,6 +329,13 @@ function DeliveriesTab({ branchId }) {
               </Field>
             </div>
           )}
+          {/* Fuel branches keep per-day tank/shift records, so a past delivery goes through Historical Entries. */}
+          {serviceType !== 'fuel_station' && (
+            <BusinessDateField
+              label={form.mode === 'allocation' ? 'Date paid for' : 'Date received'} value={form.deliveryDate} onChange={(deliveryDate) => setForm({ ...form, deliveryDate })}
+              otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))}
+            />
+          )}
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel={form.mode === 'allocation' ? 'Start Allocation' : 'Record Delivery'} />
         </form>
       </Modal>
@@ -335,6 +352,10 @@ function DeliveriesTab({ branchId }) {
           <Field label="Driver phone">
             <input type="text" value={assignForm.driverPhone} onChange={(e) => setAssignForm({ ...assignForm, driverPhone: e.target.value })} className={inputCls} />
           </Field>
+          <BusinessDateField
+            label="Date assigned" value={assignForm.date} onChange={(date) => setAssignForm({ ...assignForm, date })}
+            otp={assignForm.backdateOtp} onOtpChange={(backdateOtp) => setAssignForm((f) => ({ ...f, backdateOtp }))}
+          />
           <FormButtons onCancel={() => setAssignFor(null)} submitting={submitting} submitLabel="Assign" />
         </form>
       </Modal>
@@ -342,12 +363,34 @@ function DeliveriesTab({ branchId }) {
       <Modal open={!!loadingFor} onClose={() => setLoadingFor(null)} title="Mark Loaded">
         <form onSubmit={handleLoading} className="space-y-4">
           <p className="text-sm text-gray-500">When was it loaded? It'll be presumed arrived automatically 6 hours after loading if no one marks it arrived sooner.</p>
-          <Field label="Loaded" required>
-            <select value={hoursAgo} onChange={(e) => setHoursAgo(Number(e.target.value))} className={inputCls}>
-              {LOADING_HOURS_AGO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
+          <BusinessDateField
+            label="Date loaded" value={loadingStage.date} onChange={(date) => setLoadingStage({ ...loadingStage, date })}
+            otp={loadingStage.backdateOtp} onOtpChange={(backdateOtp) => setLoadingStage((s) => ({ ...s, backdateOtp }))}
+          />
+          {loadingStage.date === todayLocalDate() && (
+            <Field label="Loaded" required>
+              <select value={hoursAgo} onChange={(e) => setHoursAgo(Number(e.target.value))} className={inputCls}>
+                {LOADING_HOURS_AGO.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+          )}
+          {loadingStage.date < todayLocalDate() && (
+            <Field label="Date arrived (optional)">
+              <input type="date" min={loadingStage.date} max={todayLocalDate()} value={loadingStage.arrivalDate} onChange={(e) => setLoadingStage({ ...loadingStage, arrivalDate: e.target.value })} className={inputCls} />
+              <p className="text-xs text-gray-500 mt-1">Covered by the same code. Left blank, it is recorded as arrived 6 hours after loading.</p>
+            </Field>
+          )}
           <FormButtons onCancel={() => setLoadingFor(null)} submitting={submitting} submitLabel="Mark Loaded" />
+        </form>
+      </Modal>
+
+      <Modal open={!!arriveFor} onClose={() => setArriveFor(null)} title="Mark Arrived">
+        <form onSubmit={handleArrive} className="space-y-4">
+          <BusinessDateField
+            label="Date arrived" value={arriveStage.date} onChange={(date) => setArriveStage({ ...arriveStage, date })}
+            otp={arriveStage.backdateOtp} onOtpChange={(backdateOtp) => setArriveStage((s) => ({ ...s, backdateOtp }))}
+          />
+          <FormButtons onCancel={() => setArriveFor(null)} submitting={submitting} submitLabel="Mark Arrived" />
         </form>
       </Modal>
     </div>

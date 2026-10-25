@@ -6,6 +6,9 @@ import { autoArriveDueAllocations, SELLABLE_ALLOCATION_WHERE } from '@/lib/alloc
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
 import { effectiveDate } from '@/lib/businessDates.mjs';
+import { optionalBusinessDate } from '@/lib/saleDates.mjs';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 
 // Ported from ecana_shop-app's /api/atcs — an ATC is a Delivery allocation (qtyRemaining set) whose
 // product is a cement brand (abbreviation set, see prisma/schema.prisma's Product comment). The
@@ -66,6 +69,13 @@ export const POST = withOrg(async (request) => {
     if (!branchId || !productId || !atcNumber) throw new ApiError('Branch, brand and ATC number are required', 400);
     if (!Number.isFinite(bagsPaidFor) || bagsPaidFor <= 0) throw new ApiError('Bags must be a positive number', 400);
 
+    // An ATC recorded late carries the day it was actually issued.
+    const atcDate = optionalBusinessDate(body.atcDate, 'ATC date');
+    assertBackdateOtpPresent(atcDate, body.backdateOtp);
+
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!branch || !canAccessBranch(await getAccessibleBranchIds(session), branchId)) throw new ApiError('Branch not found', 404);
+
     const brand = await prisma.product.findUnique({ where: { id: productId } });
     if (!brand) throw new ApiError('Brand not found', 404);
     if (!brand.abbreviation) throw new ApiError('This brand has no abbreviation set', 400);
@@ -73,13 +83,20 @@ export const POST = withOrg(async (request) => {
     const existing = await prisma.delivery.findFirst({ where: { atcNumber, productId } });
     if (existing) throw new ApiError('That ATC number is already used for this brand', 400);
 
+    const backdated = await requireBackdateOtp({ userId: session.user.id, date: atcDate, otp: body.backdateOtp });
+
     const atc = await prisma.delivery.create({
       data: {
         branchId, productId, atcNumber, notes: (body.notes || '').trim() || null,
         quantity: bagsPaidFor, qtyRemaining: bagsPaidFor, costPerUnit: 0, totalCost: 0n,
-        status: 'pending', createdBy: session.user.id,
+        status: 'pending', createdBy: session.user.id, businessDate: atcDate,
       },
       include: { product: true, vehicle: true },
+    });
+
+    if (backdated) await notifyBackdated({
+      actor: session.user, branchId, date: atcDate, relatedType: 'Delivery', relatedId: atc.id,
+      what: `ATC ${brand.abbreviation}-${atcNumber} (${bagsPaidFor} bags)`,
     });
 
     return NextResponse.json(jsonSafe({ success: true, data: atc }), { status: 201 });
