@@ -12,6 +12,7 @@ import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates, backdatedAt } from '@/lib/saleDates.mjs';
 import { toCents } from '@/lib/money.mjs';
+import { atcReference } from '@/lib/salesReportRows.mjs';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // A combined materials sale — one customer, one order, any mix of cement (sold down a pre-recorded
@@ -67,7 +68,8 @@ export const POST = withOrg(async (request) => {
         if (!Number.isFinite(actualQty) || actualQty <= 0) throw new ApiError('Quantity supplied must be a positive number', 400);
         // Same checks createSaleOrder's stock step makes, done up front so a sale that can't be
         // fulfilled fails before a verification code is spent or a quarry purchase is recorded.
-        const atcLabel = [atc.product?.abbreviation, atc.atcNumber].filter(Boolean).join('-') || 'selected';
+        const atcRef = atcReference(atc);
+        const atcLabel = atcRef || 'selected';
         if (!isAllocationSellable(atc)) throw new ApiError(`The ${atcLabel} ATC is not available to sell from`, 400);
         const requested = (drawnFromAtc.get(atc.id) || 0) + actualQty;
         if (requested > atc.qtyRemaining) throw new ApiError(`Only ${atc.qtyRemaining} bags remaining on the ${atcLabel} ATC`, 400);
@@ -78,7 +80,7 @@ export const POST = withOrg(async (request) => {
             productId: atc.productId, qty: Number(item.billQty ?? item.actualQty), stockQty: actualQty, allocationId: atc.id,
             transportFee: toCents(item.transportFee), costs: centsCosts(item.costs),
             sourceTruckNumber: atc.vehicle?.plateNumber, sourceDriverName: atc.vehicle?.driverName,
-            sourceName: atc.supplier?.name, quality: atc.product?.attributes?.grade || null,
+            sourceName: atcRef || atc.supplier?.name, quality: atc.product?.attributes?.grade || null,
           },
         });
       } else if (item.kind === 'aggregate') {

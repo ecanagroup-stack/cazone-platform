@@ -4,12 +4,17 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { can } from '@/lib/permissions';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
-import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
+import { dateRangeWhere } from '@/lib/businessDates.mjs';
+import { salesReportRow } from '@/lib/salesReportRows.mjs';
 
-// One row per transaction, with the stored order and line details used by the report and CSV.
+// Same roles the Reports sidebar item is shown to (components/shell/Sidebar.js).
+const REPORT_ROLES = ['owner', 'manager', 'materials_manager', 'auditor', 'daily_auditor', 'external_auditor'];
+
+// One row per transaction, with its line items (lib/salesReportRows.mjs) for the report, sale detail and CSV.
 export const GET = withOrg(async (request) => {
   try {
     const session = await getOrgSession();
+    if (!REPORT_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const serviceId = url.searchParams.get('serviceId');
@@ -19,7 +24,9 @@ export const GET = withOrg(async (request) => {
     if (!from || !to) throw new ApiError('from and to are required', 400);
 
     const branchWhere = branchId ? { id: branchId } : { serviceId };
-    const branches = await prisma.branch.findMany({ where: branchWhere, select: { id: true, name: true, service: { select: { type: true } } } });
+    const accessible = await getAccessibleBranchIds(session);
+    const branches = (await prisma.branch.findMany({ where: branchWhere, select: { id: true, name: true, service: { select: { type: true } } } }))
+      .filter((b) => canAccessBranch(accessible, b.id));
     const branchNameById = Object.fromEntries(branches.map((b) => [b.id, b.name]));
     const allBranches = !branchId;
     const where = { branchId: { in: branches.map((b) => b.id) }, status: 'active' };
@@ -39,7 +46,6 @@ export const GET = withOrg(async (request) => {
       return NextResponse.json({ success: true, data: rows, allBranches, fuelSummary: true });
     }
 
-    const accessible = await getAccessibleBranchIds(session);
     const deliveryEnabled = branches[0]?.service?.type === 'shop';
     const orders = await prisma.order.findMany({
       where: { ...where, ...dateRangeWhere('saleDate', { from, to }) },
@@ -47,48 +53,15 @@ export const GET = withOrg(async (request) => {
         customer: { select: { name: true } },
         lines: { include: {
           costs: true,
-          product: { select: { name: true, unit: true, attributes: true, supplier: { select: { name: true } } } },
-          allocation: { include: { vehicle: { select: { plateNumber: true, driverName: true } }, supplier: { select: { name: true } } } },
+          product: { select: { name: true, unit: true, supplier: { select: { name: true } } } },
+          allocation: { include: { product: { select: { abbreviation: true } }, vehicle: { select: { plateNumber: true, driverName: true } }, supplier: { select: { name: true } } } },
         } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const rows = orders.map((order) => ({
-      id: order.id,
-      date: effectiveDate(order, 'saleDate'),
-      enteredAt: order.createdAt,
-      branch: branchNameById[order.branchId] || '—',
-      customer: order.customer?.name || 'Walk-in',
-      products: order.lines.map((line) => line.product.name).join(', '),
-      truck: [...new Set(order.lines.map((line) => line.sourceTruckNumber || line.allocation?.vehicle?.plateNumber).filter(Boolean))].join(', ') || '—',
-      driver: [...new Set(order.lines.map((line) => line.sourceDriverName || line.allocation?.vehicle?.driverName).filter(Boolean))].join(', ') || '—',
-      source: [...new Set(order.lines.map((line) => line.sourceName || line.allocation?.supplier?.name || line.product.supplier?.name).filter(Boolean))].join(', ') || '—',
-      quality: [...new Set(order.lines.map((line) => line.quality || line.product.attributes?.grade || line.product.attributes?.size).filter(Boolean))].join(', ') || '—',
-      salesAmount: order.subtotal - order.discount,
-      transportAmount: order.transportFee,
-      total: order.grandTotal,
-      reference: order.orderNumber,
-      paymentMethod: order.paymentMethod || 'unspecified',
-      channel: order.channel || 'unspecified',
-      count: 1,
-      ...(deliveryEnabled ? {
-        deliveryStatus: order.deliveryStatus,
-        deliveryDate: order.deliveryDate?.toISOString().slice(0, 10) || order.deliveredAt?.toISOString().slice(0, 10) || null,
-        editable: order.deliveryStatus === 'pending' && can(session?.user?.role, 'sales.record') && canAccessBranch(accessible, order.branchId) && order.lines.every((line) => line.stockQty != null),
-        edit: order.deliveryStatus === 'pending' ? {
-          revision: order.deliveryRevision,
-          saleDate: effectiveDate(order, 'saleDate'),
-          discount: order.discount,
-          orderTransportFee: order.transportFee - order.lines.reduce((sum, line) => sum + line.transportFee, 0),
-          lines: order.lines.map((line) => ({
-            id: line.id, product: line.product.name, unit: line.product.unit, qty: line.qty, stockQty: line.stockQty,
-            unitPrice: line.unitPrice, transportFee: line.transportFee,
-            costs: line.costs.map((cost) => ({ id: cost.id, type: cost.type, detail: cost.detail, amount: cost.amount })),
-          })),
-        } : null,
-      } : {}),
-    }));
+    const canEdit = (order) => can(session?.user?.role, 'sales.record') && canAccessBranch(accessible, order.branchId);
+    const rows = orders.map((order) => salesReportRow(order, { branchNameById, deliveryEnabled, canEdit }));
     rows.sort((left, right) => right.date.localeCompare(left.date) || new Date(right.enteredAt) - new Date(left.enteredAt));
     return NextResponse.json({ success: true, data: rows, allBranches, deliveryEnabled });
   } catch (e) {
