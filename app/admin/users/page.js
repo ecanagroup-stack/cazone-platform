@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { invitableRolesForBusiness } from '@/lib/businessRoles';
+import { invitableRolesForBusiness, isOrgWideRole } from '@/lib/businessRoles';
 import { ROLE_LABELS } from '@/lib/roleLabels';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
 
@@ -20,6 +20,7 @@ const ROLE_DESCRIPTIONS = {
     daily_auditor: 'Reviews daily fuel records and raises discrepancy flags.',
     external_auditor: 'Reviews fuel reports and audit history.',
     staff: 'Works on the stations they are assigned to.',
+    atc_manager: 'Records petroleum ATCs and marks sold ones delivered (distributor add-on). Works across the whole business and sees only the distribution pages.',
   },
   shop: {
     owner: 'Manages branches, users, billing, and building material operations.',
@@ -38,9 +39,12 @@ const ROLE_DESCRIPTIONS = {
 };
 
 const UNIVERSAL_ROLES = ['manager', 'staff', 'auditor'];
+// What can be added with no branch picked: the universal roles, plus the organization-wide ATC manager.
+const rolesWithoutBranch = (businessType, addonTypes) =>
+  invitableRolesForBusiness(businessType, addonTypes).filter((role) => UNIVERSAL_ROLES.includes(role) || isOrgWideRole(role, businessType));
 const FUEL_STAFF_ROLES = ['manager', 'supervisor', 'cashier', 'staff'];
-const roleLabel = (role, businessType) =>
-  role === 'owner' || invitableRolesForBusiness(businessType).includes(role) ? (ROLE_LABELS[role] || role) : 'Legacy role';
+const roleLabel = (role, businessType, addonTypes) =>
+  role === 'owner' || invitableRolesForBusiness(businessType, addonTypes).includes(role) ? (ROLE_LABELS[role] || role) : 'Legacy role';
 
 const blankUser = { name: '', identifier: '', role: 'staff', password: '', branchIds: [] };
 
@@ -51,6 +55,7 @@ export default function UsersPage() {
   const [services, setServices] = useState([]);
   const [businessType, setBusinessType] = useState(null);
   const [accessibleBranchIds, setAccessibleBranchIds] = useState(null);
+  const [addonTypes, setAddonTypes] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(blankUser);
   const [submitting, setSubmitting] = useState(false);
@@ -62,21 +67,20 @@ export default function UsersPage() {
   const load = async () => {
     const [ur, sr] = await Promise.all([fetch('/api/admin/users'), fetch('/api/admin/services')]);
     const [ud, sd] = await Promise.all([ur.json(), sr.json()]);
-    if (ud.success) { setUsers(ud.data); setAccessibleBranchIds(ud.accessibleBranchIds ?? null); } else toast.error(ud.error || 'Failed to load users');
+    if (ud.success) { setUsers(ud.data); setAccessibleBranchIds(ud.accessibleBranchIds ?? null); setAddonTypes(ud.addonTypes || []); } else toast.error(ud.error || 'Failed to load users');
     if (sd.success) { setServices(sd.data); setBusinessType(sd.businessType); }
   };
 
   useEffect(() => { load(); }, []);
 
   const allBranches = services.flatMap((s) => s.branches.filter((b) => b.isActive && (!accessibleBranchIds || accessibleBranchIds.includes(b.id))).map((b) => ({ ...b, serviceType: s.type, serviceName: s.name })));
-  const availableRoles = form.branchIds.length > 0
-    ? invitableRolesForBusiness(businessType)
-    : UNIVERSAL_ROLES.filter((role) => invitableRolesForBusiness(businessType).includes(role));
+  const rolesFor = (branchIds) => branchIds.length > 0 ? invitableRolesForBusiness(businessType, addonTypes) : rolesWithoutBranch(businessType, addonTypes);
+  const availableRoles = rolesFor(form.branchIds);
 
   const toggleBranch = (branchId) => {
     setForm((f) => {
       const branchIds = f.branchIds.includes(branchId) ? f.branchIds.filter((id) => id !== branchId) : [...f.branchIds, branchId];
-      const nextRoles = branchIds.length > 0 ? invitableRolesForBusiness(businessType) : UNIVERSAL_ROLES.filter((role) => invitableRolesForBusiness(businessType).includes(role));
+      const nextRoles = rolesFor(branchIds);
       return { ...f, branchIds, role: nextRoles.includes(f.role) ? f.role : 'staff' };
     });
   };
@@ -133,7 +137,7 @@ export default function UsersPage() {
     // A legacy account without explicit branch rows is unrestricted under getAccessibleBranchIds.
     if (selectedBranch && user.role !== 'owner' && user.branchAccess?.length && !user.branchAccess.some(({ branch }) => branch.id === selectedBranch)) return false;
     const value = search.trim().toLowerCase();
-    return !value || [user.name, user.email, user.username, user.phone, roleLabel(user.role, businessType)].some((part) => part?.toLowerCase().includes(value));
+    return !value || [user.name, user.email, user.username, user.phone, roleLabel(user.role, businessType, addonTypes)].some((part) => part?.toLowerCase().includes(value));
   });
   const viewHref = (view) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -154,7 +158,7 @@ export default function UsersPage() {
       {!staffView && <Card className="p-4 mb-6">
         <table className="w-full text-sm">
           <tbody className="divide-y">
-            {['owner', ...invitableRolesForBusiness(businessType)].map((role) => (
+            {['owner', ...invitableRolesForBusiness(businessType, addonTypes)].map((role) => (
               <tr key={role}>
                 <td className="py-2 pr-4 font-medium w-28">{ROLE_LABELS[role]}</td>
                 <td className="py-2 text-gray-600">{ROLE_DESCRIPTIONS[businessType]?.[role]}</td>
@@ -172,7 +176,7 @@ export default function UsersPage() {
             csvRows={filteredUsers}
             csvColumns={[
               { key: 'name', label: 'Name' },
-              { key: 'role', label: 'Role', value: (r) => roleLabel(r.role, businessType) },
+              { key: 'role', label: 'Role', value: (r) => roleLabel(r.role, businessType, addonTypes) },
               { key: 'login', label: 'Login', value: (r) => r.email || r.username || r.phone || '' },
               { key: 'isActive', label: 'Status', value: (r) => (r.isActive ? 'Active' : 'Inactive') },
             ]}
@@ -195,10 +199,10 @@ export default function UsersPage() {
               {filteredUsers.map((u) => (
                 <tr key={u.id}>
                   <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3">{roleLabel(u.role, businessType)}</td>
+                  <td className="px-4 py-3">{roleLabel(u.role, businessType, addonTypes)}</td>
                   <td className="px-4 py-3 text-gray-500">{u.email || u.username || u.phone || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
-                    {u.role === 'owner' ? (fuelBusiness ? 'All stations' : 'All branches') : (u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : (fuelBusiness ? 'All stations (legacy access)' : 'None assigned'))}
+                    {u.role === 'owner' ? (fuelBusiness ? 'All stations' : 'All branches') : (u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : (isOrgWideRole(u.role, businessType) ? 'Whole business' : fuelBusiness ? 'All stations (legacy access)' : 'None assigned'))}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} /></td>
                   <td className="px-4 py-3 text-right">
@@ -225,8 +229,8 @@ export default function UsersPage() {
             label="Email, username or phone" mode="identifier" required
             value={form.identifier} onChange={(v) => setForm({ ...form, identifier: v })}
           />
-          <Field label={fuelBusiness ? 'Stations' : 'Shops / branches'} required>
-            <p className="text-xs text-gray-500 mb-2">Select the locations this user can access.</p>
+          <Field label={fuelBusiness ? 'Stations' : 'Shops / branches'} required={!isOrgWideRole(form.role, businessType)}>
+            <p className="text-xs text-gray-500 mb-2">{isOrgWideRole(form.role, businessType) ? 'The ATC manager works across the whole business, so no station is needed.' : 'Select the locations this user can access.'}</p>
             <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto">
               {allBranches.map((b) => (
                 <label key={b.id} className="flex items-center gap-2 text-sm">

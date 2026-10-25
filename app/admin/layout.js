@@ -9,6 +9,7 @@ import LapsedBanner from '@/components/shell/LapsedBanner';
 import QuickActions from '@/components/shell/QuickActions';
 import AdminCountsProvider from '@/components/shell/AdminCountsProvider';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
+import { can } from '@/lib/permissions';
 
 // Every page under here reads the session and the org's live data — never statically prerenderable.
 // Without this, Next can attempt a build-time static pass on a page that happens not to touch any
@@ -34,7 +35,7 @@ export default async function AdminLayout({ children }) {
   if (session.user.role === 'super_admin') redirect('/platform/organizations');
 
   const orgId = requireOrg(session);
-  const [organization, accessibleBranches, { hasCustomers, hasOrdering }] = await Promise.all([
+  const [organization, accessibleBranches, { hasCustomers, hasOrdering, hasAtc }] = await Promise.all([
     getCachedOrganization(orgId),
     getAccessibleBranchIds(session),
     getOrgCustomerFlags(orgId),
@@ -49,14 +50,19 @@ export default async function AdminLayout({ children }) {
   // The people who run customer conversations and orders; see components/shell/QuickActions.js.
   const showQuickActions = hasCustomers && ['owner', 'manager', 'materials_manager'].includes(session.user.role);
 
+  // Active add-ons that add menu items (see `addon` in components/shell/Sidebar.js) — read live per request.
+  const addons = hasAtc ? ['distributor'] : [];
+  // Sold-ATC badge for those who see the sold board (the API answers 0 to anyone else).
+  const showAtcBadge = hasAtc && can(session.user.role, 'atc.view');
+
   return (
-    <AdminCountsProvider enabled={showQuickActions}>
+    <AdminCountsProvider enabled={showQuickActions} atc={showAtcBadge}>
       <div className="min-h-screen flex flex-col">
-        <TopBar org={organization} services={services} user={session.user} hasCustomers={hasCustomers} />
+        <TopBar org={organization} services={services} user={session.user} hasCustomers={hasCustomers} addons={addons} />
         <LapsedBanner org={organization} />
         {showQuickActions && <QuickActions hasOrdering={hasOrdering} />}
         <div className="flex flex-1">
-          <Sidebar services={services} businessType={organization.businessType} user={session.user} hasCustomers={hasCustomers} />
+          <Sidebar services={services} businessType={organization.businessType} user={session.user} hasCustomers={hasCustomers} addons={addons} />
           <main className="flex-1 p-6 pb-24 md:pb-6 max-w-6xl mx-auto w-full">{children}</main>
         </div>
       </div>

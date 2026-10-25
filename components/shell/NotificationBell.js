@@ -9,7 +9,7 @@ import { formatDate } from '@/lib/format';
 // push/websocket infra) and needs nothing new on the server beyond the REST routes.
 const POLL_MS = 30000;
 
-export default function NotificationBell() {
+export default function NotificationBell({ role }) {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
 
@@ -60,8 +60,11 @@ export default function NotificationBell() {
                   </>
                 );
                 // A sold ATC is work to act on: take the ATC manager straight to the sold board. A payment
-                // that could not buy its ATC is a refund Flag, which is listed with the other exceptions.
-                const href = n.type === 'atc_sold' ? '/admin/distributor/orders' : n.type === 'atc_paid_conflict' ? '/admin/exceptions' : null;
+                // that could not buy its ATC is a refund Flag, which is listed with the other exceptions (the
+                // fuel ATC manager is confined to the distribution pages, so theirs opens the sold board).
+                const href = n.type === 'atc_sold' ? '/admin/distributor/orders'
+                  : n.type === 'atc_paid_conflict' ? (role === 'atc_manager' ? '/admin/distributor/orders' : '/admin/exceptions')
+                  : null;
                 return href ? (
                   <Link key={n.id} href={href} onClick={() => setOpen(false)} className="block px-3 py-2 border-b last:border-b-0 hover:bg-gray-50">{body}</Link>
                 ) : (

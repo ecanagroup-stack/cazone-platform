@@ -5,7 +5,8 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { classifyIdentifier } from '@/lib/identifier';
 import { ApiError } from '@/lib/apiError';
-import { invitableRolesForBusiness } from '@/lib/businessRoles';
+import { invitableRolesForBusiness, isOrgWideRole } from '@/lib/businessRoles';
+import { activeAddonTypes } from '@/lib/businessAddons';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 
 // Admin (role owner) is never added here — it's created once at signup/org-creation. super_admin/customer are out of
@@ -19,13 +20,14 @@ export const GET = withOrg(async () => {
   }
   const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
   const access = org.businessType === 'fuel_station' ? await getAccessibleBranchIds(session) : null;
+  const addonTypes = await activeAddonTypes(session.user.organizationId);
   const users = await prisma.user.findMany({
     where: { role: { not: 'customer' }, ...(access ? { OR: [{ role: 'owner' }, { branchAccess: { some: { branchId: { in: access } } } }] } : {}) },
     select: { id: true, name: true, role: true, email: true, username: true, phone: true, isActive: true,
       branchAccess: { where: { branch: { service: { type: org.businessType } } }, select: { branch: { select: { id: true, name: true } } } } },
     orderBy: { createdAt: 'asc' },
   });
-  return NextResponse.json({ success: true, data: users, accessibleBranchIds: access });
+  return NextResponse.json({ success: true, data: users, accessibleBranchIds: access, addonTypes });
 });
 
 export const POST = withOrg(async (request) => {
@@ -43,16 +45,24 @@ export const POST = withOrg(async (request) => {
 
     if (!name || !identifier || !role || !password) throw new ApiError('Name, login, role and password are all required', 400);
     const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
-    if (!invitableRolesForBusiness(org?.businessType).includes(role)) throw new ApiError('This role is not available for this business', 400);
+    const addonTypes = await activeAddonTypes(session.user.organizationId);
+    if (!invitableRolesForBusiness(org?.businessType, addonTypes).includes(role)) throw new ApiError('This role is not available for this business', 400);
     if (password.length < 8) throw new ApiError('Password must be at least 8 characters', 400);
-    // Every non-owner role needs at least one branch — a staff member with no branch has nowhere to
-    // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
-    if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
-    const selectedBranches = await prisma.branch.findMany({ where: { id: { in: branchIds }, isActive: true, service: { type: org.businessType } }, select: { id: true, service: { select: { type: true, isActive: true, config: true } } } });
-    if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive)) throw new ApiError('Select available branches of this business only', 400);
-    if (org.businessType === 'fuel_station') {
-      const access = await getAccessibleBranchIds(session);
-      if (access && branchIds.some((id) => !access.includes(id))) throw new ApiError('You can assign users only to stations you manage', 403);
+    // An org-wide role (a fuel station's ATC manager) works across the whole organization, so it gets no
+    // branch rows: any UserBranchAccess row would restrict the account to those stations.
+    const orgWide = isOrgWideRole(role, org.businessType);
+    if (orgWide) {
+      if ((await getAccessibleBranchIds(session)) !== null) throw new ApiError('Only the Admin or a manager with access to every station can add this role', 403);
+    } else {
+      // Every other non-owner role needs at least one branch — a staff member with no branch has nowhere to
+      // actually work (petrol-station-app enforces the same: "station required for every non-admin role").
+      if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
+      const selectedBranches = await prisma.branch.findMany({ where: { id: { in: branchIds }, isActive: true, service: { type: org.businessType } }, select: { id: true, service: { select: { type: true, isActive: true, config: true } } } });
+      if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive)) throw new ApiError('Select available branches of this business only', 400);
+      if (org.businessType === 'fuel_station') {
+        const access = await getAccessibleBranchIds(session);
+        if (access && branchIds.some((id) => !access.includes(id))) throw new ApiError('You can assign users only to stations you manage', 403);
+      }
     }
 
     const { field: idField, value: idValue } = classifyIdentifier(identifier);
@@ -64,7 +74,7 @@ export const POST = withOrg(async (request) => {
     const user = await prisma.user.create({
       data: {
         name, role, passwordHash, [idField]: idValue,
-        branchAccess: branchIds.length ? { create: branchIds.map((branchId) => ({ branchId })) } : undefined,
+        branchAccess: !orgWide && branchIds.length ? { create: branchIds.map((branchId) => ({ branchId })) } : undefined,
       },
     });
 

@@ -60,7 +60,7 @@ export default function LinkSearch({ links = [] }) {
   </>;
 }
 
-export function AdminLinkSearch({ services, businessType, role, hasCustomers = true }) {
+export function AdminLinkSearch({ services, businessType, role, hasCustomers = true, addons = [] }) {
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('service') || '';
   const branchId = searchParams.get('branch') || '';
@@ -68,7 +68,7 @@ export function AdminLinkSearch({ services, businessType, role, hasCustomers = t
   if (serviceId) params.set('service', serviceId);
   if (branchId) params.set('branch', branchId);
   const suffix = params.toString();
-  const links = visibleAdminGroups({ services, businessType, role, serviceId, hasCustomers }).flatMap((group) => group.items.map((item) => ({
+  const links = visibleAdminGroups({ services, businessType, role, serviceId, hasCustomers, addons }).flatMap((group) => group.items.map((item) => ({
     label: item.label,
     group: group.label,
     href: item.href === '/admin/customers' || !suffix ? item.href : `${item.href}?${suffix}`,

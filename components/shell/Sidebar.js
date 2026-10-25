@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare, FiShoppingBag,
+  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare, FiShoppingBag, FiTag,
 } from 'react-icons/fi';
 import { useAdminCounts } from './AdminCountsProvider';
 
@@ -69,7 +69,8 @@ const GROUPS = [
 // The station app's navigation, mapped to tenant-scoped CaZone fuel screens.
 const FUEL_GROUPS = [
   { label: 'Navigation', items: [
-    { href: '/admin/fuel/dashboard', label: 'Dashboard', icon: FiHome },
+    // The pump dashboard is not for the distributor's ATC manager, who works only in Distribution.
+    { href: '/admin/fuel/dashboard', label: 'Dashboard', icon: FiHome, roles: ['owner', 'manager', 'supervisor', 'cashier', 'auditor', 'daily_auditor', 'external_auditor', 'staff'] },
     { href: '/admin/fuel/stations', label: 'Stations', icon: FiMapPin, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/trucks', label: 'Trucks', icon: FiTruck, roles: ['owner', 'manager'] },
     { href: '/admin/price-approvals', label: 'Price Changes', icon: FiSliders, roles: ['owner', 'manager'] },
@@ -82,6 +83,14 @@ const FUEL_GROUPS = [
     { href: '/admin/exceptions', label: 'Flags', icon: FiAlertTriangle, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/audit', label: 'Audit Logs', icon: FiShield, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/services', label: 'Services & Branches', icon: FiLayers, roles: ['owner', 'manager'] },
+  ] },
+  // `addon` items show only while that add-on is active (the Petroleum Distributor ATC module).
+  { label: 'Distribution', items: [
+    { href: '/admin/distributor', label: 'ATC Overview', icon: FiHome, addon: 'distributor', roles: ['owner', 'manager', 'atc_manager', 'cashier', 'staff', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/distributor/atcs', label: 'ATCs', icon: FiFileText, addon: 'distributor', roles: ['owner', 'manager', 'atc_manager', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/distributor/orders', label: 'Sold ATCs', icon: FiCheckCircle, addon: 'distributor', roles: ['owner', 'manager', 'atc_manager', 'auditor', 'daily_auditor', 'external_auditor'] },
+    { href: '/admin/distributor/sell', label: 'Sell ATC', icon: FiShoppingCart, addon: 'distributor', roles: ['owner', 'manager', 'cashier', 'staff'] },
+    { href: '/admin/distributor/prices', label: 'ATC Prices', icon: FiTag, addon: 'distributor', roles: ['owner', 'manager', 'atc_manager', 'auditor', 'daily_auditor', 'external_auditor'] },
   ] },
   { label: 'Station work', items: [
     { href: '/admin/fuel/tanks', label: 'Station Config', icon: FiSettings, roles: ['owner', 'manager'], liveOnly: true },
@@ -118,19 +127,19 @@ const ACCOUNT_GROUP = { label: 'Account', items: [
 // `hasCustomers` (lib/customerAccess.mjs) hides the customer-facing items for orgs without customers.
 const CUSTOMER_HREFS = ['/admin/customers', '/admin/messages'];
 
-export function visibleAdminGroups({ services = [], businessType, role, serviceId = '', hasCustomers = true }) {
+export function visibleAdminGroups({ services = [], businessType, role, serviceId = '', hasCustomers = true, addons = [] }) {
   const currentServiceType = services.find((service) => service.id === serviceId)?.type || businessType || null;
   const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   return menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (hasCustomers || !CUSTOMER_HREFS.includes(item.href)) && (!item.pack || [].concat(item.pack).includes(currentServiceType)) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (hasCustomers || !CUSTOMER_HREFS.includes(item.href)) && (!item.addon || addons.includes(item.addon)) && (!item.pack || [].concat(item.pack).includes(currentServiceType)) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((group) => group.items.length > 0);
 }
 
-export default function Sidebar({ services = [], businessType, user, hasCustomers = true }) {
+export default function Sidebar({ services = [], businessType, user, hasCustomers = true, addons = [] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { chat: unreadChats, pendingOrders } = useAdminCounts();
+  const { chat: unreadChats, pendingOrders, soldAtcs } = useAdminCounts();
   // Every page under /admin reads its working service/branch from the URL (ServiceBranchSwitcher) —
   // a sidebar link that dropped those params would force a re-pick on every single navigation. Only
   // service/branch carry forward; anything else a page put in the URL (e.g. a tab) shouldn't leak
@@ -147,8 +156,8 @@ export default function Sidebar({ services = [], businessType, user, hasCustomer
   // the real state for a deliberate "All services" view.
   const currentServiceId = searchParams.get('service') || '';
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
-  const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId, hasCustomers });
-  const badgeFor = (item) => item.href === '/admin/messages' ? unreadChats : item.href === '/admin/orders' ? pendingOrders : 0;
+  const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId, hasCustomers, addons });
+  const badgeFor = (item) => item.href === '/admin/messages' ? unreadChats : item.href === '/admin/orders' ? pendingOrders : item.href === '/admin/distributor/orders' ? soldAtcs : 0;
   const isActive = (item) => {
     if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
       if (item.href === '/admin/fuel/staff') return searchParams.get('view') === 'staff';

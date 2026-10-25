@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
 import { SELLABLE_ALLOCATION_WHERE } from '@/lib/allocation';
+import { isConfinedAtcManager } from '@/lib/atcContainment.mjs';
+import { hasActiveDistributor } from '@/lib/distributor';
 import { dateRangeWhere } from '@/lib/businessDates.mjs';
 import { businessToday } from '@/lib/saleDates.mjs';
 import { Card, btnPrimaryCls } from '@/components/ui';
@@ -25,6 +27,12 @@ export default async function TodayPage({ searchParams }) {
   ]);
   const allBusinessServices = await prisma.service.findMany({ where: { type: organization.businessType }, include: { branches: { where: { isActive: true } } }, orderBy: { createdAt: 'asc' } });
   const services = allBusinessServices.filter((service) => service.isActive);
+
+  // A fuel station's ATC manager has no pump dashboard (middleware confines the role): straight to the
+  // distribution pages, or to their account once the add-on has lapsed.
+  if (isConfinedAtcManager({ role: session.user.role, businessType: organization.businessType })) {
+    redirect((await hasActiveDistributor(orgId)) ? '/admin/distributor' : '/admin/account');
+  }
 
   if (organization.businessType === 'fuel_station') {
     const fuel = services[0];

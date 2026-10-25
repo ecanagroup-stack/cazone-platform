@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { STAFF_ROLES } from '@/lib/permissions';
+import { atcManagerMayCall, atcManagerMayVisit, isConfinedAtcManager } from '@/lib/atcContainment.mjs';
 
 /**
  * Server-side route protection (defense-in-depth; per-page/API permission checks happen further
  * downstream too).
  * - `/platform/*` — the super_admin (Cazone operator) only, spans every organization.
- * - `/admin/*` — any staff role (owner/manager/staff) within their own organization.
+ * - `/admin/*` — any staff role (owner/manager/staff) within their own organization. A fuel station's
+ *   `atc_manager` is confined to the distribution pages and APIs (lib/atcContainment.mjs).
  * - `/portal/*` — a `customer`-role login (fuel credit client / shop registered customer) only.
  * - `/api/*` mirrors the same three gates for `/api/platform/*`, `/api/admin/*`, `/api/portal/*`,
  *   plus `/api/account/*` (any signed-in role — self-service password change). `/api/auth/*` is
@@ -26,6 +28,9 @@ export default async function middleware(request) {
   if (pathname.startsWith('/admin')) {
     if (!token || !STAFF_ROLES.includes(token.role)) {
       return NextResponse.redirect(new URL('/login', request.url));
+    }
+    if (isConfinedAtcManager(token) && !atcManagerMayVisit(pathname)) {
+      return NextResponse.redirect(new URL('/admin', request.url));
     }
     return NextResponse.next();
   }
@@ -47,6 +52,9 @@ export default async function middleware(request) {
     if (pathname.startsWith('/api/admin')) {
       if (!token || !STAFF_ROLES.includes(token.role)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      if (isConfinedAtcManager(token) && !atcManagerMayCall(pathname)) {
+        return NextResponse.json({ error: 'Your role cannot use this part of the system' }, { status: 403 });
       }
       return NextResponse.next();
     }
