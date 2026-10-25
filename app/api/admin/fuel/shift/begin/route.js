@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
-import { notify } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
@@ -91,7 +91,7 @@ export const POST = withOrg(async (request) => {
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     if (shift.anyPricePending) {
-      await notify({ recipientRole: 'owner', type: 'price_proposed', title: 'Price change needs approval', message: 'A fuel price change from Begin Shift needs your approval', relatedType: 'Shift', relatedId: shift.shift.id });
+      await notifyAlteration({ actor: session.user, branchId, type: 'price_proposed', title: 'Price change awaiting approval', message: `${session.user.name} proposed a fuel price change at Begin Shift, awaiting Admin approval`, relatedType: 'Shift', relatedId: shift.shift.id });
     }
 
     return NextResponse.json({

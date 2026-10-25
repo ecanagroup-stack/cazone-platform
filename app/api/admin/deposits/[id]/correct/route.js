@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Fix a mistake in a bank deposit record — no stock/order ledger involved, so this is the simplest
@@ -36,6 +37,12 @@ export const POST = withOrg(async (request, { params }) => {
       action: 'deposit.corrected', entityType: 'CashDeposit', entityId: id,
       before: { amount: deposit.amount, bankName: deposit.bankName, accountNumber: deposit.accountNumber },
       after: { amount: newAmount, bankName: newBankName, accountNumber: newAccountNumber, reason },
+    });
+
+    await notifyAlteration({
+      actor: session.user, branchId: deposit.branchId, type: 'deposit_corrected', title: 'Deposit corrected',
+      message: `${session.user.name} corrected a deposit from ${(deposit.amount / 100).toLocaleString()} to ${(newAmount / 100).toLocaleString()}. Reason: ${reason}`,
+      relatedType: 'CashDeposit', relatedId: id,
     });
 
     return NextResponse.json({ success: true, data: updated });

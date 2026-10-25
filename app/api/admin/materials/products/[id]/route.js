@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
-import { notify } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 export const PATCH = withOrg(async (request, { params }) => {
@@ -40,7 +40,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
 
     if (pricePending) {
-      await notify({ recipientRole: 'owner', type: 'price_proposed', title: 'Price change needs approval', message: `${updated.name}'s new price needs your approval`, relatedType: 'Product', relatedId: updated.id });
+      await notifyAlteration({ actor: session.user, type: 'price_proposed', title: 'Price change awaiting approval', message: `${session.user.name} proposed a new price for ${updated.name}, awaiting Admin approval`, relatedType: 'Product', relatedId: updated.id });
     }
 
     return NextResponse.json({

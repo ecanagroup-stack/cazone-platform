@@ -6,7 +6,7 @@ import { resolvePrice } from '@/lib/pricing';
 import { createSaleOrder, priceLines } from '@/lib/sale';
 import { checkCredit } from '@/lib/credit';
 import { verifyOtp } from '@/lib/otp';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates } from '@/lib/saleDates.mjs';
 import { jsonSafe } from '@/lib/jsonSafe';
@@ -156,9 +156,9 @@ export const POST = withOrg(async (request) => {
       });
     }
 
-    if (body.overrideCredit) await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code for sale ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
-    if (discount > 0) await notifyReviewers({
-      actorUserId: session.user.id, title: 'Sale discount applied',
+    if (body.overrideCredit) await notifyAlteration({ actor: session.user, branchId, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code for sale ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
+    if (discount > 0) await notifyAlteration({
+      actor: session.user, branchId, title: 'Sale discount applied',
       message: `${session.user.name} applied a discount of ${(discount / 100).toFixed(2)} to sale ${result.order.orderNumber}.`,
       type: 'sale_discount', relatedType: 'Order', relatedId: result.order.id,
     });

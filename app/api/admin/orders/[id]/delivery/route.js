@@ -4,7 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 import { verifyOtp } from '@/lib/otp';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { checkCredit } from '@/lib/credit';
 import { ApiError } from '@/lib/apiError';
 import { revisedSaleTotals, allocationReleasePlan, revisedAtcAvailability } from '@/lib/pendingSaleEdit.mjs';
@@ -179,13 +179,13 @@ export const PATCH = withOrg(async (request, { params }) => {
       return updated;
     }, { timeout: 30000, isolationLevel: 'Serializable' });
 
-    if (discountOtpUsed) await notifyReviewers({
-      actorUserId: session.user.id, type: 'sale_discount', title: 'Pending sale discount edited',
+    if (discountOtpUsed) await notifyAlteration({
+      actor: session.user, branchId: existing.branchId, type: 'sale_discount', title: 'Pending sale discount edited',
       message: `${session.user.name} changed the discount on sale ${existing.orderNumber}. Reason: ${reason}`,
       relatedType: 'Order', relatedId: id,
     });
-    if (creditOverrideUsed) await notifyReviewers({
-      actorUserId: session.user.id, type: 'credit_override', title: 'Pending sale credit override',
+    if (creditOverrideUsed) await notifyAlteration({
+      actor: session.user, branchId: existing.branchId, type: 'credit_override', title: 'Pending sale credit override',
       message: `${session.user.name} overrode the credit limit when editing sale ${existing.orderNumber}. Reason: ${reason}`,
       relatedType: 'Order', relatedId: id,
     });

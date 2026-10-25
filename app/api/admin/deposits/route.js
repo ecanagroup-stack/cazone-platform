@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { notify } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Org-wide, not branch-filtered — same convention as the exceptions/flags list.
@@ -39,9 +39,9 @@ export const POST = withOrg(async (request) => {
       include: { branch: true },
     });
 
-    await notify({
-      recipientRole: 'owner', type: 'deposit_submitted', title: 'New deposit to approve',
-      message: `A deposit of ${(amount / 100).toLocaleString()} for ${deposit.branch.name} needs approval`,
+    await notifyAlteration({
+      actor: session.user, branchId, type: 'deposit_submitted', title: 'New deposit awaiting approval',
+      message: `${session.user.name} submitted a deposit of ${(amount / 100).toLocaleString()} for ${deposit.branch.name}, awaiting Admin approval`,
       relatedType: 'CashDeposit', relatedId: deposit.id,
     });
 

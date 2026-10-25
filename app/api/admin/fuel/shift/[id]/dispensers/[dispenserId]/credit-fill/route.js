@@ -4,7 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { createSaleOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Records a fill sold to a named credit customer mid-shift, before the pump closes — the piece that
@@ -58,7 +58,7 @@ export const POST = withOrg(async (request, { params }) => {
     }
 
     if (overrideCredit) {
-      await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override',
+      await notifyAlteration({ actor: session.user, branchId: shift.branchId, type: 'credit_override',
         title: 'Fuel credit limit overridden',
         message: `${session.user.name} used a verification code for credit fill ${result.order.orderNumber}.`,
         relatedType: 'Order', relatedId: result.order.id });

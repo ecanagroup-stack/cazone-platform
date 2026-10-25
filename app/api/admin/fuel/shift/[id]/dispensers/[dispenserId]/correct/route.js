@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { exactMeterSale } from '@/lib/fuelCollections.mjs';
 
@@ -88,6 +89,12 @@ export const POST = withOrg(async (request, { params }) => {
       action: 'meterReading.corrected', entityType: 'MeterReading', entityId: reading.id,
       before: { closing: reading.closing, rtt: reading.rtt, litres: reading.litres, expectedAmount: reading.expectedAmount, cashCollected: reading.cashCollected },
       after: { closing: newClosing, rtt: newRtt, litres: newLitres, expectedAmount: newExpectedAmount, cashCollected: newCashCollected, reason },
+    });
+
+    await notifyAlteration({
+      actor: session.user, branchId: reading.branchId, type: 'reading_corrected', title: 'Pump reading corrected',
+      message: `${session.user.name} corrected an approved pump reading from ${reading.litres} to ${newLitres} litres. Reason: ${reason}`,
+      relatedType: 'MeterReading', relatedId: reading.id,
     });
 
     return NextResponse.json({ success: true, data: { reading: result } });

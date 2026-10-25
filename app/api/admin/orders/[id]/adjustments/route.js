@@ -5,7 +5,7 @@ import { can } from '@/lib/permissions';
 import { applyAdjustment } from '@/lib/adjustments';
 import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
 // A surcharge or fund tied to a specific sale — ported from ecana_shop-app's
@@ -52,8 +52,8 @@ export const POST = withOrg(async (request, { params }) => {
     await verifyOtp({ userId: session.user.id, purpose: 'customer_adjustment', code: body.otp });
 
     const adjustment = await applyAdjustment({ session, customerId: order.customerId, orderId, type, method, amount, reason });
-    await notifyReviewers({
-      actorUserId: session.user.id, title: type === 'refund' ? 'Sale fund applied' : 'Sale surcharge applied',
+    await notifyAlteration({
+      actor: session.user, branchId: order.branchId, title: type === 'refund' ? 'Sale fund applied' : 'Sale surcharge applied',
       message: `${session.user.name} applied a ${type === 'refund' ? 'fund' : 'surcharge'} of ${(amount / 100).toFixed(2)} to sale ${order.orderNumber}. Reason: ${reason}`,
       type: 'customer_adjustment', relatedType: 'CustomerAdjustment', relatedId: adjustment.id,
     });

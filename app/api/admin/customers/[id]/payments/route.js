@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { allocatePayment } from '@/lib/payments';
+import { notifyAlteration, customerBranchIds } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Taking a payment is counter work (sales.record), same as ringing up a sale — no reason a cashier
@@ -32,6 +33,12 @@ export const POST = withOrg(async (request, { params }) => {
       await tx.customer.update({ where: { id: customerId }, data: { balance: { decrement: amount } } });
       return { payment, allocations, unallocated };
     }, { timeout: 15000 }); // Neon's per-query latency can push a multi-step transaction past Prisma's 5s default
+
+    await notifyAlteration({
+      actor: session.user, branchIds: await customerBranchIds(customerId), type: 'payment_recorded', title: 'Customer payment recorded',
+      message: `${session.user.name} recorded a ${method} payment of ${(amount / 100).toLocaleString()} for ${customer.name}.`,
+      relatedType: 'Payment', relatedId: result.payment.id,
+    });
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (e) {

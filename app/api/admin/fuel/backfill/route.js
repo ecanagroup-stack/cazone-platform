@@ -2,7 +2,7 @@
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { verifyOtp } from '@/lib/otp';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput, exactMeterSale } from '@/lib/fuelCollections.mjs';
 import { evaluateVariance } from '@/lib/reconciliation';
@@ -127,8 +127,8 @@ async function handleShift(session, body, date) {
     return created;
   }, { timeout: 15000 });
 
-  await notifyReviewers({
-    actorUserId: session.user.id, type: 'backfill', title: 'Historical fuel shift created',
+  await notifyAlteration({
+    actor: session.user, branchId, type: 'backfill', title: 'Historical fuel shift created',
     message: `${session.user.name} used a verification code to create a historical fuel shift for ${date}.`,
     relatedType: 'Shift', relatedId: shift.id,
   });

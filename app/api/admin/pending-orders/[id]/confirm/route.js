@@ -5,7 +5,7 @@ import { can } from '@/lib/permissions';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 import { confirmPendingOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
-import { notifyReviewers } from '@/lib/notify';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 export const POST = withOrg(async (request, { params }) => {
@@ -24,7 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (result.needsApproval) return NextResponse.json({ success: false, needsApproval: true,
       shortfall: result.shortfall, exposure: result.exposure, available: result.available,
       error: `This exceeds the customer's credit limit by ${(result.shortfall / 100).toLocaleString()} — confirm to proceed anyway` });
-    if (body.overrideCredit) await notifyReviewers({ actorUserId: session.user.id, type: 'credit_override', title: 'Credit override used',
+    if (body.overrideCredit) await notifyAlteration({ actor: session.user, branchId: order.branchId, type: 'credit_override', title: 'Credit override used',
       message: `${session.user.name} used a verification code to confirm order ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
     return NextResponse.json({ success: true, data: { order: result.order, flagged: result.flagged } });
   } catch (error) { return NextResponse.json({ error: error.message }, { status: error.status || 400 }); }

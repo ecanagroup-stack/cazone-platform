@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { LOADING_WINDOW_MS } from '@/lib/allocation';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
 
@@ -36,6 +37,14 @@ export const POST = withOrg(async (request, { params }) => {
         : { status: 'loaded', loadedAt },
       include: { supplier: true, vehicle: true, product: true },
     });
+
+    if (hoursAgo > 0) {
+      await notifyAlteration({
+        actor: session.user, branchId: delivery.branchId, type: 'atc_backdated', title: 'ATC loading back-dated',
+        message: `${session.user.name} logged an ATC as loaded ${hoursAgo} hour${hoursAgo === 1 ? '' : 's'} ago.`,
+        relatedType: 'Delivery', relatedId: id,
+      });
+    }
 
     return NextResponse.json(jsonSafe({ success: true, data: updated }));
   } catch (e) {

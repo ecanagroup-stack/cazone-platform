@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Ported from ecana_shop-app's /api/shop-products/stock-in — a manual, no-supplier stock receipt for
@@ -21,11 +23,20 @@ export const POST = withOrg(async (request, { params }) => {
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new ApiError('Quantity must be a positive number', 400);
 
+    if (!canAccessBranch(await getAccessibleBranchIds(session), branchId)) throw new ApiError('You do not have access to this branch', 403);
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!branch) throw new ApiError('Branch not found', 404);
+
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new ApiError('Product not found', 404);
 
     const move = await prisma.stockMove.create({
       data: { branchId, productId: id, qty: quantity, reason: 'purchase', note: (body.description || '').trim() || null, userId: session.user.id },
+    });
+    await notifyAlteration({
+      actor: session.user, branchId, type: 'stock_in', title: 'Stock added',
+      message: `${session.user.name} added ${quantity} ${product.unit} of ${product.name} to stock.`,
+      relatedType: 'Product', relatedId: id,
     });
     return NextResponse.json({ success: true, data: move }, { status: 201 });
   } catch (e) {

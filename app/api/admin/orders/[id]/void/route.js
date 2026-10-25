@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { logAudit } from '@/lib/audit';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
@@ -50,6 +51,11 @@ export const POST = withOrg(async (request, { params }) => {
     await logAudit({
       organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,
       action: 'order.voided', entityType: 'Order', entityId: id, before: { status: order.status }, after: { status: 'void', reason },
+    });
+
+    await notifyAlteration({
+      actor: session.user, branchId: order.branchId, type: 'order_voided', title: 'Sale voided',
+      message: `${session.user.name} voided sale ${order.orderNumber}. Reason: ${reason}`, relatedType: 'Order', relatedId: id,
     });
 
     return NextResponse.json({ success: true });

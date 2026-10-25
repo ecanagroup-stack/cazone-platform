@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 export const POST = withOrg(async (request, { params }) => {
@@ -19,6 +20,11 @@ export const POST = withOrg(async (request, { params }) => {
     const result = await prisma.$transaction((tx) =>
       setPrice(tx, id, newPrice, { id: session.user.id, role: session.user.role }, body.reason)
     );
+
+    if (result.pending) {
+      const product = await prisma.product.findUnique({ where: { id }, select: { name: true } });
+      await notifyAlteration({ actor: session.user, type: 'price_proposed', title: 'Price change awaiting approval', message: `${session.user.name} proposed a new price for ${product?.name || 'a product'}`, relatedType: 'Product', relatedId: id });
+    }
 
     return NextResponse.json({
       success: true, data: result.rule,

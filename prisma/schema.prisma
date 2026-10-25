@@ -696,7 +696,11 @@ model Notification {
   recipientRole   String?
   title           String
   message         String
-  type            String // flag_raised | pending_order | deposit_submitted | deposit_decided | price_proposed | price_decided
+  // flag_raised | pending_order | deposit_submitted | deposit_decided | price_proposed | price_decided
+  // plus the alteration notices sent by notifyAlteration: credit_override | sale_discount | customer_adjustment |
+  // order_voided | order_rejected | delivery_corrected | deposit_corrected | payment_recorded | stock_in |
+  // atc_backdated | collection_voided | reading_corrected | pump_reassigned | backfill
+  type            String
   relatedType     String?
   relatedId       String?
   isRead          Boolean   @default(false)
@@ -789,7 +793,7 @@ model Order {
 
   orderNumber   String
   // active | void | pending (self-service portal orders sit pending until staff confirms them —
-  // stock/credit only apply once active, see app/api/admin/materials/pending-orders).
+  // stock/credit only apply once active, see app/api/admin/pending-orders).
   status        String   @default("active")
   subtotal      BigInt
   discount      BigInt   @default(0)

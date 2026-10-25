@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 import { logAudit } from '@/lib/audit';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Owner correction while a shift is open. The handover remains in the audit trail;
@@ -46,6 +47,10 @@ export const POST = withOrg(async (request, { params }) => {
     await logAudit({ organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,
       action: 'fuel.collection.voided', entityType: 'FuelCollection', entityId: id,
       before: { cashAmount: collection.cashAmount, posAmount: collection.posAmount }, after: { reason: reason.trim() } });
+    await notifyAlteration({
+      actor: session.user, branchId: collection.branchId, type: 'collection_voided', title: 'Fuel collection corrected',
+      message: `${session.user.name} voided a pump collection. Reason: ${reason.trim()}`, relatedType: 'FuelCollection', relatedId: id,
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: error.status || 400 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 
 // Mid-shift attendant swap on a pump — a permanent audit trail, not an edit. Ends the current
@@ -38,6 +39,11 @@ export const POST = withOrg(async (request, { params }) => {
         data: { branchId: shift.branchId, dispenserId, shiftId, attendantId: newAttendantId, assignedBy: session.user.id },
         include: { attendant: true },
       });
+    });
+
+    await notifyAlteration({
+      actor: session.user, branchId: shift.branchId, type: 'pump_reassigned', title: 'Pump attendant reassigned',
+      message: `${session.user.name} reassigned an attendant mid-shift. Reason: ${reason}`, relatedType: 'Shift', relatedId: shiftId,
     });
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
+import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
 
@@ -61,6 +62,12 @@ export const POST = withOrg(async (request, { params }) => {
       action: 'delivery.corrected', entityType: 'Delivery', entityId: id,
       before: { quantity: delivery.quantity, costPerUnit: delivery.costPerUnit, totalCost: delivery.totalCost?.toString() ?? null },
       after: { quantity: newQuantity, costPerUnit: newCostPerUnit, totalCost: newTotalCost?.toString() ?? null, reason },
+    });
+
+    await notifyAlteration({
+      actor: session.user, branchId: delivery.branchId, type: 'delivery_corrected', title: 'Delivery corrected',
+      message: `${session.user.name} corrected a delivery from ${delivery.quantity} to ${newQuantity}. Reason: ${reason}`,
+      relatedType: 'Delivery', relatedId: id,
     });
 
     return NextResponse.json(jsonSafe({ success: true, data: updated }));
