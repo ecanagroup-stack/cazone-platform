@@ -6,10 +6,12 @@ import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, StatusPill } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 import PortalPayBalanceButton from '@/components/PortalPayBalanceButton';
+import { usePortalCounts, CountBadge } from '@/components/portal/PortalCountsProvider';
 import { FiMessageCircle, FiBell, FiShoppingBag, FiArrowUpRight } from 'react-icons/fi';
 
 export default function PortalOverviewPage() {
   const [customer, setCustomer] = useState(null);
+  const counts = usePortalCounts();
 
   useEffect(() => {
     fetch('/api/portal/me').then((r) => r.json()).then((d) => {
@@ -44,14 +46,16 @@ export default function PortalOverviewPage() {
         <h2 className="mb-3 text-sm font-semibold text-gray-800">Your actions</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
-            ...(['shop', 'general_store'].includes(customer.businessType)
+            ...(customer.hasOrdering
               ? [{ href: '/portal/order', title: 'Order', description: 'Request goods from your branch.', Icon: FiShoppingBag }]
-              : []),
-            { href: '/portal/messages', title: 'Chat', description: `Talk with ${customer.organizationName || 'your organization'}.`, Icon: FiMessageCircle },
-            { href: '/portal/announcements', title: 'Notifications', description: `Read announcements from ${customer.organizationName || 'your organization'}.`, Icon: FiBell },
-          ].map(({ href, title, description, Icon }) => (
+              : customer.hasAtc
+                ? [{ href: '/portal/atc', title: 'Order', description: 'Buy an ATC for fuel pickup.', Icon: FiShoppingBag }]
+                : []),
+            { href: '/portal/messages', title: 'Chat', description: `Talk with ${customer.organizationName || 'your organization'}.`, Icon: FiMessageCircle, count: counts.chat, label: 'chat messages' },
+            { href: '/portal/announcements', title: 'Notifications', description: `Read announcements from ${customer.organizationName || 'your organization'}.`, Icon: FiBell, count: counts.notifications, label: 'notifications' },
+          ].map(({ href, title, description, Icon, count, label }) => (
             <Link key={title} href={href} className="group flex min-h-36 flex-col justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-brand-500 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
-              <div className="flex items-start justify-between"><Icon className="text-brand-700" size={22} aria-hidden="true" /><FiArrowUpRight className="text-gray-400 transition group-hover:text-brand-700" aria-hidden="true" /></div>
+              <div className="flex items-start justify-between"><Icon className="text-brand-700" size={22} aria-hidden="true" /><span className="flex items-center gap-2"><CountBadge count={count} label={label} /><FiArrowUpRight className="text-gray-400 transition group-hover:text-brand-700" aria-hidden="true" /></span></div>
               <div><strong className="text-base text-gray-900">{title}</strong><p className="mt-1 text-sm leading-5 text-gray-500">{description}</p></div>
             </Link>
           ))}

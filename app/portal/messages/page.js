@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, inputCls, btnPrimaryCls } from '@/components/ui';
+import { usePortalCounts } from '@/components/portal/PortalCountsProvider';
 
 const POLL_MS = 8000;
 
@@ -18,9 +19,9 @@ export default function PortalMessagesPage() {
   const load = useCallback(async () => {
     const r = await fetch(`/api/portal/chat${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`);
     const d = await r.json();
-    if (d.success) { setMessages(d.data.messages); setEarlierMessages(d.data.earlierMessages || []); setBranches(d.data.branches); if (d.data.branchId !== branchId) setBranchId(d.data.branchId); }
+    if (d.success) { setMessages(d.data.messages); setEarlierMessages(d.data.earlierMessages || []); setBranches(d.data.branches); if (d.data.branchId !== branchId) setBranchId(d.data.branchId); refreshCounts(); }
     else toast.error(d.error || 'Failed to load');
-  }, [branchId]);
+  }, [branchId, refreshCounts]);
 
   useEffect(() => {
     load();
@@ -53,7 +54,7 @@ export default function PortalMessagesPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <PageHeader title="Messages" subtitle="Chat with the managers at your branch" />
+      <PageHeader title="Chat" subtitle="Chat with the managers at your branch" />
       <label className="mb-4 block max-w-sm text-sm font-medium text-gray-700">Branch
         <select value={branchId} onChange={(event) => { setMessages(null); setDraft(''); setBranchId(event.target.value); }} className={`${inputCls} mt-1`}>
           {branches.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isActive ? '' : ' (inactive)'}</option>)}

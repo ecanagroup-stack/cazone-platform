@@ -7,6 +7,7 @@ import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 import PortalMessagesLink from '@/components/PortalMessagesLink';
 import PortalAnnouncementsLink from '@/components/PortalAnnouncementsLink';
+import PortalCountsProvider from '@/components/portal/PortalCountsProvider';
 import LinkSearch from '@/components/shell/LinkSearch';
 
 // Customer portal — deliberately its own minimal chrome, not the staff Sell/Manage/Know shell. A
@@ -30,10 +31,14 @@ export default async function PortalLayout({ children }) {
   if (!session || session.user.role !== 'customer') redirect('/login');
 
   const orgId = requireOrg(session);
-  const [org, { hasCustomers }] = await Promise.all([getCachedOrganization(orgId), getOrgCustomerFlags(orgId)]);
+  const [org, { hasCustomers, hasOrdering, hasAtc }] = await Promise.all([getCachedOrganization(orgId), getOrgCustomerFlags(orgId)]);
   if (!hasCustomers) redirect('/login');
 
+  // Ordering goods and buying ATCs are separate flows; fuel distributor customers only get the latter.
+  const orderHref = hasOrdering ? '/portal/order' : hasAtc ? '/portal/atc' : null;
+
   return (
+    <PortalCountsProvider>
     <div className="min-h-screen bg-gray-50">
       <header className="print:hidden h-14 border-b bg-white flex items-center px-4 gap-4">
         <Link href="/portal" className="flex items-center gap-2">
@@ -42,7 +47,7 @@ export default async function PortalLayout({ children }) {
         </Link>
         <nav className="hidden md:flex items-center gap-4 text-sm text-gray-600">
           <Link href="/portal" className="hover:text-gray-900">Overview</Link>
-          {['shop', 'general_store'].includes(org?.businessType) && <Link href="/portal/order" className="hover:text-gray-900">Order</Link>}
+          {orderHref && <Link href={orderHref} className="hover:text-gray-900">Order</Link>}
           <Link href="/portal/statement" className="hover:text-gray-900">Statement</Link>
           <PortalMessagesLink className="hover:text-gray-900" />
           <PortalAnnouncementsLink className="hover:text-gray-900" />
@@ -51,9 +56,9 @@ export default async function PortalLayout({ children }) {
         <div className="flex-1" />
         <LinkSearch links={[
           { href: '/portal', label: 'Overview', group: 'Account' },
-          ...(['shop', 'general_store'].includes(org?.businessType) ? [{ href: '/portal/order', label: 'Order Goods', group: 'Orders' }] : []),
+          ...(orderHref ? [{ href: orderHref, label: hasOrdering ? 'Order Goods' : 'Order ATC', group: 'Orders' }] : []),
           { href: '/portal/statement', label: 'Statement', group: 'Account' },
-          { href: '/portal/messages', label: 'Messages', group: 'Account' },
+          { href: '/portal/messages', label: 'Chat', group: 'Account' },
           { href: '/portal/announcements', label: 'Notifications', group: 'Account' },
           { href: '/portal/account', label: 'My Account', group: 'Account' },
         ]} />
@@ -62,12 +67,13 @@ export default async function PortalLayout({ children }) {
       </header>
       <nav aria-label="Customer navigation" className="flex items-center justify-around gap-2 border-b bg-white px-3 py-2 text-xs text-gray-700 md:hidden">
         <Link href="/portal">Overview</Link>
-        {['shop', 'general_store'].includes(org?.businessType) && <Link href="/portal/order">Order</Link>}
+        {orderHref && <Link href={orderHref}>Order</Link>}
         <PortalMessagesLink />
         <PortalAnnouncementsLink />
         <Link href="/portal/account">Account</Link>
       </nav>
       <main className="max-w-3xl mx-auto p-6">{children}</main>
     </div>
+    </PortalCountsProvider>
   );
 }

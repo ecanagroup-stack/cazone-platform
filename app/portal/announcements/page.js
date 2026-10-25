@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { Card, Loader, PageHeader } from '@/components/ui';
+import { usePortalCounts } from '@/components/portal/PortalCountsProvider';
 
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState(null);
+  const { refresh: refreshCounts } = usePortalCounts();
   useEffect(() => {
     fetch('/api/portal/announcements').then((response) => response.json()).then((result) => {
       setAnnouncements(result.success ? result.data : []);
+      refreshCounts();
     });
-  }, []);
+  }, [refreshCounts]);
   if (!announcements) return <Loader />;
   return (
     <div>

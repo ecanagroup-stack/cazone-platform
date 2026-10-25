@@ -1,13 +1,13 @@
 import { notFound } from 'next/navigation';
-import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
+import { getOrgCustomerFlags } from '@/lib/orgLookup';
 
-export default async function PortalShopLayout({ children }) {
+// Shared by /portal/shop and its /portal/order alias (re-exported from app/portal/order/layout.js) so
+// both are gated by the same rule: goods ordering exists for shops and general stores only.
+export default async function PortalOrderLayout({ children }) {
   const session = await getOrgSession();
   if (session?.user?.role !== 'customer' || !session.user.organizationId) notFound();
-  const org = await prisma.organization.findUnique({
-    where: { id: session.user.organizationId }, select: { businessType: true },
-  });
-  if (org?.businessType !== 'shop') notFound();
+  const { hasCustomers, hasOrdering } = await getOrgCustomerFlags(session.user.organizationId);
+  if (!hasCustomers || !hasOrdering) notFound();
   return children;
 }
