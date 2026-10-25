@@ -95,7 +95,7 @@ export default function SignupPage() {
             <input type="text" required value={form.branchName} onChange={(e) => setForm({ ...form, branchName: e.target.value })} className={inputCls} placeholder="e.g., Jikwoyi" />
           </Field>
           <div className="border-t pt-4 space-y-4">
-            <p className="text-sm font-medium">Your login</p>
+            <p className="text-sm font-medium">Admin account</p>
             <Field label="Your name" required>
               <input type="text" required value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} className={inputCls} />
             </Field>

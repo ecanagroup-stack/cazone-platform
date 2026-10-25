@@ -136,7 +136,7 @@ export default function FuelCollectionsPage() {
       </table>{data.rows.length === 0 && <p className="p-4 text-gray-500">No shifts for this operating date.</p>}</Card>
       {canCollect && data.shifts.length > 0 && <Card className="p-4">
         <h2 className="font-semibold mb-1">Bank deposit for {data.date}</h2>
-        <p className="text-sm text-gray-500 mb-4">Link a later deposit to its original operating shift. It will be reviewed by the owner.</p>
+        <p className="text-sm text-gray-500 mb-4">Link a later deposit to its original operating shift. It will be reviewed by the Admin.</p>
         <form onSubmit={saveDeposit} className="grid sm:grid-cols-5 gap-3 items-end">
           <Field label="Shift"><select required className={inputCls} value={deposit.shiftId} onChange={(e) => setDeposit({ ...deposit, shiftId: e.target.value })}>
             <option value="">Select shift</option>{data.shifts.map((s) => <option key={s.id} value={s.id}>{s.shiftLabel || new Date(s.openedAt).toLocaleTimeString()} ({s.status})</option>)}

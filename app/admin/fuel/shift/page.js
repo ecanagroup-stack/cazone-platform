@@ -624,7 +624,7 @@ export default function ShiftPage() {
                   <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
                 </div>
                 <button type="button" onClick={() => submitCreditFill(true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
-                  Proceed anyway (this will be flagged for the owner)
+                  Proceed anyway (this will be flagged for the Admin)
                 </button>
               </div>
             )}

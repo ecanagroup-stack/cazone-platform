@@ -240,7 +240,7 @@ function PendingOrdersTab() {
                     <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
                   </div>
                   <button onClick={() => confirm(o.id, true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
-                    Confirm anyway (this will be flagged for the owner)
+                    Confirm anyway (this will be flagged for the Admin)
                   </button>
                 </div>
               )}

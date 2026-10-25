@@ -7,9 +7,9 @@ import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, PasswordInput, NumberInput, OrgLogo } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
+import { roleLabel } from '@/lib/roleLabels';
 
 const statusColor = { trialing: 'blue', active: 'green', past_due: 'amber', canceled: 'gray' };
-const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', staff: 'Staff' };
 
 export default function OrganizationDetailPage() {
   const { id } = useParams();
@@ -293,7 +293,7 @@ export default function OrganizationDetailPage() {
             </div>
           ))}
         </div>
-        <p className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">Branches within an existing service are managed by the org's own owner — new services/branches only exist once approved below.</p>
+        <p className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">Branches within an existing service are managed by the org's own Admin — new services/branches only exist once approved below.</p>
       </Card>
 
       <Card className="overflow-hidden mb-6">
@@ -349,7 +349,7 @@ export default function OrganizationDetailPage() {
               {org.users.map((u) => (
                 <tr key={u.id}>
                   <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3">{ROLE_LABELS[u.role] || u.role}</td>
+                  <td className="px-4 py-3">{roleLabel(u.role)}</td>
                   <td className="px-4 py-3 text-gray-500">{u.email || u.username || u.phone || '—'}</td>
                   <td className="px-4 py-3"><StatusPill status={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} /></td>
                   <td className="px-4 py-3 text-right">
@@ -364,7 +364,7 @@ export default function OrganizationDetailPage() {
 
       <Modal open={!!resetTarget} onClose={() => setResetTarget(null)} title={`Reset password for ${resetTarget?.name || ''}`}>
         <form onSubmit={handleResetPassword} className="space-y-4">
-          <p className="text-sm text-gray-500">Sets a new password directly — use this when a staff member is locked out and their own org owner can't help.</p>
+          <p className="text-sm text-gray-500">Sets a new password directly — use this when a staff member is locked out and their own org Admin can't help.</p>
           <Field label="New password" required>
             <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
           </Field>

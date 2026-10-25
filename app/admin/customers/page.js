@@ -83,7 +83,7 @@ export default function CustomersPage() {
       />
 
       <div className="flex gap-2 mb-4 text-sm">
-        <button type="button" onClick={() => setCustomerFilter('all')} className={`px-3 py-2 rounded border ${customerFilter === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>All Customers (All)</button>
+        <button type="button" onClick={() => setCustomerFilter('all')} className={`px-3 py-2 rounded border ${customerFilter === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>ALL CUSTOMER (ALL)</button>
         {currentBranchId && <button type="button" onClick={() => setCustomerFilter('branch')} className={`px-3 py-2 rounded border ${customerFilter === 'branch' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Current Branch</button>}
       </div>
 

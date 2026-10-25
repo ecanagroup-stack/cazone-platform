@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/apiError';
 // the cashier enters its replacement as a new collection.
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (session?.user?.role !== 'owner') return NextResponse.json({ error: 'Only the owner can correct a collection' }, { status: 403 });
+  if (session?.user?.role !== 'owner') return NextResponse.json({ error: 'Only the Admin can correct a collection' }, { status: 403 });
   try {
     const { id } = await params;
     const { reason } = await request.json();

@@ -23,6 +23,7 @@ export default function RetailCounterPage() {
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
   const [customer, setCustomer] = useState(null);
+  const [customerMode, setCustomerMode] = useState('search'); // 'search' | 'walk-in' — search by default so a sale isn't silently recorded as walk-in
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
@@ -105,7 +106,7 @@ export default function RetailCounterPage() {
       if (d.success) {
         toast.success(d.data.flagged ? `Sale ${d.data.order.orderNumber} recorded — flagged for credit override` : `Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
-        setCart([]); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash'); setCreditWarning(null); setOverridePin('');
+        setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash'); setCreditWarning(null); setOverridePin('');
       } else if (d.needsApproval) {
         setCreditWarning(d);
       } else {
@@ -118,6 +119,7 @@ export default function RetailCounterPage() {
 
   const handleCheckout = (e) => {
     e.preventDefault();
+    if (customerMode === 'search' && !customer) return toast.error('Search and select a customer, or choose Walk-in Customer');
     if (cart.length === 0) return toast.error('Add at least one product');
     setCreditWarning(null);
     submitOrder(false);
@@ -172,7 +174,12 @@ export default function RetailCounterPage() {
         <Card className="p-4 h-fit sticky top-4">
           <h3 className="font-semibold text-sm mb-3">Sale</h3>
 
-          <div className="mb-3">
+          <div className="flex gap-2 mb-3">
+            <button type="button" aria-pressed={customerMode === 'search'} onClick={() => setCustomerMode('search')} className={`px-3 py-2 text-sm rounded border ${customerMode === 'search' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Search Customer</button>
+            <button type="button" aria-pressed={customerMode === 'walk-in'} onClick={() => { setCustomerMode('walk-in'); setCustomer(null); setCustomerQuery(''); setPaymentMethod('cash'); setCreditWarning(null); }} className={`px-3 py-2 text-sm rounded border ${customerMode === 'walk-in' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white'}`}>Walk-in Customer</button>
+          </div>
+
+          {customerMode === 'search' && <div className="mb-3">
             {customer ? (
               <div className="flex items-center justify-between bg-brand-50 rounded px-3 py-2 text-sm">
                 <span>{customer.name}{customer.phone ? ` — ${customer.phone}` : ''}</span>
@@ -182,7 +189,7 @@ export default function RetailCounterPage() {
               <div className="relative">
                 <input
                   type="text" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)}
-                  placeholder="Search customer, or leave blank for walk-in" className={inputCls}
+                  placeholder="Search customer by name or phone" className={inputCls}
                 />
                 {(customerResults.length > 0 || customerQuery.trim().length >= 2) && (
                   <div className="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
@@ -206,7 +213,7 @@ export default function RetailCounterPage() {
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
           <div className="divide-y mb-3 max-h-64 overflow-y-auto">
             {cart.length === 0 && <p className="text-sm text-gray-400 py-4 text-center">No items yet — tap a product to add it.</p>}

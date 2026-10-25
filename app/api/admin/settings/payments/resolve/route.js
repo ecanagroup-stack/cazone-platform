@@ -9,7 +9,7 @@ import { ApiError } from '@/lib/apiError';
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
   if (session?.user?.role !== 'owner') {
-    return NextResponse.json({ error: 'Only the organization owner can manage payment collection' }, { status: 403 });
+    return NextResponse.json({ error: 'Only the organization Admin can manage payment collection' }, { status: 403 });
   }
   try {
     const { bankCode, accountNumber } = await request.json();

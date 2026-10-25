@@ -25,7 +25,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (org.businessType === 'fuel_station' && session.user.role === 'manager') {
       const target = await prisma.user.findFirst({ where: { id }, select: { role: true, branchAccess: { select: { branchId: true } } } });
       if (!target) throw new ApiError('User not found', 404);
-      if (['owner', 'manager'].includes(target.role)) throw new ApiError('Only the owner can manage owner and manager accounts', 403);
+      if (['owner', 'manager'].includes(target.role)) throw new ApiError('Only the Admin can manage Admin and manager accounts', 403);
       const access = await getAccessibleBranchIds(session);
       if (access && !target.branchAccess.some(({ branchId }) => access.includes(branchId))) throw new ApiError('This user is outside your stations', 403);
     }

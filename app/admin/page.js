@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
+import { SELLABLE_ALLOCATION_WHERE } from '@/lib/allocation';
 import { Card, btnPrimaryCls } from '@/components/ui';
 
 // Org-wide by default — "the organization's admin can see any and all his business" — with an
@@ -50,19 +51,18 @@ export default async function TodayPage({ searchParams }) {
       product: { serviceId: selectedService.id, abbreviation: { not: null } },
       branch: { isActive: true },
       ...(selectedBranchId ? { branchId: selectedBranchId } : {}),
-      status: { in: ['loaded', 'arrived'] },
-      qtyRemaining: { gt: 0 },
+      ...SELLABLE_ALLOCATION_WHERE,
     },
     select: { qtyRemaining: true, productId: true, product: { select: { name: true } } },
   }) : null;
   const availableBags = availableAtcs?.reduce((total, atc) => total + atc.qtyRemaining, 0) || 0;
   const brandCounts = availableAtcs ? [...availableAtcs.reduce((byBrand, atc) => {
-    const current = byBrand.get(atc.productId) || { id: atc.productId, name: atc.product.name, count: 0 };
+    const current = byBrand.get(atc.productId) || { id: atc.productId, name: atc.product.name, count: 0, bags: 0 };
     current.count += 1;
+    current.bags += atc.qtyRemaining;
     byBrand.set(atc.productId, current);
     return byBrand;
   }, new Map()).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
-  const brandSummary = brandCounts.map((brand) => `${brand.count} ${brand.name}`).join(', ');
   const atcsHref = selectedService ? `/admin/materials/atcs?service=${selectedService.id}${selectedBranchId ? `&branch=${selectedBranchId}` : ''}` : '/admin/materials/atcs';
   const recentSales = selectedService ? await prisma.order.aggregate({
     where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : {}), createdAt: { gte: new Date(Date.now() - 7 * 86400000) } },
@@ -87,7 +87,11 @@ export default async function TodayPage({ searchParams }) {
         {availableAtcs && <Link href={atcsHref} className="block rounded-lg border bg-white p-4 hover:border-brand-500">
           <p className="text-xs text-gray-500">Available Cement</p>
           <p className="text-2xl font-bold mt-1">{availableBags.toLocaleString()} bags</p>
-          <p className="text-xs text-gray-500 mt-1">{availableAtcs.length} open ATC{availableAtcs.length === 1 ? '' : 's'}{brandSummary ? `: ${brandSummary}` : ''}</p>
+          {brandCounts.length === 0
+            ? <p className="text-xs text-gray-500 mt-1">No open ATCs</p>
+            : <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+              {brandCounts.map((brand) => <li key={brand.id}>{brand.name} — {brand.bags.toLocaleString()} bags ({brand.count} ATC{brand.count === 1 ? '' : 's'})</li>)}
+            </ul>}
         </Link>}
       </div>
 

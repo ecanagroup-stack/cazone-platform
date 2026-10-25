@@ -93,8 +93,8 @@ export function PasswordInput({ className = inputCls, ...props }) {
 // A username/login field that checks availability live as the person types (debounced, against
 // /api/username-check) and reports it in a span right under the input — so a taken name is caught
 // immediately, before the person fills out the rest of the form and only finds out on submit.
-// `mode="identifier"` (Invite User's combined email/username/phone field) auto-classifies which
-// field it's checking, same as the invite route itself; the default `mode="username"` always checks
+// `mode="identifier"` (Add User's combined email/username/phone field) auto-classifies which
+// field it's checking, same as the add-user route itself; the default `mode="username"` always checks
 // the username field regardless of what's typed, for forms where that's the only thing it can be.
 export function UsernameField({ label = 'Username', value, onChange, required, mode = 'username', placeholder, autoFocus }) {
   const [status, setStatus] = useState('idle'); // idle | checking | available | taken

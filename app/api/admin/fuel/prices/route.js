@@ -20,7 +20,7 @@ export const GET = withOrg(async () => {
 
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (session?.user?.role !== 'owner') return NextResponse.json({ error: 'Only the owner can update fuel prices immediately' }, { status: 403 });
+  if (session?.user?.role !== 'owner') return NextResponse.json({ error: 'Only the Admin can update fuel prices immediately' }, { status: 403 });
   try {
     const body = await request.json();
     const branchId = String(body.branchId || '');

@@ -6,6 +6,7 @@ import { OrgLogo, Modal, ChangePasswordForm } from '@/components/ui';
 import ServiceBranchSwitcher from './ServiceBranchSwitcher';
 import NotificationBell from './NotificationBell';
 import { AdminLinkSearch } from './LinkSearch';
+import { roleLabel } from '@/lib/roleLabels';
 
 // Business name, then service/branch switcher, then user menu — nothing else goes in the top bar
 // (platform-ui skill, section 1). The business-name switcher itself is plain text here: no user
@@ -35,7 +36,7 @@ export default function TopBar({ org, services, user }) {
           </span>
           <span className="hidden md:flex flex-col items-start leading-tight">
             <span className="font-medium text-gray-900">{user?.name}</span>
-            <span className="text-xs text-gray-500 capitalize">{user?.role}</span>
+            <span className="text-xs text-gray-500">{roleLabel(user?.role)}</span>
           </span>
         </button>
         {menuOpen && (

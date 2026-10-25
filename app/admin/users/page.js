@@ -6,12 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { invitableRolesForBusiness } from '@/lib/businessRoles';
+import { ROLE_LABELS } from '@/lib/roleLabels';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
-
-const ROLE_LABELS = {
-  owner: 'Owner', manager: 'Manager', supervisor: 'Supervisor', cashier: 'Cashier',
-  materials_manager: 'GSM Manager', atc_manager: 'ATC Manager', auditor: 'Auditor', daily_auditor: 'Daily Auditor', external_auditor: 'External Auditor', staff: 'Staff',
-};
 
 // The guide is selected from the registered business, never from a URL query parameter.
 const ROLE_DESCRIPTIONS = {

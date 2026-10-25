@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { autoArriveDueAllocations } from '@/lib/allocation';
+import { autoArriveDueAllocations, SELLABLE_ALLOCATION_WHERE } from '@/lib/allocation';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
 
@@ -31,7 +31,7 @@ export const GET = withOrg(async (request) => {
         // 'assigned' means a truck has been sent to collect but hasn't loaded yet — not sellable
         // until 'loaded' (matches lib/allocation.js's isAllocationSellable, applied as a query filter
         // here rather than a post-fetch check since the sales picker only ever wants sellable ones).
-        ...(availableForSale ? { status: { in: ['loaded', 'arrived'] }, qtyRemaining: { gt: 0 } } : {}),
+        ...(availableForSale ? SELLABLE_ALLOCATION_WHERE : {}),
       },
       include: { product: true, vehicle: true, orderLines: { include: { order: true } } },
       orderBy: { createdAt: 'desc' },

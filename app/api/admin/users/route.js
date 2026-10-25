@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/apiError';
 import { invitableRolesForBusiness } from '@/lib/businessRoles';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 
-// owner is never invited — it's created once at signup/org-creation. super_admin/customer are out of
+// Admin (role owner) is never added here — it's created once at signup/org-creation. super_admin/customer are out of
 // scope for this form entirely (platform operator and, in v1, a role with no screens to use yet).
 // supervisor/cashier/auditor are fuel's review-chain tier, materials_manager/atc_manager are
 // Building Material's (lib/permissions.js) — all available like any other staff-side role.

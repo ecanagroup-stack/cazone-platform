@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/apiError';
 export const POST = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
   if (session?.user?.role !== 'owner') {
-    return NextResponse.json({ error: 'Only an owner can pay for this' }, { status: 403 });
+    return NextResponse.json({ error: 'Only the Admin can pay for this' }, { status: 403 });
   }
   try {
     const { id } = await params;

@@ -41,7 +41,7 @@ export default function AuditLogPage() {
     return (
       <div>
         <PageHeader title="Audit Log" />
-        <Card className="p-6 text-center text-sm text-gray-500">Only the organization owner can view the audit log.</Card>
+        <Card className="p-6 text-center text-sm text-gray-500">Only the organization Admin can view the audit log.</Card>
       </div>
     );
   }

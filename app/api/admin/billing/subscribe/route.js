@@ -12,7 +12,7 @@ import { ApiError } from '@/lib/apiError';
 export const POST = withOrg(async () => {
   const session = await getOrgSession();
   if (session?.user?.role !== 'owner') {
-    return NextResponse.json({ error: 'Only an owner can manage billing' }, { status: 403 });
+    return NextResponse.json({ error: 'Only the Admin can manage billing' }, { status: 403 });
   }
   try {
     const orgId = session.user.organizationId;

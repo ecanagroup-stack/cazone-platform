@@ -8,7 +8,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 export const GET = withOrg(async (request) => {
   const session = await getOrgSession();
   if (session.user.role !== 'owner') {
-    return NextResponse.json({ error: 'Only the organization owner can view the audit log' }, { status: 403 });
+    return NextResponse.json({ error: 'Only the organization Admin can view the audit log' }, { status: 403 });
   }
   try {
     const url = new URL(request.url);

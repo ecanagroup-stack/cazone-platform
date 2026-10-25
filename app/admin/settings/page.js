@@ -21,7 +21,7 @@ export default async function SettingsPage() {
       </div>
 
       {session.user.role !== 'owner' ? (
-        <Card className="p-6 text-center text-sm text-gray-500">Only the organization owner can view and change these settings.</Card>
+        <Card className="p-6 text-center text-sm text-gray-500">Only the organization Admin can view and change these settings.</Card>
       ) : (
         <>
           <OrganizationProfileForm org={org} />

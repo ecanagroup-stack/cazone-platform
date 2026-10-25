@@ -96,7 +96,7 @@ export const POST = withOrg(async (request) => {
 
     return NextResponse.json({
       success: true, data: shift.shift,
-      ...(shift.anyPricePending && { message: 'Shift started — one or more price changes need owner approval and are not yet in effect' }),
+      ...(shift.anyPricePending && { message: 'Shift started — one or more price changes need Admin approval and are not yet in effect' }),
     }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

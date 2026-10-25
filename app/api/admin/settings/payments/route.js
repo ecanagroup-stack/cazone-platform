@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
 
 function requireOwner(session) {
-  if (session?.user?.role !== 'owner') throw new ApiError('Only the organization owner can manage payment collection', 403);
+  if (session?.user?.role !== 'owner') throw new ApiError('Only the organization Admin can manage payment collection', 403);
 }
 
 // Owner-only, same as Billing/Settings generally. Bank list comes from Paystack's own /bank endpoint
