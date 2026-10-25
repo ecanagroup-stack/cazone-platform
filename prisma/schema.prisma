@@ -197,6 +197,7 @@ model Organization {
 
   provisioningRequests ProvisioningRequest[]
   addons               BusinessAddon[]
+  petroleumAtcs        PetroleumAtc[]
 }
 
 // A vertical the organization has switched on — "the organization can select how many of the
@@ -457,6 +458,8 @@ model Customer {
   access       CustomerAccess[]
   chatMessages ChatMessage[]
 
+  petroleumAtcs PetroleumAtc[]
+
   @@unique([organizationId, code])
   @@unique([organizationId, normalizedName])
   @@index([organizationId])
@@ -588,6 +591,7 @@ model Product {
   deliveries      Delivery[]
   reconciliations Reconciliation[]
   tanks           Tank[]
+  petroleumAtcs   PetroleumAtc[]
 
   @@unique([organizationId, serviceId, sku])
   @@index([organizationId])
@@ -699,7 +703,7 @@ model Notification {
   // flag_raised | pending_order | deposit_submitted | deposit_decided | price_proposed | price_decided
   // plus the alteration notices sent by notifyAlteration: credit_override | sale_discount | customer_adjustment |
   // order_voided | order_rejected | delivery_corrected | deposit_corrected | payment_recorded | stock_in |
-  // atc_backdated | backdated_entry | collection_voided | reading_corrected | pump_reassigned | backfill
+  // atc_backdated | backdated_entry | collection_voided | reading_corrected | pump_reassigned | backfill | atc_sold
   type            String
   relatedType     String?
   relatedId       String?
@@ -1142,7 +1146,8 @@ model Vehicle {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  deliveries Delivery[]
+  deliveries    Delivery[]
+  petroleumAtcs PetroleumAtc[]
 
   @@unique([organizationId, plateNumber])
   @@index([organizationId])
@@ -1179,6 +1184,70 @@ model Counter {
   seq Int    @default(0)
 
   @@unique([organizationId, key])
+}
+
+// A petroleum distributor's ATC (Authority To Collect) held for sale to a customer — the
+// `distributor` add-on of a fuel station. Prepaid only, so there is deliberately no Order/Payment
+// mirror: the sale lives on this row. `serial` (ATC-000123, from Counter key petroleumAtc) is the
+// only identifier customers and sales staff ever see; the real ATC number is stored just as a keyed
+// hash (duplicate guard) and an AES-GCM ciphertext (see lib/atcSecret.js), and neither is ever
+// returned by an API — the ATC manager and Admin read the number through an audited view action.
+// A truck carries one open (available/reserved/sold) ATC at a time, enforced by a partial unique
+// index on vehicleId that Prisma cannot express (see the migration).
+// Preserve that index by hand: review any generated migration for a DROP INDEX on
+// PetroleumAtc_vehicleId_open_key before applying it.
+// status: available | reserved | sold | delivered | cancelled (CHECK constraint, like Order.status).
+model PetroleumAtc {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  serial    String
+  // The ATC fuel product (Product.attributes.channel = 'atc'), whose org-wide PriceRule is the
+  // price per litre.
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  litres    Int
+
+  atcHash   String
+  atcCipher String
+
+  status               String    @default("available")
+  // A customer paying online holds the ATC until reservedUntil; a lapsed hold is sellable again.
+  reservedByCustomerId String?
+  reservedUntil        DateTime?
+  paystackReference    String?   @unique
+
+  // Snapshotted when sold: price per litre and total, in kobo.
+  unitPrice     BigInt?
+  totalPrice    BigInt?
+  priceRuleId   String?
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  paymentMethod String? // cash | transfer | pos | paystack
+  paidAt        DateTime?
+  soldBy        String?
+  soldAt        DateTime?
+  deliveredAt   DateTime?
+  deliveredBy   String?
+
+  // Truck details as at the sale, so a later edit to the vehicle does not rewrite history.
+  truckPlate  String?
+  driverName  String?
+  driverPhone String?
+  notes       String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, serial])
+  @@unique([organizationId, atcHash])
+  @@index([organizationId, status])
+  @@index([vehicleId])
+  @@index([customerId])
 }
 
 // Idempotency guard for app/api/webhooks/paystack — a webhook has no tenant context at receipt time

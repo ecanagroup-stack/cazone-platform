@@ -5,6 +5,7 @@ import { ApiError } from '@/lib/apiError';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 import { setPrice } from '@/lib/pricing';
 import { logAudit } from '@/lib/audit';
+import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
@@ -13,9 +14,10 @@ export const GET = withOrg(async () => {
   const service = await prisma.service.findFirst({ where: { type: 'fuel_station' }, select: { id: true } });
   const [branches, products] = await Promise.all([
     prisma.branch.findMany({ where: { serviceId: service.id, isActive: true, ...(access ? { id: { in: access } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    prisma.product.findMany({ where: { serviceId: service.id, isActive: true, unit: 'litre' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.product.findMany({ where: { serviceId: service.id, isActive: true, unit: 'litre' }, select: { id: true, name: true, attributes: true }, orderBy: { name: 'asc' } }),
   ]);
-  return NextResponse.json({ success: true, data: { branches, products } });
+  // ATC products are priced on the distributor page, not per pump station.
+  return NextResponse.json({ success: true, data: { branches, products: products.filter((p) => !isAtcProduct(p)).map(({ id, name }) => ({ id, name })) } });
 });
 
 export const POST = withOrg(async (request) => {
@@ -32,9 +34,9 @@ export const POST = withOrg(async (request) => {
     if (!Number.isFinite(naira) || naira <= 0 || !Number.isSafeInteger(price)) throw new ApiError('Enter a valid price per litre', 400);
     const [branch, product] = await Promise.all([
       prisma.branch.findFirst({ where: { id: branchId, service: { type: 'fuel_station' }, isActive: true }, select: { id: true } }),
-      prisma.product.findFirst({ where: { id: productId, service: { type: 'fuel_station' }, unit: 'litre', isActive: true }, select: { id: true } }),
+      prisma.product.findFirst({ where: { id: productId, service: { type: 'fuel_station' }, unit: 'litre', isActive: true }, select: { id: true, attributes: true } }),
     ]);
-    if (!branch || !product) throw new ApiError('Choose an active fuel station and product', 400);
+    if (!branch || !product || isAtcProduct(product)) throw new ApiError('Choose an active fuel station and product', 400);
     await prisma.$transaction((tx) => setPrice(tx, product.id, price, { id: session.user.id, role: session.user.role }, reason, branch.id));
     await logAudit({ organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name, action: 'fuel.price.updated', entityType: 'Product', entityId: product.id, after: { branchId, price, reason } });
     return NextResponse.json({ success: true, data: { price } });

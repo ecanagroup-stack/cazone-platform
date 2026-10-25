@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { setPrice } from '@/lib/pricing';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
+import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 
 // The open list-price rule only (what resolvePrice charges when a customer has no rate of their own),
 // so currentPrice never shows a customer's or a branch's special rate as the product's price.
@@ -32,7 +33,8 @@ export const GET = withOrg(async (request) => {
       orderBy: { name: 'asc' },
     });
     const onHand = branchId ? await getOnHandByProduct(branchId, products.map((p) => p.id)) : {};
-    const data = products.map((p) => ({
+    // ATC products only exist to carry the distributor's price per litre; they are not pump or shelf stock.
+    const data = products.filter((p) => !isAtcProduct(p)).map((p) => ({
       ...p, currentPrice: p.priceRules[0]?.price ?? null, priceRules: undefined,
       onHand: branchId ? (onHand[p.id] || 0) : null,
     }));

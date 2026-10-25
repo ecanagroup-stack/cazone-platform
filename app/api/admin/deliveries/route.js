@@ -6,6 +6,7 @@ import { getOnHandByProduct } from '@/lib/stock';
 import { autoArriveDueAllocations } from '@/lib/allocation';
 import { evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { optionalBusinessDate, backdatedAt } from '@/lib/saleDates.mjs';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
@@ -36,7 +37,7 @@ export const GET = withOrg(async (request) => {
         take: 50,
       }),
       prisma.supplier.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
-      prisma.product.findMany({ where: { serviceId: branch.serviceId, isActive: true }, orderBy: { name: 'asc' } }),
+      prisma.product.findMany({ where: { serviceId: branch.serviceId, isActive: true }, orderBy: { name: 'asc' } }).then((all) => all.filter((p) => !isAtcProduct(p))),
       // Only populated for fuel branches — lets the delivery form offer "verify with tank dip" when
       // the chosen product actually has a receiving tank.
       prisma.tank.findMany({ where: { branchId, isActive: true }, orderBy: { label: 'asc' } }),

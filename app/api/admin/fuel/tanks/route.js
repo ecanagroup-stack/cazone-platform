@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
+import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 
 // Returns both the branch's tanks (with dispensers nested) and the branch's service's product
 // catalog, so the client can populate the tank form's product picker in one request.
@@ -18,7 +19,7 @@ export const GET = withOrg(async (request) => {
 
     const [tanks, products] = await Promise.all([
       prisma.tank.findMany({ where: { branchId }, include: { dispensers: true, product: true }, orderBy: { createdAt: 'asc' } }),
-      prisma.product.findMany({ where: { serviceId: branch.serviceId, isActive: true }, orderBy: { name: 'asc' } }),
+      prisma.product.findMany({ where: { serviceId: branch.serviceId, isActive: true }, orderBy: { name: 'asc' } }).then((all) => all.filter((p) => !isAtcProduct(p))),
     ]);
 
     const onHand = await getOnHandByProduct(branchId, tanks.map((t) => t.productId));
@@ -72,9 +73,9 @@ export const POST = withOrg(async (request) => {
     } else {
       const product = await prisma.product.findFirst({
         where: { id: productId, serviceId: branch.serviceId, isActive: true },
-        select: { id: true },
+        select: { id: true, attributes: true },
       });
-      if (!product) throw new ApiError('Choose an active product from this fuel service', 400);
+      if (!product || isAtcProduct(product)) throw new ApiError('Choose an active product from this fuel service', 400);
     }
 
     const tank = await prisma.tank.create({ data: { branchId, productId, label, capacity } });

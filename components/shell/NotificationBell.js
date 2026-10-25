@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { FiBell } from 'react-icons/fi';
 import { formatDate } from '@/lib/format';
 
@@ -50,13 +51,21 @@ export default function NotificationBell() {
             {notifications.length === 0 ? (
               <p className="px-3 py-4 text-sm text-gray-400 text-center">No notifications yet</p>
             ) : (
-              notifications.map((n) => (
-                <div key={n.id} className="px-3 py-2 border-b last:border-b-0">
-                  <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                  <p className="text-xs text-gray-500">{n.message}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatDate(n.createdAt)}</p>
-                </div>
-              ))
+              notifications.map((n) => {
+                const body = (
+                  <>
+                    <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                    <p className="text-xs text-gray-500">{n.message}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(n.createdAt)}</p>
+                  </>
+                );
+                // A sold ATC is work to act on: take the ATC manager straight to the sold board.
+                return n.relatedType === 'PetroleumAtc' ? (
+                  <Link key={n.id} href="/admin/distributor/orders" onClick={() => setOpen(false)} className="block px-3 py-2 border-b last:border-b-0 hover:bg-gray-50">{body}</Link>
+                ) : (
+                  <div key={n.id} className="px-3 py-2 border-b last:border-b-0">{body}</div>
+                );
+              })
             )}
           </div>
         </>
