@@ -284,8 +284,8 @@ export default function NewMaterialsSalePage() {
 
         <Card className="p-4">
           <div className="grid sm:grid-cols-2 gap-3 mb-3">
-            <Field label="Sale date"><input type="date" required value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
-            {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
+            <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+            {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} max={todayLocalDate()} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
           </div>
           <label className="flex items-start gap-3 text-sm">
             <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />

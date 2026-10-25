@@ -451,8 +451,8 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 
       <Card className="p-4">
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
-          <Field label="Sale date"><input type="date" required value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
-          {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
+          <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+          {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} max={todayLocalDate()} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
         </div>
         <label className="flex items-start gap-3 text-sm">
           <input type="checkbox" checked={delivered} onChange={(e) => setDelivered(e.target.checked)} className="mt-1" />
@@ -572,7 +572,7 @@ function SalesHistoryTab({ branchId }) {
               {orders.length === 0 && <EmptyRow colSpan={8} text="No shop sales yet" />}
               {orders.map((o) => (
                 <tr key={o.id}>
-                  <td className="px-4 py-3">{formatDate(o.createdAt)}</td>
+                  <td className="px-4 py-3">{formatDate(o.businessDate)}</td>
                   <td className="px-4 py-3 font-medium">{o.orderNumber}</td>
                   <td className="px-4 py-3">{o.customer ? <Link href={`/admin/customers/${o.customer.id}`} className="hover:underline">{o.customer.name}</Link> : 'Walk-in'}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{o.lines.map((l) => <p key={l.id} className="whitespace-nowrap">{l.qty.toLocaleString()} {l.product.name}</p>)}</td>

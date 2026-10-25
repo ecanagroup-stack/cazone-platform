@@ -24,7 +24,7 @@ export default function OrdersPage() {
         <tbody className="divide-y">
           {orders.length === 0 && <EmptyRow colSpan={7} text="No orders yet" />}
           {orders.map((order) => <tr key={order.id}>
-            <td className="px-4 py-3">{formatDate(order.createdAt)}</td>
+            <td className="px-4 py-3">{formatDate(order.businessDate)}</td>
             <td className="px-4 py-3"><Link className="text-brand-600 hover:underline" href={`/admin/orders/${order.id}/receipt`}>{order.orderNumber}</Link></td>
             <td className="px-4 py-3">{order.customer?.name || 'Walk-in'}</td>
             <td className="px-4 py-3">{order.lines.map((line) => line.product.name).join(', ')}</td>

@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
 import { SELLABLE_ALLOCATION_WHERE } from '@/lib/allocation';
+import { dateRangeWhere } from '@/lib/businessDates.mjs';
+import { businessToday } from '@/lib/saleDates.mjs';
 import { Card, btnPrimaryCls } from '@/components/ui';
 
 // Org-wide by default — "the organization's admin can see any and all his business" — with an
@@ -65,7 +67,7 @@ export default async function TodayPage({ searchParams }) {
   }, new Map()).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
   const atcsHref = selectedService ? `/admin/materials/atcs?service=${selectedService.id}${selectedBranchId ? `&branch=${selectedBranchId}` : ''}` : '/admin/materials/atcs';
   const recentSales = selectedService ? await prisma.order.aggregate({
-    where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : {}), createdAt: { gte: new Date(Date.now() - 7 * 86400000) } },
+    where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : {}), ...dateRangeWhere('saleDate', { from: businessToday(new Date(Date.now() - 6 * 86400000)) }) },
     _count: true, _sum: { grandTotal: true },
   }) : null;
   const counterHref = selectedService?.type === 'shop' ? '/admin/materials/counter' : '/admin/retail/counter';

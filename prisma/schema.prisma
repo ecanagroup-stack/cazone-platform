@@ -699,7 +699,7 @@ model Notification {
   // flag_raised | pending_order | deposit_submitted | deposit_decided | price_proposed | price_decided
   // plus the alteration notices sent by notifyAlteration: credit_override | sale_discount | customer_adjustment |
   // order_voided | order_rejected | delivery_corrected | deposit_corrected | payment_recorded | stock_in |
-  // atc_backdated | collection_voided | reading_corrected | pump_reassigned | backfill
+  // atc_backdated | backdated_entry | collection_voided | reading_corrected | pump_reassigned | backfill
   type            String
   relatedType     String?
   relatedId       String?

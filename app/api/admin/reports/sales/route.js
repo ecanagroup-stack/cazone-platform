@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { can } from '@/lib/permissions';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
+import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
 
 // One row per transaction, with the stored order and line details used by the report and CSV.
 export const GET = withOrg(async (request) => {
@@ -21,10 +22,10 @@ export const GET = withOrg(async (request) => {
     const branches = await prisma.branch.findMany({ where: branchWhere, select: { id: true, name: true, service: { select: { type: true } } } });
     const branchNameById = Object.fromEntries(branches.map((b) => [b.id, b.name]));
     const allBranches = !branchId;
-    const where = { branchId: { in: branches.map((b) => b.id) }, status: 'active', createdAt: { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) } };
+    const where = { branchId: { in: branches.map((b) => b.id) }, status: 'active' };
 
     if (branches[0]?.service?.type === 'fuel_station') {
-      const fuelOrders = await prisma.order.findMany({ where, select: { branchId: true, createdAt: true, grandTotal: true, paymentMethod: true, channel: true } });
+      const fuelOrders = await prisma.order.findMany({ where: { ...where, createdAt: { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) } }, select: { branchId: true, createdAt: true, grandTotal: true, paymentMethod: true, channel: true } });
       const buckets = new Map();
       for (const order of fuelOrders) {
         const date = order.createdAt.toISOString().slice(0, 10);
@@ -40,13 +41,8 @@ export const GET = withOrg(async (request) => {
 
     const accessible = await getAccessibleBranchIds(session);
     const deliveryEnabled = branches[0]?.service?.type === 'shop';
-    if (deliveryEnabled) {
-      const range = { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) };
-      delete where.createdAt;
-      where.OR = [{ saleDate: range }, { saleDate: null, createdAt: range }];
-    }
     const orders = await prisma.order.findMany({
-      where,
+      where: { ...where, ...dateRangeWhere('saleDate', { from, to }) },
       include: {
         customer: { select: { name: true } },
         lines: { include: {
@@ -60,7 +56,7 @@ export const GET = withOrg(async (request) => {
 
     const rows = orders.map((order) => ({
       id: order.id,
-      date: (deliveryEnabled && order.saleDate ? order.saleDate : order.createdAt).toISOString().slice(0, 10),
+      date: effectiveDate(order, 'saleDate'),
       enteredAt: order.createdAt,
       branch: branchNameById[order.branchId] || '—',
       customer: order.customer?.name || 'Walk-in',
@@ -82,7 +78,7 @@ export const GET = withOrg(async (request) => {
         editable: order.deliveryStatus === 'pending' && can(session?.user?.role, 'sales.record') && canAccessBranch(accessible, order.branchId) && order.lines.every((line) => line.stockQty != null),
         edit: order.deliveryStatus === 'pending' ? {
           revision: order.deliveryRevision,
-          saleDate: (order.saleDate || order.createdAt).toISOString().slice(0, 10),
+          saleDate: effectiveDate(order, 'saleDate'),
           discount: order.discount,
           orderTransportFee: order.transportFee - order.lines.reduce((sum, line) => sum + line.transportFee, 0),
           lines: order.lines.map((line) => ({
@@ -93,7 +89,7 @@ export const GET = withOrg(async (request) => {
         } : null,
       } : {}),
     }));
-    if (deliveryEnabled) rows.sort((left, right) => right.date.localeCompare(left.date) || new Date(right.enteredAt) - new Date(left.enteredAt));
+    rows.sort((left, right) => right.date.localeCompare(left.date) || new Date(right.enteredAt) - new Date(left.enteredAt));
     return NextResponse.json({ success: true, data: rows, allBranches, deliveryEnabled });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

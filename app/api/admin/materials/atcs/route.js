@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { autoArriveDueAllocations, SELLABLE_ALLOCATION_WHERE } from '@/lib/allocation';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
+import { effectiveDate } from '@/lib/businessDates.mjs';
 
 // Ported from ecana_shop-app's /api/atcs — an ATC is a Delivery allocation (qtyRemaining set) whose
 // product is a cement brand (abbreviation set, see prisma/schema.prisma's Product comment). The
@@ -40,7 +41,7 @@ export const GET = withOrg(async (request) => {
 
     const data = atcs.map((a) => ({
       ...a,
-      supplies: a.orderLines.map((l) => ({ qtySupplied: l.qty, reference: l.order.orderNumber, saleDate: l.order.createdAt })),
+      supplies: a.orderLines.map((l) => ({ qtySupplied: l.qty, reference: l.order.orderNumber, saleDate: effectiveDate(l.order, 'saleDate') })),
       orderLines: undefined,
     }));
 

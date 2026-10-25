@@ -7,6 +7,7 @@ import { FiPrinter } from 'react-icons/fi';
 import { Loader, Card, ReceiptHeader } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 import { shareReceiptAsPdf, shareReceiptAsJpg } from '@/lib/receiptCapture';
+import { effectiveDate } from '@/lib/businessDates.mjs';
 
 // A printable receipt for any completed Order — fuel, materials, or retail all produce the same
 // Order/OrderLine shape (lib/sale.js), so one generic document covers every pack rather than a
@@ -67,7 +68,7 @@ export default function OrderReceiptPage() {
       </div>
 
       <Card id="receipt-content" className="receipt-page p-8 print:shadow-none print:border-0">
-        <ReceiptHeader org={organization} refNumber={order.orderNumber} date={order.createdAt} title="Sales Receipt" />
+        <ReceiptHeader org={organization} refNumber={order.orderNumber} date={effectiveDate(order, 'saleDate')} title="Sales Receipt" />
 
         <div className="grid grid-cols-2 gap-4 text-sm mb-6">
           <div>

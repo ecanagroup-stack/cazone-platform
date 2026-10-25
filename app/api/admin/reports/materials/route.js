@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
+import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
 
 // Building Material-only reports (M6) — ported from ecana_shop-app's reports/products,
 // reports/trucks and reports/quarry-purchases, each collapsed into one route selected by `type`
@@ -26,11 +27,10 @@ export const GET = withOrg(async (request) => {
     const branchWhere = branchId ? { id: branchId } : { serviceId };
     const branches = await prisma.branch.findMany({ where: branchWhere, select: { id: true } });
     const branchIds = branches.map((b) => b.id);
-    const dateRange = { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) };
 
     if (type === 'trucks') {
       const deliveries = await prisma.delivery.findMany({
-        where: { branchId: { in: branchIds }, vehicleId: { not: null }, createdAt: dateRange },
+        where: { branchId: { in: branchIds }, vehicleId: { not: null }, ...dateRangeWhere('businessDate', { from, to }) },
         include: { vehicle: true },
       });
       const byVehicle = new Map();
@@ -47,12 +47,12 @@ export const GET = withOrg(async (request) => {
 
     if (type === 'quarry-purchases') {
       const deliveries = await prisma.delivery.findMany({
-        where: { branchId: { in: branchIds }, supplier: { type: 'quarry' }, createdAt: dateRange },
+        where: { branchId: { in: branchIds }, supplier: { type: 'quarry' }, ...dateRangeWhere('businessDate', { from, to }) },
         include: { supplier: true, vehicle: true, product: true },
         orderBy: { createdAt: 'desc' },
       });
       const rows = deliveries.map((d) => ({
-        date: d.createdAt,
+        date: effectiveDate(d, 'businessDate'),
         quarryName: d.supplier?.name || '—',
         product: d.product?.name || '—',
         truckPlate: d.vehicle?.plateNumber || '—',
@@ -69,7 +69,7 @@ export const GET = withOrg(async (request) => {
 
     // type === 'products'
     const lines = await prisma.orderLine.findMany({
-      where: { order: { branchId: { in: branchIds }, status: 'active', createdAt: dateRange } },
+      where: { order: { branchId: { in: branchIds }, status: 'active', ...dateRangeWhere('saleDate', { from, to }) } },
       include: { product: true },
     });
     if (lines.length === 0) return NextResponse.json({ success: true, data: [] });

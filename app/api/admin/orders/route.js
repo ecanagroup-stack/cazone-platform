@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
+import { effectiveDate } from '@/lib/businessDates.mjs';
 
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
@@ -20,5 +21,7 @@ export const GET = withOrg(async () => {
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
-  return NextResponse.json({ success: true, data: orders });
+  const data = orders.map((order) => ({ ...order, businessDate: effectiveDate(order, 'saleDate') }))
+    .sort((a, b) => b.businessDate.localeCompare(a.businessDate));
+  return NextResponse.json({ success: true, data });
 });

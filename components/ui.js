@@ -5,6 +5,7 @@ import { FiX, FiPrinter, FiDownload, FiLink, FiMail, FiEye, FiEyeOff, FiImage } 
 import toast from 'react-hot-toast';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { formatDate } from '@/lib/format';
+import { businessToday } from '@/lib/saleDates.mjs';
 
 export function Logo({ className = 'h-8 w-8' }) {
   return (
@@ -465,6 +466,25 @@ export function OtpField({ purpose, value, onChange }) {
         {sending ? 'Sending...' : sent ? 'Resend code' : 'Send verification code to admin email'}
       </button>
     </div>
+  );
+}
+
+// The date of a transaction. Future days can't be picked; picking a past day reveals a second
+// verification code (purpose `backdated_entry`) that the caller sends as its own field, next to any
+// other code the action needs.
+export function BusinessDateField({ label = 'Date', value, onChange, otp, onOtpChange, min, required = true }) {
+  const today = businessToday();
+  return (
+    <>
+      <Field label={label} required={required}>
+        <input type="date" required={required} min={min} max={today} value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      </Field>
+      {value && value < today && (
+        <Field label="Back-dating verification code" required>
+          <OtpField purpose="backdated_entry" value={otp} onChange={onOtpChange} />
+        </Field>
+      )}
+    </>
   );
 }
 

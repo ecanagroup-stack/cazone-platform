@@ -8,7 +8,7 @@ import {
   inputCls, theadCls, tableScrollCls, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney } from '@/lib/format';
-import { todayLocalDate } from '@/lib/saleDates.mjs';
+import { businessToday, todayLocalDate } from '@/lib/saleDates.mjs';
 
 const TABS = [
   { key: 'sales', label: 'Sales Summary' },
@@ -18,13 +18,12 @@ const TABS = [
 ];
 const MATERIALS_TAB = { key: 'materials', label: 'Materials' };
 
+// The report filters use Lagos business dates, so the defaults and the picker's max do too.
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessToday();
 }
 function daysAgoIso(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return new Date(Date.parse(`${businessToday()}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
 }
 
 export default function ReportsPage() {
@@ -371,8 +370,8 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
     <form onSubmit={save} className="space-y-4">
       <p className="text-sm text-gray-600">Edit the billed and physical quantities and amounts before delivery. Stock, customer balance, and payment allocations will be corrected together.</p>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Sale date"><input type="date" required value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} className={inputCls} /></Field>
-        {form.delivered && <Field label="Delivery date"><input type="date" required min={form.saleDate} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} className={inputCls} /></Field>}
+        <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} className={inputCls} /></Field>
+        {form.delivered && <Field label="Delivery date"><input type="date" required min={form.saleDate} max={todayLocalDate()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} className={inputCls} /></Field>}
       </div>
       {sale.paymentMethod !== 'credit' && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">This sale was paid immediately. Changing its value corrects the recorded sale and report; settle any cash difference with the customer separately.</p>}
       {form.lines.map((line) => <Card key={line.id} className="p-4 space-y-3">
@@ -569,7 +568,7 @@ function CashSummary({ branchId, serviceId, from, to }) {
           csvRows={data.deposits}
           csvColumns={[
             ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
-            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'businessDate', label: 'Date', value: (r) => formatDate(r.businessDate) },
             { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
             { key: 'bankName', label: 'Bank' },
             { key: 'status', label: 'Status' },
@@ -593,7 +592,7 @@ function CashSummary({ branchId, serviceId, from, to }) {
               {data.deposits.map((d) => (
                 <tr key={d.id}>
                   {allBranches && <td className="px-4 py-3">{d.branch}</td>}
-                  <td className="px-4 py-3 text-gray-500">{formatDate(d.createdAt)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(d.businessDate)}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(d.amount / 100)}</td>
                   <td className="px-4 py-3">{d.bankName}</td>
                   <td className="px-4 py-3"><StatusPill status={d.status} color={d.status === 'approved' ? 'green' : d.status === 'rejected' ? 'red' : 'amber'} /></td>
