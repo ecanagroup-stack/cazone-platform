@@ -7,6 +7,9 @@ import { createSaleOrder, priceLines } from '@/lib/sale';
 import { allocatePayment } from '@/lib/payments';
 import { logAudit } from '@/lib/audit';
 import { loadOrgCustomerFlags } from '@/lib/orgLookup';
+import { classifyAtcPayment } from '@/lib/petroleumAtc.mjs';
+import { notifyRoleUsers } from '@/lib/notify';
+import { formatMoney } from '@/lib/format';
 
 // The only source of truth for anything Paystack-related actually taking effect — every client-side
 // "payment succeeded" callback (components/billing/PaystackButton.js) is purely optimistic UI, never
@@ -72,13 +75,20 @@ async function handleChargeSuccess(data) {
   // Customer payment collection (app/api/portal/pay/balance, app/api/portal/shop/pay) — a customer
   // paying their own org through Cazone, split via that org's Paystack Subaccount at the point of
   // charge (see Organization.paystackSubaccountCode). Distinct from the subscription/provisioning
-  // branches above, which are this org paying CAZONE.
-  if (metadata.type === 'balance_payment' && metadata.customerId && metadata.organizationId) {
+  // branches above, which are this org paying CAZONE. The metadata is client-supplied and can be missing or
+  // stripped, so these branch on the type alone and never fall through to the subscription code below, which
+  // would credit a customer's money to an org's subscription. An ATC charge is also recognised by the
+  // reference the server issued, and handleAtcOrderPayment finds its org from the saved row.
+  if (metadata.type === 'balance_payment') {
     await handleBalancePayment(data, metadata);
     return;
   }
-  if (metadata.type === 'shop_order' && metadata.customerId && metadata.organizationId) {
+  if (metadata.type === 'shop_order') {
     await handleShopOrderPayment(data, metadata);
+    return;
+  }
+  if (metadata.type === 'atc_order' || String(data.reference || '').startsWith('atc_')) {
+    await handleAtcOrderPayment(data, metadata);
     return;
   }
 
@@ -113,14 +123,21 @@ async function handleChargeSuccess(data) {
 // instead of dropping it silently; the dedupe row is already written, so Paystack won't retry.
 async function canApplyCustomerPayment(data, metadata, flag) {
   const { organizationId, customerId } = metadata;
-  if (typeof organizationId !== 'string' || !organizationId || typeof customerId !== 'string' || !customerId) return false;
+  if (typeof organizationId !== 'string' || !organizationId || typeof customerId !== 'string' || !customerId) {
+    console.error('[paystack webhook] customer payment not applied: metadata incomplete', metadata.type, data.reference); // eslint-disable-line no-console
+    return false;
+  }
+  return orgHasCustomerFeature(data, metadata.type, organizationId, flag);
+}
+
+async function orgHasCustomerFeature(data, type, organizationId, flag) {
   const flags = await loadOrgCustomerFlags(organizationId);
   if (flags[flag]) return true;
-  console.error('[paystack webhook] customer payment not applied: feature unavailable', metadata.type, data.reference); // eslint-disable-line no-console
+  console.error('[paystack webhook] customer payment not applied: feature unavailable', type, data.reference); // eslint-disable-line no-console
   if (flags.businessType) {
     await runWithOrg(organizationId, () => prisma.flag.create({ data: {
       targetType: 'Payment', targetId: data.reference || null, severity: 'issue', classification: 'issue',
-      reason: `A ${metadata.type === 'shop_order' ? 'shop order' : 'balance'} payment of ${data.amount / 100} (Paystack ref ${data.reference}) was received but not applied: customers are not available for this business. Refund or reconcile it manually.`,
+      reason: `A ${{ shop_order: 'shop order', atc_order: 'ATC order' }[type] || 'balance'} payment of ${data.amount / 100} (Paystack ref ${data.reference}) was received but not applied: customers are not available for this business. Refund or reconcile it manually.`,
       raisedBy: 'system:paystack',
     } }));
   }
@@ -175,6 +192,96 @@ async function handleShopOrderPayment(data, metadata) {
       session: { user: { organizationId, id: null } },
       branchId, customerId, paymentMethod: 'paystack', lines,
       transportFee, channel: 'shop', stockReason: 'sale',
+    });
+  });
+}
+
+// A customer buying an ATC online (app/api/portal/atc/orders). The ATC is found by the reference saved on
+// its own row when the hold was made, never by anything in the client-supplied metadata (which is only a
+// last resort for naming the org when no row carries the reference), and the amount Paystack actually
+// collected is checked against the price saved on that row. The popup's own settings (currency, split) are
+// browser-controlled, so the charge must also be in NGN and settled to this org's own subaccount. The flip
+// reserved -> sold is one conditional update, and a redelivered webhook is already stopped by the
+// PaystackEvent row. Money that cannot buy the ATC (the hold lapsed and it went elsewhere, it was taken off
+// sale, the amount is short, it went to the wrong account or the customer was deactivated) is never
+// silently kept: a Flag and a notice to the Admin and ATC managers ask for a refund.
+async function handleAtcOrderPayment(data, metadata) {
+  const reference = data.reference;
+  const held = reference ? await prisma.petroleumAtc.findFirst({ where: { paystackReference: reference }, select: { organizationId: true } }) : null;
+  const organizationId = held?.organizationId || (typeof metadata.organizationId === 'string' ? metadata.organizationId : null);
+  if (!organizationId) {
+    console.error('[paystack webhook] ATC payment not applied: no ATC or organization for', reference); // eslint-disable-line no-console
+    return;
+  }
+  if (!(await orgHasCustomerFeature(data, 'atc_order', organizationId, 'hasAtc'))) return;
+  const paidKobo = Number(data.amount);
+  const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { paystackSubaccountCode: true } });
+  const chargeSubaccount = typeof data.subaccount === 'string' ? data.subaccount : data.subaccount?.subaccount_code;
+  const settledToOrg = data.currency === 'NGN' && !!org?.paystackSubaccountCode && chargeSubaccount === org.paystackSubaccountCode;
+  await runWithOrg(organizationId, async () => {
+    const load = (where) => prisma.petroleumAtc.findFirst({
+      where,
+      select: {
+        id: true, serial: true, litres: true, productId: true, vehicleId: true, status: true, reservedByCustomerId: true,
+        paystackReference: true, totalPrice: true, product: { select: { name: true } },
+        vehicle: { select: { plateNumber: true, driverName: true, driverPhone: true } },
+      },
+    });
+    const atc = reference ? await load({ paystackReference: reference }) : null;
+    let outcome = classifyAtcPayment(atc, { reference, paidKobo });
+
+    let customer = null;
+    if (outcome === 'apply') {
+      customer = await prisma.customer.findUnique({ where: { id: atc.reservedByCustomerId }, select: { name: true, isActive: true } });
+      if (!settledToOrg) outcome = 'misdirected';
+      else if (!customer?.isActive) outcome = 'inactive';
+    }
+
+    if (outcome === 'apply') {
+      const now = new Date();
+      const claimed = await prisma.petroleumAtc.updateMany({
+        // Litres and fuel are part of the claim: an edit since the hold would change what the price was for.
+        where: { id: atc.id, status: 'reserved', paystackReference: reference, reservedByCustomerId: atc.reservedByCustomerId, litres: atc.litres, productId: atc.productId },
+        data: {
+          status: 'sold', customerId: atc.reservedByCustomerId, paymentMethod: 'paystack', paidAt: now, soldAt: now,
+          reservedUntil: null, reservedByCustomerId: null,
+          truckPlate: atc.vehicle.plateNumber, driverName: atc.vehicle.driverName, driverPhone: atc.vehicle.driverPhone,
+        },
+      });
+      if (claimed.count === 1) {
+        await logAudit({
+          organizationId, actorUserId: 'system:paystack', actorName: 'Paystack payment',
+          action: 'petroleum_atc.sold', entityType: 'PetroleumAtc', entityId: atc.id,
+          after: { serial: atc.serial, customerId: atc.reservedByCustomerId, litres: atc.litres, totalPrice: Number(atc.totalPrice), paymentMethod: 'paystack', reference },
+        });
+        await notifyRoleUsers(['atc_manager', 'owner'], {
+          type: 'atc_sold', title: 'ATC sold',
+          message: `${atc.serial} (${atc.litres.toLocaleString('en-NG')} L ${atc.product.name}) paid online by ${customer?.name || 'a customer'} for ${formatMoney(Number(atc.totalPrice) / 100)}. Truck ${atc.vehicle.plateNumber}.`,
+          relatedType: 'PetroleumAtc', relatedId: atc.id,
+        });
+        return;
+      }
+      // Lost the race: re-read to tell this charge's own earlier success from the ATC going elsewhere.
+      outcome = classifyAtcPayment(await load({ paystackReference: reference }), { reference, paidKobo }) === 'already_applied' ? 'already_applied' : 'conflict';
+    }
+    if (outcome === 'already_applied') return;
+
+    // The ATC this charge was for, when the reference no longer points at it (another buyer's hold replaced it).
+    const target = atc || (typeof metadata.atcId === 'string' ? await load({ id: metadata.atcId }) : null);
+    const serial = target?.serial ? ` for ${target.serial}` : '';
+    const paid = `an ATC payment${serial} of ${paidKobo / 100} (Paystack ref ${reference})`;
+    const reason = {
+      underpaid: `paid_conflict: ${paid} is less than the price of ${Number(atc?.totalPrice) / 100}, so the ATC was not sold. Refund or reconcile it manually.`,
+      misdirected: `paid_conflict: ${paid} was not paid in NGN to this business's own Paystack subaccount, so the ATC was not sold. Check where the money settled, then refund or reconcile it manually.`,
+      inactive: `paid_conflict: ${paid} was received but the customer's account is no longer active, so the ATC was not sold. Refund or reconcile it manually.`,
+    }[outcome] || `paid_conflict: ${paid} was received but the ATC is no longer held for this customer (the 15-minute hold ended and it went elsewhere, or it was taken off sale). Refund the customer or reconcile it manually.`;
+    await prisma.flag.create({ data: {
+      targetType: 'PetroleumAtc', targetId: target?.id || data.reference || null, severity: 'issue', classification: 'issue', reason, raisedBy: 'system:paystack',
+    } });
+    await notifyRoleUsers(['atc_manager', 'owner'], {
+      type: 'atc_paid_conflict', title: 'ATC payment needs a refund',
+      message: `A customer paid ${formatMoney(paidKobo / 100)}${serial} (Paystack ref ${reference}) but the ATC could not be sold to them. Refund or reconcile it.`,
+      relatedType: target ? 'PetroleumAtc' : null, relatedId: target?.id || null,
     });
   });
 }

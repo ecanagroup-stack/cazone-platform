@@ -126,7 +126,7 @@ export default function DistributorAtcsPage() {
             <tbody className="divide-y">
               {atcs.length === 0 && <EmptyRow colSpan={8} text="No ATCs" />}
               {atcs.map((atc) => {
-                const total = atc.totalPrice ?? atc.currentTotalPrice;
+                const total = ['sold', 'delivered'].includes(atc.status) ? atc.totalPrice : atc.currentTotalPrice;
                 return (
                   <tr key={atc.id}>
                     <td className="px-4 py-3 font-medium">{atc.serial}</td>

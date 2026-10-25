@@ -70,6 +70,7 @@ export const POST = withOrg(async (request) => {
       data: {
         status: 'sold', customerId: customer.id, paymentMethod, unitPrice, totalPrice, priceRuleId,
         paidAt: now, soldAt: now, soldBy: session.user.id, reservedUntil: null, reservedByCustomerId: null,
+        paystackReference: null, // a lapsed customer hold's charge must not read as having bought this sale
         truckPlate: atc.vehicle.plateNumber, driverName: atc.vehicle.driverName, driverPhone: atc.vehicle.driverPhone,
       },
     });

@@ -10,7 +10,7 @@ import { effectiveDate } from '@/lib/businessDates.mjs';
 import PendingOrdersQueue from '@/components/PendingOrdersQueue';
 
 const SEVERITY_COLOR = { info: 'blue', concern: 'amber', issue: 'red' };
-const TARGET_LABEL = { Shift: 'Cash-up', Order: 'Sale', Reconciliation: 'Stock variance' };
+const TARGET_LABEL = { Shift: 'Cash-up', Order: 'Sale', Reconciliation: 'Stock variance', PetroleumAtc: 'ATC payment' };
 const TABS = [
   { key: 'flags', label: 'Anything Wrong' },
   { key: 'pending', label: 'Pending Orders' },

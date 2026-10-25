@@ -31,8 +31,9 @@ function loadPaystackScript() {
 // Paystack Subaccount (lib/paystack.js createOrUpdateSubaccount). The onSuccess callback here is
 // purely optimistic UI: the ONLY thing that ever actually marks a payment as applied is the webhook
 // (app/api/webhooks/paystack), so this just tells the user to expect a short delay and refreshes once
-// it's done.
-export default function PaystackButton({ prepareUrl, prepareBody, metadata, label, className, disabled, onPaid }) {
+// it's done. `onPrepared` fires once the prepare call has succeeded, before the popup opens, for callers whose
+// prepare step changes what the page shows (an ATC hold) and should be seen even if the popup is closed unpaid.
+export default function PaystackButton({ prepareUrl, prepareBody, metadata, label, className, disabled, onPaid, onPrepared }) {
   const [loading, setLoading] = useState(false);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
@@ -49,6 +50,7 @@ export default function PaystackButton({ prepareUrl, prepareBody, metadata, labe
       ]);
       if (!prep.success) { toast.error(prep.error || 'Could not start payment'); return; }
       const { reference, amountKobo, email, planCode, subaccountCode } = prep.data;
+      onPrepared?.();
 
       const handler = window.PaystackPop.setup({
         key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,

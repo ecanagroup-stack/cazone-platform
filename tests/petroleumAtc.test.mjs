@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ATC_FUEL_TYPES, atcSku, atcTotalKobo, displayStatus, formatSerial, holdUntil, HOLD_MINUTES, isAtcProduct, isHoldLapsed,
-  isSellable, parseLitres, pricePerLitreKobo, sellableWhere,
+  isSellable, parseLitres, pricePerLitreKobo, sellableWhere, atcPaystackReference, classifyAtcPayment,
 } from '../lib/petroleumAtc.mjs';
 
 const now = new Date('2026-10-25T12:00:00Z');
@@ -67,4 +67,31 @@ test('only channel=atc products are ATC products', () => {
   assert.equal(isAtcProduct({ attributes: null }), false);
   assert.equal(isAtcProduct(null), false);
   assert.deepEqual(ATC_FUEL_TYPES.map((t) => atcSku(t.code)), ['ATC-PMS', 'ATC-AGO', 'ATC-DPK']);
+});
+
+test('a paid charge is classified against the ATC its reference was issued for', () => {
+  const held = { status: 'reserved', reservedByCustomerId: 'c1', paystackReference: 'ref1', totalPrice: 1_000_000 };
+  assert.equal(classifyAtcPayment(held, { reference: 'ref1', paidKobo: 1_000_000 }), 'apply');
+  assert.equal(classifyAtcPayment(held, { reference: 'ref1', paidKobo: 1_200_000 }), 'apply');
+  assert.equal(classifyAtcPayment(held, { reference: 'ref1', paidKobo: 999_999 }), 'underpaid');
+  // A lapsed hold nobody else claimed still stands: the row is still reserved for this reference.
+  assert.equal(classifyAtcPayment({ ...held, reservedUntil: new Date(0) }, { reference: 'ref1', paidKobo: 1_000_000 }), 'apply');
+  assert.equal(classifyAtcPayment({ ...held, status: 'sold' }, { reference: 'ref1', paidKobo: 1_000_000 }), 'already_applied');
+  assert.equal(classifyAtcPayment({ ...held, status: 'delivered' }, { reference: 'ref1', paidKobo: 1_000_000 }), 'already_applied');
+});
+
+test('a charge whose ATC went elsewhere is a conflict, never a sale', () => {
+  const held = { status: 'reserved', reservedByCustomerId: 'c1', paystackReference: 'ref1', totalPrice: 1_000_000 };
+  assert.equal(classifyAtcPayment(null, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment({ ...held, paystackReference: 'ref2' }, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment({ ...held, status: 'cancelled' }, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment({ ...held, status: 'available' }, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment({ ...held, reservedByCustomerId: null }, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment({ ...held, totalPrice: null }, { reference: 'ref1', paidKobo: 1_000_000 }), 'conflict');
+  assert.equal(classifyAtcPayment(held, { reference: '', paidKobo: 1_000_000 }), 'conflict');
+});
+
+test('references carry the ATC id and are unique per attempt', () => {
+  assert.equal(atcPaystackReference('abc', new Date(1000)), 'atc_abc_1000');
+  assert.notEqual(atcPaystackReference('abc', new Date(1000)), atcPaystackReference('abc', new Date(1001)));
 });

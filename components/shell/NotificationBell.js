@@ -59,9 +59,11 @@ export default function NotificationBell() {
                     <p className="text-xs text-gray-400 mt-0.5">{formatDate(n.createdAt)}</p>
                   </>
                 );
-                // A sold ATC is work to act on: take the ATC manager straight to the sold board.
-                return n.relatedType === 'PetroleumAtc' ? (
-                  <Link key={n.id} href="/admin/distributor/orders" onClick={() => setOpen(false)} className="block px-3 py-2 border-b last:border-b-0 hover:bg-gray-50">{body}</Link>
+                // A sold ATC is work to act on: take the ATC manager straight to the sold board. A payment
+                // that could not buy its ATC is a refund Flag, which is listed with the other exceptions.
+                const href = n.type === 'atc_sold' ? '/admin/distributor/orders' : n.type === 'atc_paid_conflict' ? '/admin/exceptions' : null;
+                return href ? (
+                  <Link key={n.id} href={href} onClick={() => setOpen(false)} className="block px-3 py-2 border-b last:border-b-0 hover:bg-gray-50">{body}</Link>
                 ) : (
                   <div key={n.id} className="px-3 py-2 border-b last:border-b-0">{body}</div>
                 );
