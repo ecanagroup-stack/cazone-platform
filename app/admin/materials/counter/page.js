@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyState, EmptyRow, Modal, FormButtons, Field, Tabs, StatusPill,
   inputCls, btnPrimaryCls, tableActionCls, tableDangerActionCls, theadCls, tableScrollCls,
-  OtpField, NumberInput, CustomerNameField,
+  OtpField, NumberInput, CustomerNameField, BusinessDateField,
 } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 import { todayLocalDate } from '@/lib/saleDates.mjs';
@@ -190,6 +190,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [delivered, setDelivered] = useState(false);
   const [saleDate, setSaleDate] = useState(todayLocalDate);
+  const [backdateOtp, setBackdateOtp] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(todayLocalDate);
   const [cart, setCart] = useState([]);
   const [cartProductId, setCartProductId] = useState('');
@@ -266,7 +267,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
       const r = await fetch('/api/admin/materials/shop/sale', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer?.id || null, paymentMethod, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
+          branchId, customerId: customer?.id || null, paymentMethod, delivered, saleDate, backdateOtp, deliveryDate: delivered ? deliveryDate : null,
           lines: cart.map((l) => ({ productId: l.productId, qty: l.qty, billQty: l.billQty })),
           transportFee: transportHandledBy === 'us' ? (Number(transportPrice) || 0) : 0,
           overrideCredit, otp,
@@ -277,7 +278,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
         toast.success(`Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
         setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash');
-        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice(''); setDelivered(false); setSaleDate(todayLocalDate()); setDeliveryDate(todayLocalDate());
+        setTransportHandledBy(''); setTransportMeans(''); setTransportPrice(''); setDelivered(false); setSaleDate(todayLocalDate()); setBackdateOtp(''); setDeliveryDate(todayLocalDate());
         setCreditWarning(null); setOverridePin('');
         onSold();
       } else if (d.needsApproval) {
@@ -451,7 +452,7 @@ function RecordSaleTab({ serviceId, branchId, onSold }) {
 
       <Card className="p-4">
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
-          <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+          <div className="space-y-3"><BusinessDateField label="Sale date" value={saleDate} onChange={setSaleDate} otp={backdateOtp} onOtpChange={setBackdateOtp} /></div>
           {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} max={todayLocalDate()} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
         </div>
         <label className="flex items-start gap-3 text-sm">

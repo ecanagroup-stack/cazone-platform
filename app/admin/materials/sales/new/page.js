@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
-  Loader, PageHeader, Card, EmptyState, Field, inputCls, btnPrimaryCls, OtpField, NumberInput,
+  Loader, PageHeader, Card, EmptyState, Field, inputCls, btnPrimaryCls, OtpField, NumberInput, BusinessDateField,
 } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 import { todayLocalDate } from '@/lib/saleDates.mjs';
@@ -93,6 +93,7 @@ export default function NewMaterialsSalePage() {
   const [discountOtp, setDiscountOtp] = useState('');
   const [delivered, setDelivered] = useState(false);
   const [saleDate, setSaleDate] = useState(todayLocalDate);
+  const [backdateOtp, setBackdateOtp] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(todayLocalDate);
 
   const [submitting, setSubmitting] = useState(false);
@@ -156,7 +157,7 @@ export default function NewMaterialsSalePage() {
       const r = await fetch('/api/admin/materials/sales', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered, saleDate, deliveryDate: delivered ? deliveryDate : null,
+          branchId, customerId: customer.id, discount: Number(discount) || 0, discountOtp, delivered, saleDate, backdateOtp, deliveryDate: delivered ? deliveryDate : null,
           items: cart.map((i) => ({
             kind: i.kind, atcId: i.atcId, productId: i.productId, vehicleId: i.vehicleId,
             actualQty: i.actualQty, billQty: i.billQty,
@@ -284,7 +285,7 @@ export default function NewMaterialsSalePage() {
 
         <Card className="p-4">
           <div className="grid sm:grid-cols-2 gap-3 mb-3">
-            <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className={inputCls} /></Field>
+            <div className="space-y-3"><BusinessDateField label="Sale date" value={saleDate} onChange={setSaleDate} otp={backdateOtp} onOtpChange={setBackdateOtp} /></div>
             {delivered && <Field label="Delivery date"><input type="date" required min={saleDate} max={todayLocalDate()} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputCls} /></Field>}
           </div>
           <label className="flex items-start gap-3 text-sm">

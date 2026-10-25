@@ -4,12 +4,13 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { resolvePrice } from '@/lib/pricing';
 import { isAllocationSellable } from '@/lib/allocation';
-import { createSaleOrder, priceLines, assertCustomerAccessible } from '@/lib/sale';
+import { createSaleOrder, priceLines, assertCustomerAccessible, assertBranchAccessible } from '@/lib/sale';
 import { checkCredit } from '@/lib/credit';
 import { verifyOtp } from '@/lib/otp';
 import { notifyAlteration } from '@/lib/notify';
+import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { ApiError } from '@/lib/apiError';
-import { materialSaleDates } from '@/lib/saleDates.mjs';
+import { materialSaleDates, isBackdated } from '@/lib/saleDates.mjs';
 import { toCents } from '@/lib/money.mjs';
 import { jsonSafe } from '@/lib/jsonSafe';
 
@@ -49,7 +50,9 @@ export const POST = withOrg(async (request) => {
     if (items.length === 0) throw new ApiError('Add at least one item', 400);
     // Checked here as well as in createSaleOrder: that runs after the codes are spent and the quarry
     // purchases are recorded, and a sale refused then would leave both behind.
+    await assertBranchAccessible(session, branchId);
     await assertCustomerAccessible(branchId, customerId);
+    assertBackdateOtpPresent(saleDate, body.backdateOtp);
 
     // Resolve every item to a productId (and, for aggregate, the purchase leg it'll need) before
     // pricing/credit — no writes yet, so a rejected sale leaves nothing behind.
@@ -133,11 +136,14 @@ export const POST = withOrg(async (request) => {
       await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
       discountOtpVerified = true;
     }
+    const backdated = await requireBackdateOtp({ userId: session.user.id, date: saleDate, otp: body.backdateOtp });
 
     // The purchase leg for every aggregate item — buying straight from the quarry at its listed cost,
     // delivered by that item's truck. Not wrapped with the sale below: if the sale is rejected after
     // this point, the truckload has already physically arrived and been paid for, same as the old
     // single-item aggregate flow — nothing to "unbuy."
+    // For a back-dated sale the truckload arrived on the sale's day, so the stock-in matches the stock-out.
+    const purchaseAt = isBackdated(saleDate) ? saleDate : undefined;
     const deliveries = [];
     for (const r of resolved) {
       if (r.kind !== 'aggregate') continue;
@@ -149,10 +155,10 @@ export const POST = withOrg(async (request) => {
           data: {
             branchId, supplierId, vehicleId, productId,
             quantity: actualQty, costPerUnit, totalCost: BigInt(totalCostNumber),
-            status: 'received', receivedAt: new Date(), createdBy: session.user.id,
+            status: 'received', receivedAt: purchaseAt || new Date(), createdBy: session.user.id,
           },
         });
-        await tx.stockMove.create({ data: { branchId, productId, qty: actualQty, reason: 'purchase', ref: d.id, userId: session.user.id } });
+        await tx.stockMove.create({ data: { branchId, productId, qty: actualQty, reason: 'purchase', ref: d.id, userId: session.user.id, ...(purchaseAt ? { at: purchaseAt } : {}) } });
         return d;
       });
       deliveries.push(delivery);
@@ -178,6 +184,11 @@ export const POST = withOrg(async (request) => {
       actor: session.user, branchId, title: 'Sale discount applied',
       message: `${session.user.name} applied a discount of ${(discount / 100).toFixed(2)} to sale ${result.order.orderNumber}.`,
       type: 'sale_discount', relatedType: 'Order', relatedId: result.order.id,
+    });
+
+    if (backdated) await notifyBackdated({
+      actor: session.user, branchId, date: saleDate, relatedType: 'Order', relatedId: result.order.id,
+      what: `sale ${result.order.orderNumber}`,
     });
 
     return NextResponse.json(jsonSafe({ success: true, data: { order: result.order, deliveries, flagged: result.flagged } }), { status: 201 });

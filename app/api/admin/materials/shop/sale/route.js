@@ -4,6 +4,7 @@ import { can } from '@/lib/permissions';
 import { createSaleOrder } from '@/lib/sale';
 import { verifyOtp } from '@/lib/otp';
 import { notifyAlteration } from '@/lib/notify';
+import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { ApiError } from '@/lib/apiError';
 import { materialSaleDates } from '@/lib/saleDates.mjs';
 import { toCents } from '@/lib/money.mjs';
@@ -39,11 +40,17 @@ export const POST = withOrg(async (request) => {
       stockQty: Number(l.qty), // actual supplied drives the stock move
     }));
 
+    assertBackdateOtpPresent(saleDate, body.backdateOtp);
+    // Both single-use codes are spent together, after createSaleOrder has run its own checks.
+    let backdated = false;
     const result = await createSaleOrder({
       session, branchId, customerId, paymentMethod,
       lines: priceLines,
       overrideCredit: !!body.overrideCredit,
-      beforeWrite: body.overrideCredit ? () => verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp }) : undefined,
+      beforeWrite: async () => {
+        if (body.overrideCredit) await verifyOtp({ userId: session.user.id, purpose: 'credit_override', code: body.otp });
+        backdated = await requireBackdateOtp({ userId: session.user.id, date: saleDate, otp: body.backdateOtp });
+      },
       transportFee, channel: 'shop',
       deliveryStatus: body.delivered ? 'delivered' : 'pending',
       saleDate, deliveryDate,
@@ -58,6 +65,11 @@ export const POST = withOrg(async (request) => {
     }
 
     if (body.overrideCredit) await notifyAlteration({ actor: session.user, branchId, type: 'credit_override', title: 'Credit override used', message: `${session.user.name} used a verification code for sale ${result.order.orderNumber}.`, relatedType: 'Order', relatedId: result.order.id });
+
+    if (backdated) await notifyBackdated({
+      actor: session.user, branchId, date: saleDate, relatedType: 'Order', relatedId: result.order.id,
+      what: `sale ${result.order.orderNumber}`,
+    });
 
     return NextResponse.json({ success: true, data: { order: result.order, flagged: result.flagged } }, { status: 201 });
   } catch (e) {

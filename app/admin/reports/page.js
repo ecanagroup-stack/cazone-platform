@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
-  Loader, PageHeader, Card, EmptyRow, Tabs, StatusPill, Modal, Field, NumberInput, OtpField, FormButtons,
+  Loader, PageHeader, Card, EmptyRow, Tabs, StatusPill, Modal, Field, NumberInput, OtpField, FormButtons, BusinessDateField,
   inputCls, theadCls, tableScrollCls, ReportToolbar,
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney } from '@/lib/format';
@@ -327,7 +327,7 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
       saleDate: sale.edit.saleDate, deliveryDate: todayLocalDate(),
       discount: (sale.edit.discount / 100).toString(),
       orderTransportFee: (sale.edit.orderTransportFee / 100).toString(),
-      reason: '', discountOtp: '',
+      reason: '', discountOtp: '', backdateOtp: '',
       lines: sale.edit.lines.map((line) => ({
         ...line, qty: String(line.qty), stockQty: String(line.stockQty),
         unitPrice: (line.unitPrice / 100).toString(), transportFee: (line.transportFee / 100).toString(),
@@ -370,7 +370,11 @@ function EditPendingSaleModal({ sale, onClose, onSaved }) {
     <form onSubmit={save} className="space-y-4">
       <p className="text-sm text-gray-600">Edit the billed and physical quantities and amounts before delivery. Stock, customer balance, and payment allocations will be corrected together.</p>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Sale date"><input type="date" required max={todayLocalDate()} value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} className={inputCls} /></Field>
+        <div className="space-y-3">
+          <BusinessDateField label="Sale date" value={form.saleDate} onChange={(saleDate) => setForm({ ...form, saleDate })}
+            otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((current) => ({ ...current, backdateOtp }))}
+            otpRequired={form.saleDate < todayLocalDate() && form.saleDate !== sale.edit.saleDate} />
+        </div>
         {form.delivered && <Field label="Delivery date"><input type="date" required min={form.saleDate} max={todayLocalDate()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} className={inputCls} /></Field>}
       </div>
       {sale.paymentMethod !== 'credit' && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">This sale was paid immediately. Changing its value corrects the recorded sale and report; settle any cash difference with the customer separately.</p>}

@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField, NumberInput } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, Tabs, ReportToolbar, OtpField, NumberInput, BusinessDateField } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
+import { businessToday } from '@/lib/saleDates.mjs';
+import { effectiveDate } from '@/lib/businessDates.mjs';
 
 const SEVERITY_COLOR = { info: 'blue', concern: 'amber', issue: 'red' };
 const TARGET_LABEL = { Shift: 'Cash-up', Order: 'Sale', Reconciliation: 'Stock variance' };
@@ -360,7 +362,7 @@ function PricingTab() {
 }
 
 const DEPOSIT_STATUS_COLOR = { pending: 'amber', approved: 'green', rejected: 'red' };
-const blankDepositForm = { branchId: '', amount: '', bankName: '', accountNumber: '' };
+const blankDepositForm = () => ({ branchId: '', amount: '', bankName: '', accountNumber: '', depositDate: businessToday(), backdateOtp: '' });
 
 // Cash deposits staff record after banking a shift's takings — sit `pending` until a manager/owner
 // approves or rejects them.
@@ -394,7 +396,7 @@ function DepositsTab() {
         body: JSON.stringify({ ...form, amount: Math.round(Number(form.amount || 0) * 100) }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Deposit recorded'); setShowModal(false); setForm(blankDepositForm); load(); }
+      if (d.success) { toast.success('Deposit recorded'); setShowModal(false); setForm(blankDepositForm()); load(); }
       else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -425,7 +427,7 @@ function DepositsTab() {
           csvFilename="deposits"
           csvRows={deposits}
           csvColumns={[
-            { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.createdAt) },
+            { key: 'depositDate', label: 'Date', value: (r) => formatDate(effectiveDate(r, 'depositDate')) },
             { key: 'branch.name', label: 'Branch' },
             { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
             { key: 'bankName', label: 'Bank' },
@@ -433,7 +435,7 @@ function DepositsTab() {
             { key: 'status', label: 'Status' },
           ]}
         />
-        <button onClick={() => { setForm(blankDepositForm); setShowModal(true); }} className={btnPrimaryCls}>Record Deposit</button>
+        <button onClick={() => { setForm(blankDepositForm()); setShowModal(true); }} className={btnPrimaryCls}>Record Deposit</button>
       </div>
 
       {deposits.length === 0 ? (
@@ -447,7 +449,7 @@ function DepositsTab() {
                   <p className="text-sm font-semibold">{formatMoney(dep.amount / 100)}</p>
                   <StatusPill status={dep.status} color={DEPOSIT_STATUS_COLOR[dep.status]} />
                 </div>
-                <p className="text-xs text-gray-500">{dep.branch?.name} — {dep.bankName} ({dep.accountNumber}) — {formatDate(dep.createdAt)}</p>
+                <p className="text-xs text-gray-500">{dep.branch?.name} — {dep.bankName} ({dep.accountNumber}) — {formatDate(effectiveDate(dep, 'depositDate'))}</p>
               </div>
               {dep.status === 'pending' && (
                 <div className="flex gap-2 shrink-0">
@@ -479,6 +481,8 @@ function DepositsTab() {
               <input type="text" value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} className={inputCls} required />
             </Field>
           </div>
+          <BusinessDateField label="Deposit date" value={form.depositDate} onChange={(depositDate) => setForm({ ...form, depositDate })}
+            otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))} />
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel="Record Deposit" />
         </form>
       </Modal>

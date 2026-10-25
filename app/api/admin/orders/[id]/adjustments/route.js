@@ -7,6 +7,9 @@ import { verifyOtp } from '@/lib/otp';
 import { ApiError } from '@/lib/apiError';
 import { notifyAlteration } from '@/lib/notify';
 import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { optionalBusinessDate } from '@/lib/saleDates.mjs';
+import { effectiveDate } from '@/lib/businessDates.mjs';
+import { requireBackdateOtp, assertBackdateOtpPresent, backdatedNotice } from '@/lib/backdating';
 
 // A surcharge or fund tied to a specific sale — ported from ecana_shop-app's
 // app/api/sales/[id]/surcharge and /refund routes. `method` on a surcharge picks how the amount is
@@ -48,15 +51,21 @@ export const POST = withOrg(async (request, { params }) => {
       amount = Math.round(Number(body.amount));
     }
     if (!Number.isFinite(amount) || amount <= 0) throw new ApiError(`Enter a valid ${type} amount`, 400);
+    const saleDate = optionalBusinessDate(body.saleDate, 'Adjustment date');
+    // An adjustment to a sale can't predate the sale itself.
+    if (saleDate && saleDate.toISOString().slice(0, 10) < effectiveDate(order, 'saleDate')) throw new ApiError('Adjustment date cannot be before the sale date', 400);
+    assertBackdateOtpPresent(saleDate, body.backdateOtp);
 
     await verifyOtp({ userId: session.user.id, purpose: 'customer_adjustment', code: body.otp });
+    const backdated = await requireBackdateOtp({ userId: session.user.id, date: saleDate, otp: body.backdateOtp });
 
-    const adjustment = await applyAdjustment({ session, customerId: order.customerId, orderId, type, method, amount, reason });
-    await notifyAlteration({
+    const adjustment = await applyAdjustment({ session, customerId: order.customerId, orderId, type, method, amount, reason, saleDate });
+    const notice = {
       actor: session.user, branchId: order.branchId, title: type === 'refund' ? 'Sale fund applied' : 'Sale surcharge applied',
       message: `${session.user.name} applied a ${type === 'refund' ? 'fund' : 'surcharge'} of ${(amount / 100).toFixed(2)} to sale ${order.orderNumber}. Reason: ${reason}`,
       type: 'customer_adjustment', relatedType: 'CustomerAdjustment', relatedId: adjustment.id,
-    });
+    };
+    await notifyAlteration(backdated ? backdatedNotice(notice, saleDate) : notice);
     return NextResponse.json({ success: true, data: adjustment }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });

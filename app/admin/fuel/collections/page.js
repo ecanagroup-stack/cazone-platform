@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
-import { Card, EmptyState, Field, Loader, NumberInput, PageHeader, btnPrimaryCls, inputCls } from '@/components/ui';
+import { BusinessDateField, Card, EmptyState, Field, Loader, NumberInput, PageHeader, btnPrimaryCls, inputCls } from '@/components/ui';
+import { businessToday } from '@/lib/saleDates.mjs';
+
+const blankDeposit = () => ({ shiftId: '', amount: '', bankName: '', accountNumber: '', depositDate: businessToday(), backdateOtp: '' });
 
 function todayInLagos() {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
@@ -24,7 +27,7 @@ export default function FuelCollectionsPage() {
   const [pos, setPos] = useState([]);
   const [requestId, setRequestId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [deposit, setDeposit] = useState({ shiftId: '', amount: '', bankName: '', accountNumber: '' });
+  const [deposit, setDeposit] = useState(blankDeposit);
   const [voiding, setVoiding] = useState(null);
   const [voidReason, setVoidReason] = useState('');
   const [error, setError] = useState('');
@@ -66,10 +69,10 @@ export default function FuelCollectionsPage() {
     event.preventDefault(); setSaving(true);
     try {
       const response = await fetch('/api/admin/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branchId, shiftId: deposit.shiftId, amount: Math.round(Number(deposit.amount) * 100), bankName: deposit.bankName, accountNumber: deposit.accountNumber }) });
+        body: JSON.stringify({ branchId, shiftId: deposit.shiftId, amount: Math.round(Number(deposit.amount) * 100), bankName: deposit.bankName, accountNumber: deposit.accountNumber, depositDate: deposit.depositDate, backdateOtp: deposit.backdateOtp }) });
       const result = await response.json();
       if (!result.success) throw new Error(result.error || 'Deposit failed');
-      toast.success('Deposit submitted'); setDeposit({ shiftId: '', amount: '', bankName: '', accountNumber: '' }); load();
+      toast.success('Deposit submitted'); setDeposit(blankDeposit()); load();
     } catch (error) { toast.error(error.message); }
     finally { setSaving(false); }
   };
@@ -144,6 +147,10 @@ export default function FuelCollectionsPage() {
           <Field label="Amount"><NumberInput required value={deposit.amount} onChange={(e) => setDeposit({ ...deposit, amount: e.target.value })} /></Field>
           <Field label="Bank"><input required className={inputCls} value={deposit.bankName} onChange={(e) => setDeposit({ ...deposit, bankName: e.target.value })} /></Field>
           <Field label="Account number"><input required className={inputCls} value={deposit.accountNumber} onChange={(e) => setDeposit({ ...deposit, accountNumber: e.target.value })} /></Field>
+          <div className="space-y-3 sm:col-span-5">
+            <BusinessDateField label="Deposit date" value={deposit.depositDate} onChange={(depositDate) => setDeposit({ ...deposit, depositDate })}
+              otp={deposit.backdateOtp} onOtpChange={(backdateOtp) => setDeposit((d) => ({ ...d, backdateOtp }))} />
+          </div>
           <button disabled={saving} className={btnPrimaryCls}>Record Deposit</button>
         </form>
         {data.deposits.length > 0 && <div className="mt-4 text-sm space-y-1">{data.deposits.map((d) => <p key={d.id}>₦{(d.amount / 100).toLocaleString()} · {d.bankName} · {d.status}</p>)}</div>}

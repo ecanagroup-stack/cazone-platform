@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
-import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls, OtpField, NumberInput, CustomerNameField } from '@/components/ui';
+import { Loader, Card, EmptyState, PageHeader, Modal, FormButtons, Field, inputCls, btnPrimaryCls, OtpField, NumberInput, CustomerNameField, BusinessDateField } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { businessToday } from '@/lib/saleDates.mjs';
 
 // General Retail Store's counter — plain walk-in-or-registered checkout, no cement/aggregate
 // category concept and no ATC allocation picker (that's specific to the Materials pack). Product
@@ -26,6 +27,8 @@ export default function RetailCounterPage() {
   const [customerMode, setCustomerMode] = useState('search'); // 'search' | 'walk-in' — search by default so a sale isn't silently recorded as walk-in
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [saleDate, setSaleDate] = useState(businessToday);
+  const [backdateOtp, setBackdateOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [creditWarning, setCreditWarning] = useState(null); // { shortfall, error }
   const [overridePin, setOverridePin] = useState('');
@@ -99,14 +102,14 @@ export default function RetailCounterPage() {
         body: JSON.stringify({
           branchId, customerId: customer?.id || null, paymentMethod,
           lines: cart.map((l) => ({ productId: l.productId, qty: l.qty })),
-          overrideCredit, otp,
+          saleDate, backdateOtp, overrideCredit, otp,
         }),
       });
       const d = await r.json();
       if (d.success) {
         toast.success(d.data.flagged ? `Sale ${d.data.order.orderNumber} recorded — flagged for credit override` : `Sale ${d.data.order.orderNumber} recorded`);
         setLastOrder(d.data.order);
-        setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash'); setCreditWarning(null); setOverridePin('');
+        setCart([]); setCustomer(null); setCustomerQuery(''); setCustomerMode('search'); setPaymentMethod('cash'); setSaleDate(businessToday()); setBackdateOtp(''); setCreditWarning(null); setOverridePin('');
       } else if (d.needsApproval) {
         setCreditWarning(d);
       } else {
@@ -248,6 +251,10 @@ export default function RetailCounterPage() {
               <option value="pos">POS</option>
               <option value="credit" disabled={!customer}>Credit (needs a customer)</option>
             </select>
+          </div>
+
+          <div className="mb-3 space-y-3">
+            <BusinessDateField label="Sale date" value={saleDate} onChange={setSaleDate} otp={backdateOtp} onOtpChange={setBackdateOtp} />
           </div>
 
           {creditWarning && (

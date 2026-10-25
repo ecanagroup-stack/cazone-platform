@@ -6,9 +6,13 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput, OtpField } from '@/components/ui';
+import { Loader, PageHeader, Card, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, ReportToolbar, NumberInput, OtpField, BusinessDateField } from '@/components/ui';
 import { formatMoney, formatDate } from '@/lib/format';
 import { can } from '@/lib/permissions';
+import { businessToday } from '@/lib/saleDates.mjs';
+
+const blankPayment = () => ({ amount: '', method: 'cash', reference: '', paymentDate: businessToday(), backdateOtp: '' });
+const blankAdjustment = () => ({ amount: '', reason: '', otp: '', saleDate: businessToday(), backdateOtp: '' });
 
 const BUCKET_LABELS = { current: 'Current (0-30d)', d1_30: '31-60d', d31_60: '61-90d', d61_90: '91-120d', d90_plus: '120d+' };
 
@@ -19,7 +23,7 @@ export default function CustomerDetailPage() {
   const canApplyAdjustment = can(authSession?.user?.role, 'customer.adjustments.apply');
   const [data, setData] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', reference: '' });
+  const [paymentForm, setPaymentForm] = useState(blankPayment);
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState({ creditLimit: '', onHold: false, transportRate: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +33,7 @@ export default function CustomerDetailPage() {
   const [savingPrice, setSavingPrice] = useState(null); // productId currently saving
 
   const [showAdjustment, setShowAdjustment] = useState(null); // null | 'surcharge' | 'refund'
-  const [adjustmentForm, setAdjustmentForm] = useState({ amount: '', reason: '', otp: '' });
+  const [adjustmentForm, setAdjustmentForm] = useState(blankAdjustment);
   const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
   const [portalCreds, setPortalCreds] = useState(null); // { loginId, password, reset } shown once
 
@@ -97,13 +101,13 @@ export default function CustomerDetailPage() {
     try {
       const r = await fetch(`/api/admin/customers/${id}/payments`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: Math.round(Number(paymentForm.amount) * 100), method: paymentForm.method, reference: paymentForm.reference }),
+        body: JSON.stringify({ amount: Math.round(Number(paymentForm.amount) * 100), method: paymentForm.method, reference: paymentForm.reference, paymentDate: paymentForm.paymentDate, backdateOtp: paymentForm.backdateOtp }),
       });
       const d = await r.json();
       if (d.success) {
         const msg = d.data.unallocated > 0 ? `Payment recorded — ${formatMoney(d.data.unallocated / 100)} left as unallocated credit` : 'Payment recorded and allocated';
         toast.success(msg);
-        setShowPayment(false); setPaymentForm({ amount: '', method: 'cash', reference: '' }); load();
+        setShowPayment(false); setPaymentForm(blankPayment()); load();
       } else toast.error(d.error);
     } finally {
       setSubmitting(false);
@@ -176,7 +180,7 @@ export default function CustomerDetailPage() {
   };
 
   const openAdjustment = (type) => {
-    setAdjustmentForm({ amount: '', reason: '', otp: '' });
+    setAdjustmentForm(blankAdjustment());
     setShowAdjustment(type);
   };
 
@@ -191,6 +195,8 @@ export default function CustomerDetailPage() {
           amount: Math.round(Number(adjustmentForm.amount) * 100),
           reason: adjustmentForm.reason,
           otp: adjustmentForm.otp,
+          saleDate: adjustmentForm.saleDate,
+          backdateOtp: adjustmentForm.backdateOtp,
         }),
       });
       const d = await r.json();
@@ -232,7 +238,7 @@ export default function CustomerDetailPage() {
               <button onClick={() => openAdjustment('surcharge')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Apply Surcharge</button>
               <button onClick={() => openAdjustment('refund')} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50 text-amber-700">Fund</button>
             </>}
-            <button onClick={() => setShowPayment(true)} className={btnPrimaryCls}>Record Payment</button>
+            <button onClick={() => { setPaymentForm(blankPayment()); setShowPayment(true); }} className={btnPrimaryCls}>Record Payment</button>
           </div>
         }
       />
@@ -374,6 +380,8 @@ export default function CustomerDetailPage() {
           <Field label="Reference">
             <input type="text" value={paymentForm.reference} onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })} className={inputCls} />
           </Field>
+          <BusinessDateField label="Payment date" value={paymentForm.paymentDate} onChange={(paymentDate) => setPaymentForm({ ...paymentForm, paymentDate })}
+            otp={paymentForm.backdateOtp} onOtpChange={(backdateOtp) => setPaymentForm((f) => ({ ...f, backdateOtp }))} />
           <FormButtons onCancel={() => setShowPayment(false)} submitting={submitting} submitLabel="Record Payment" />
         </form>
       </Modal>
@@ -404,8 +412,10 @@ export default function CustomerDetailPage() {
             <textarea value={adjustmentForm.reason} onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })} rows={2} className={inputCls} required />
           </Field>
           <Field label="Verification code" required>
-            <OtpField purpose="customer_adjustment" value={adjustmentForm.otp} onChange={(v) => setAdjustmentForm({ ...adjustmentForm, otp: v })} />
+            <OtpField purpose="customer_adjustment" value={adjustmentForm.otp} onChange={(v) => setAdjustmentForm((f) => ({ ...f, otp: v }))} />
           </Field>
+          <BusinessDateField label="Date" value={adjustmentForm.saleDate} onChange={(saleDate) => setAdjustmentForm({ ...adjustmentForm, saleDate })}
+            otp={adjustmentForm.backdateOtp} onOtpChange={(backdateOtp) => setAdjustmentForm((f) => ({ ...f, backdateOtp }))} />
           <FormButtons onCancel={() => setShowAdjustment(null)} submitting={submittingAdjustment} submitLabel={showAdjustment === 'refund' ? 'Apply Fund' : 'Apply Surcharge'} />
         </form>
       </Modal>

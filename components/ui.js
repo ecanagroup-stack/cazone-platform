@@ -471,15 +471,16 @@ export function OtpField({ purpose, value, onChange }) {
 
 // The date of a transaction. Future days can't be picked; picking a past day reveals a second
 // verification code (purpose `backdated_entry`) that the caller sends as its own field, next to any
-// other code the action needs.
-export function BusinessDateField({ label = 'Date', value, onChange, otp, onOtpChange, min, required = true }) {
+// other code the action needs. `otpRequired` overrides when the code is asked for, for an edit
+// that keeps a date that is already in the past.
+export function BusinessDateField({ label = 'Date', value, onChange, otp, onOtpChange, min, required = true, otpRequired }) {
   const today = businessToday();
   return (
     <>
       <Field label={label} required={required}>
         <input type="date" required={required} min={min} max={today} value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />
       </Field>
-      {value && value < today && (
+      {(otpRequired ?? (value && value < today)) && (
         <Field label="Back-dating verification code" required>
           <OtpField purpose="backdated_entry" value={otp} onChange={onOtpChange} />
         </Field>

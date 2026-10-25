@@ -8,7 +8,9 @@ import { notifyAlteration } from '@/lib/notify';
 import { checkCredit } from '@/lib/credit';
 import { ApiError } from '@/lib/apiError';
 import { revisedSaleTotals, allocationReleasePlan, revisedAtcAvailability } from '@/lib/pendingSaleEdit.mjs';
-import { materialSaleDates } from '@/lib/saleDates.mjs';
+import { materialSaleDates, isBackdated } from '@/lib/saleDates.mjs';
+import { effectiveDate } from '@/lib/businessDates.mjs';
+import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 
 const cents = (value, label) => {
   const number = Number(value);
@@ -49,6 +51,10 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (existing.deliveryRevision !== revision) throw new ApiError('This sale has changed; reload the report', 409);
     if (existing.lines.some((line) => line.stockQty == null)) throw new ApiError('This sale lacks a physical quantity record; use a supervised correction', 409);
     if (body.lines.length !== existing.lines.length) throw new ApiError('Every sale line must be included', 400);
+    // Only moving the sale onto a past day needs the back-dating code; saving a sale that is already
+    // dated in the past (or marking it delivered) leaves its date alone.
+    const dateChanged = saleDate.toISOString().slice(0, 10) !== effectiveDate(existing, 'saleDate');
+    if (dateChanged) assertBackdateOtpPresent(saleDate, body.backdateOtp);
 
     const incomingById = new Map(body.lines.map((line) => [line.id, line]));
     if (incomingById.size !== existing.lines.length || existing.lines.some((line) => !incomingById.has(line.id))) {
@@ -95,6 +101,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (discountOtpUsed) {
       await verifyOtp({ userId: session.user.id, purpose: 'sale_discount', code: body.discountOtp });
     }
+    const backdated = dateChanged ? await requireBackdateOtp({ userId: session.user.id, date: saleDate, otp: body.backdateOtp }) : false;
 
     const result = await prisma.$transaction(async (tx) => {
       const claimed = await tx.order.updateMany({
@@ -123,6 +130,7 @@ export const PATCH = withOrg(async (request, { params }) => {
             branchId: existing.branchId, productId: item.line.productId, qty: -delta,
             reason: 'adjustment', ref: id, userId: session.user.id, channel: item.line.allocationId ? 'atc' : existing.channel,
             note: `Pending sale ${existing.orderNumber} correction: ${reason}`,
+            ...(isBackdated(saleDate) ? { at: saleDate } : {}),
           } });
         }
         await tx.orderLine.update({ where: { id: item.line.id }, data: {
@@ -161,6 +169,9 @@ export const PATCH = withOrg(async (request, { params }) => {
         }
       }
 
+      // The sale's own stock movements follow its date.
+      if (dateChanged) await tx.stockMove.updateMany({ where: { ref: id, reason: 'sale' }, data: { at: isBackdated(saleDate) ? saleDate : new Date() } });
+
       const updated = await tx.order.update({ where: { id }, data: {
         subtotal, discount, transportFee, labourFee, otherFee, grandTotal,
         deliveryStatus: body.delivered ? 'delivered' : 'pending',
@@ -198,6 +209,10 @@ export const PATCH = withOrg(async (request, { params }) => {
       actor: session.user, branchId: existing.branchId, type: 'credit_override', title: 'Pending sale credit override',
       message: `${session.user.name} overrode the credit limit when editing sale ${existing.orderNumber}. Reason: ${reason}`,
       relatedType: 'Order', relatedId: id,
+    });
+    if (backdated) await notifyBackdated({
+      actor: session.user, branchId: existing.branchId, date: saleDate, relatedType: 'Order', relatedId: id,
+      what: `an edit of pending sale ${existing.orderNumber}`,
     });
     return NextResponse.json({ success: true, data: { id: result.id, deliveryStatus: result.deliveryStatus, deliveryRevision: result.deliveryRevision } });
   } catch (error) {
