@@ -32,8 +32,8 @@ export const POST = withOrg(async (request, { params }) => {
     }
     if (closing < reading.opening) throw new ApiError('Closing reading cannot be less than the opening reading', 400);
 
-    // Litres already sold to named credit customers this shift (see credit-fill route) are excluded
-    // from this aggregate cash sale — they were already invoiced individually.
+    // Litres already sold to named credit customers this shift (historic credit fills, before the pump
+    // credit-fill was retired) are excluded from this aggregate cash sale — already invoiced individually.
 
     const dispenser = await prisma.dispenser.findUnique({ where: { id: dispenserId }, include: { tank: true } });
     if (!dispenser?.tank) throw new ApiError('This dispenser has no tank/product configured', 400);

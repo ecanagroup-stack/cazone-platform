@@ -76,7 +76,8 @@ const FUEL_GROUPS = [
     { href: '/admin/price-approvals', label: 'Price Changes', icon: FiSliders, roles: ['owner', 'manager'] },
     { href: '/admin/users', label: 'Users', icon: FiUsers, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/staff', label: 'Staff', icon: FiUserCheck, roles: ['owner', 'manager'] },
-    { href: '/admin/messages', label: 'Customer Messages', icon: FiMessageSquare, roles: ['owner', 'manager'] },
+    { href: '/admin/customers', label: 'Customers', icon: FiUsers, roles: ['owner', 'manager'] },
+    { href: '/admin/messages', label: 'Messages', icon: FiMessageSquare, roles: ['owner', 'manager'] },
     { href: '/admin/fuel/reports', label: 'Reports', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/fuel/attendant-performance', label: 'Staff Report', icon: FiBarChart2, roles: ['owner', 'manager', 'auditor', 'daily_auditor'] },
     { href: '/admin/exceptions', label: 'Flags', icon: FiAlertTriangle, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
@@ -115,21 +116,24 @@ const ACCOUNT_GROUP = { label: 'Account', items: [
   { href: '/admin/settings', label: 'Business Settings', icon: FiSliders, roles: ['owner'] },
 ] };
 
-export function visibleAdminGroups({ services = [], businessType, role, serviceId = '' }) {
+// `hasCustomers` (lib/customerAccess.mjs) hides the customer-facing items for orgs without customers.
+const CUSTOMER_HREFS = ['/admin/customers', '/admin/messages'];
+
+export function visibleAdminGroups({ services = [], businessType, role, serviceId = '', hasCustomers = true }) {
   const currentServiceType = services.find((service) => service.id === serviceId)?.type || businessType || null;
   const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   return menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (hasCustomers || !CUSTOMER_HREFS.includes(item.href)) && (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((group) => group.items.length > 0);
 }
 
-export default function Sidebar({ services = [], businessType, user }) {
+export default function Sidebar({ services = [], businessType, user, hasCustomers = true }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [unreadChats, setUnreadChats] = useState(0);
 
-  const canSeeChat = ['owner', 'manager', 'materials_manager'].includes(user?.role);
+  const canSeeChat = hasCustomers && ['owner', 'manager', 'materials_manager'].includes(user?.role);
   useEffect(() => {
     if (!canSeeChat) return;
     const load = () => fetch('/api/admin/chat/unread-count').then((r) => r.json()).then((d) => { if (d.success) setUnreadChats(d.data.count); });
@@ -153,7 +157,7 @@ export default function Sidebar({ services = [], businessType, user }) {
   // the real state for a deliberate "All services" view.
   const currentServiceId = searchParams.get('service') || '';
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
-  const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId });
+  const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId, hasCustomers });
   const isActive = (item) => {
     if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
       if (item.href === '/admin/fuel/staff') return searchParams.get('view') === 'staff';

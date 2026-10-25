@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
 import prisma from '@/lib/prisma';
-import { getCachedOrganization } from '@/lib/orgLookup';
+import { getCachedOrganization, getOrgCustomerFlags } from '@/lib/orgLookup';
 import TopBar from '@/components/shell/TopBar';
 import Sidebar from '@/components/shell/Sidebar';
 import LapsedBanner from '@/components/shell/LapsedBanner';
@@ -32,9 +32,10 @@ export default async function AdminLayout({ children }) {
   if (session.user.role === 'super_admin') redirect('/platform/organizations');
 
   const orgId = requireOrg(session);
-  const [organization, accessibleBranches] = await Promise.all([
+  const [organization, accessibleBranches, { hasCustomers }] = await Promise.all([
     getCachedOrganization(orgId),
     getAccessibleBranchIds(session),
+    getOrgCustomerFlags(orgId),
   ]);
   const allBusinessServices = await prisma.service.findMany({
       where: { type: organization.businessType },
@@ -45,10 +46,10 @@ export default async function AdminLayout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar org={organization} services={services} user={session.user} />
+      <TopBar org={organization} services={services} user={session.user} hasCustomers={hasCustomers} />
       <LapsedBanner org={organization} />
       <div className="flex flex-1">
-        <Sidebar services={services} businessType={organization.businessType} user={session.user} />
+        <Sidebar services={services} businessType={organization.businessType} user={session.user} hasCustomers={hasCustomers} />
         <main className="flex-1 p-6 pb-24 md:pb-6 max-w-6xl mx-auto w-full">{children}</main>
       </div>
     </div>

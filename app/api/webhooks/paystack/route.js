@@ -6,6 +6,7 @@ import { provisionRequest } from '@/lib/provisioning';
 import { createSaleOrder } from '@/lib/sale';
 import { allocatePayment } from '@/lib/payments';
 import { logAudit } from '@/lib/audit';
+import { loadOrgCustomerFlags } from '@/lib/orgLookup';
 
 // The only source of truth for anything Paystack-related actually taking effect — every client-side
 // "payment succeeded" callback (components/billing/PaystackButton.js) is purely optimistic UI, never
@@ -106,6 +107,26 @@ async function handleChargeSuccess(data) {
   });
 }
 
+// The metadata is client-supplied, so confirm the org still has the customer feature the payment needs
+// (lib/customerAccess.mjs) before writing against it. Money may already be taken (e.g. the distributor
+// add-on lapsed mid-payment) — when the org exists, leave a Flag so the Admin can refund or reconcile
+// instead of dropping it silently; the dedupe row is already written, so Paystack won't retry.
+async function canApplyCustomerPayment(data, metadata, flag) {
+  const { organizationId, customerId } = metadata;
+  if (typeof organizationId !== 'string' || !organizationId || typeof customerId !== 'string' || !customerId) return false;
+  const flags = await loadOrgCustomerFlags(organizationId);
+  if (flags[flag]) return true;
+  console.error('[paystack webhook] customer payment not applied: feature unavailable', metadata.type, data.reference); // eslint-disable-line no-console
+  if (flags.businessType) {
+    await runWithOrg(organizationId, () => prisma.flag.create({ data: {
+      targetType: 'Payment', targetId: data.reference || null, severity: 'issue', classification: 'issue',
+      reason: `A ${metadata.type === 'shop_order' ? 'shop order' : 'balance'} payment of ${data.amount / 100} (Paystack ref ${data.reference}) was received but not applied: customers are not available for this business. Refund or reconcile it manually.`,
+      raisedBy: 'system:paystack',
+    } }));
+  }
+  return false;
+}
+
 // A customer paying down their own balance (app/api/portal/pay/balance) — same effect as the
 // staff-recorded Record Payment (app/api/admin/customers/[id]/payments), just customer-initiated and
 // tagged 'paystack' so it's visibly distinct on the statement. Runs org-scoped since the webhook
@@ -113,6 +134,7 @@ async function handleChargeSuccess(data) {
 async function handleBalancePayment(data, metadata) {
   const { customerId, organizationId } = metadata;
   const amount = data.amount; // already kobo — Payment.amount matches Order.grandTotal's convention
+  if (!(await canApplyCustomerPayment(data, metadata, 'hasCustomers'))) return;
   await runWithOrg(organizationId, () =>
     prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
@@ -132,6 +154,7 @@ async function handleBalancePayment(data, metadata) {
 // §1), so a price that changed between checkout and this webhook firing is what actually gets billed.
 async function handleShopOrderPayment(data, metadata) {
   const { customerId, organizationId, branchId, lines, transportFee } = metadata;
+  if (!(await canApplyCustomerPayment(data, metadata, 'hasOrdering'))) return;
   if (!branchId || !Array.isArray(lines) || lines.length === 0) return;
   await runWithOrg(organizationId, () =>
     createSaleOrder({

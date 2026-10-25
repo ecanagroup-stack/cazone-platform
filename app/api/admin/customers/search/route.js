@@ -3,9 +3,8 @@ import prisma from '@/lib/prisma';
 import { withOrg } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 
-// Small, scoped customer lookup shared by any pack's sale-recording picker (materials counter, fuel
-// credit fills) — not the full customer-management screen. Strictly filtered to customers with
-// CustomerAccess for the caller's current branch: a customer not tagged there isn't a valid sale
+// Small, scoped customer lookup shared by any pack's sale-recording picker (materials counter) — not the full
+// customer-management screen. Strictly filtered to customers with CustomerAccess for the caller's current branch: a customer not tagged there isn't a valid sale
 // target from there, matching "branch bound and business bound... independent" — see
 // app/api/admin/customers/route.js for the org-wide management list this deliberately isn't.
 export const GET = withOrg(async (request) => {

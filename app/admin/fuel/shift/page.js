@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, OtpField, NumberInput } from '@/components/ui';
+import { Loader, PageHeader, Card, EmptyState, Modal, FormButtons, Field, inputCls, btnPrimaryCls, StatusPill, NumberInput } from '@/components/ui';
 
 export default function ShiftPage() {
   const searchParams = useSearchParams();
@@ -28,14 +28,6 @@ export default function ShiftPage() {
   const [closingFor, setClosingFor] = useState(null); // dispenserId
   const [closingForm, setClosingForm] = useState({ closing: '', rtt: '0' });
   const [submitting, setSubmitting] = useState(false);
-
-  const [creditFillFor, setCreditFillFor] = useState(null); // dispenserId
-  const [creditLitres, setCreditLitres] = useState('');
-  const [creditCustomerQuery, setCreditCustomerQuery] = useState('');
-  const [creditCustomerResults, setCreditCustomerResults] = useState([]);
-  const [creditCustomer, setCreditCustomer] = useState(null);
-  const [creditWarning, setCreditWarning] = useState(null); // { shortfall, error }
-  const [overridePin, setOverridePin] = useState('');
 
   const [showEndModal, setShowEndModal] = useState(false);
   const [endForm, setEndForm] = useState({ countedCash: '', countedFloat: '', note: '', continueToNextShift: false, attendantAssignments: {} });
@@ -130,49 +122,6 @@ export default function ShiftPage() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  useEffect(() => {
-    if (creditCustomerQuery.trim().length < 2) { setCreditCustomerResults([]); return; }
-    const t = setTimeout(async () => {
-      const r = await fetch(`/api/admin/customers/search?q=${encodeURIComponent(creditCustomerQuery)}&branchId=${branchId}`);
-      const d = await r.json();
-      if (d.success) setCreditCustomerResults(d.data);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [creditCustomerQuery]);
-
-  const closeCreditFillModal = () => {
-    setCreditFillFor(null); setCreditLitres(''); setCreditCustomer(null);
-    setCreditCustomerQuery(''); setCreditCustomerResults([]); setCreditWarning(null); setOverridePin('');
-  };
-
-  const submitCreditFill = async (overrideCredit = false, otp = '') => {
-    setSubmitting(true);
-    try {
-      const r = await fetch(`/api/admin/fuel/shift/${data.shift.id}/dispensers/${creditFillFor}/credit-fill`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: creditCustomer.id, litres: Number(creditLitres), overrideCredit, otp }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        toast.success(d.data.flagged ? `${d.data.litres.toLocaleString()} L recorded — flagged for credit override` : `${d.data.litres.toLocaleString()} L recorded to ${creditCustomer.name}`);
-        closeCreditFillModal(); load();
-      } else if (d.needsApproval) {
-        setCreditWarning(d);
-      } else {
-        toast.error(d.error);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCreditFill = (e) => {
-    e.preventDefault();
-    if (!creditCustomer) return toast.error('Pick a customer for this credit fill');
-    setCreditWarning(null);
-    submitCreditFill(false);
   };
 
   const handleEndShift = async (e) => {
@@ -479,12 +428,6 @@ export default function ShiftPage() {
                   {!submitted && canRunShift && (
                     <>
                       <button
-                        onClick={() => setCreditFillFor(p.dispenserId)}
-                        className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                      >
-                        Credit fill
-                      </button>
-                      <button
                         onClick={() => { setReassignFor(p.dispenserId); setReassignForm({ attendantId: '', reason: '' }); }}
                         className="text-sm font-medium text-gray-600 hover:text-gray-900"
                       >
@@ -579,58 +522,6 @@ export default function ShiftPage() {
               </div>
             </div>
           )}
-        </Modal>
-
-        <Modal open={!!creditFillFor} onClose={closeCreditFillModal} title="Credit Fill">
-          <form onSubmit={handleCreditFill} className="space-y-4">
-            <p className="text-sm text-gray-500">Records litres sold to a credit customer now — excluded from this pump's cash total at shift end.</p>
-            <Field label="Customer" required>
-              {creditCustomer ? (
-                <div className="flex items-center justify-between bg-brand-50 rounded px-3 py-2 text-sm">
-                  <span>{creditCustomer.name}{creditCustomer.phone ? ` — ${creditCustomer.phone}` : ''}</span>
-                  <button type="button" onClick={() => setCreditCustomer(null)} className="text-xs text-gray-500 hover:text-gray-700">Remove</button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <input
-                    type="text" value={creditCustomerQuery} onChange={(e) => setCreditCustomerQuery(e.target.value)}
-                    placeholder="Search customer" className={inputCls} autoFocus
-                  />
-                  {creditCustomerResults.length > 0 && (
-                    <div className="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                      {creditCustomerResults.map((c) => (
-                        <button
-                          type="button" key={c.id}
-                          onClick={() => { setCreditCustomer(c); setCreditCustomerQuery(''); setCreditCustomerResults([]); }}
-                          className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                        >
-                          {c.name}{c.phone ? ` — ${c.phone}` : ''}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </Field>
-            <Field label="Litres" required>
-              <NumberInput value={creditLitres} onChange={(e) => setCreditLitres(e.target.value)} required />
-            </Field>
-
-            {creditWarning && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                <p className="font-medium mb-1">Credit limit exceeded</p>
-                <p className="mb-2">{creditWarning.error}</p>
-                <div className="mb-2">
-                  <OtpField purpose="credit_override" value={overridePin} onChange={setOverridePin} />
-                </div>
-                <button type="button" onClick={() => submitCreditFill(true, overridePin)} disabled={submitting || !overridePin} className="text-xs font-medium text-amber-900 underline disabled:opacity-50">
-                  Proceed anyway (this will be flagged for the Admin)
-                </button>
-              </div>
-            )}
-
-            <FormButtons onCancel={closeCreditFillModal} submitting={submitting} submitLabel="Record Credit Fill" />
-          </form>
         </Modal>
 
         <Modal open={showEndModal} onClose={() => setShowEndModal(false)} title="End Shift — Cash Up">

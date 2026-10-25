@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getOrgSession } from '@/lib/session';
 import { requireOrg } from '@/lib/tenantScope';
-import { getCachedOrganization } from '@/lib/orgLookup';
+import { getCachedOrganization, getOrgCustomerFlags } from '@/lib/orgLookup';
 import { OrgLogo } from '@/components/ui';
 import SignOutButton from '@/components/SignOutButton';
 import PortalMessagesLink from '@/components/PortalMessagesLink';
@@ -30,7 +30,8 @@ export default async function PortalLayout({ children }) {
   if (!session || session.user.role !== 'customer') redirect('/login');
 
   const orgId = requireOrg(session);
-  const org = await getCachedOrganization(orgId);
+  const [org, { hasCustomers }] = await Promise.all([getCachedOrganization(orgId), getOrgCustomerFlags(orgId)]);
+  if (!hasCustomers) redirect('/login');
 
   return (
     <div className="min-h-screen bg-gray-50">
