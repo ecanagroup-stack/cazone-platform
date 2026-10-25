@@ -502,7 +502,7 @@ model CustomerAdjustment {
   balanceAfter  BigInt
   createdBy     String?
   createdAt     DateTime @default(now())
-  saleDate      DateTime? // Actual business date for Building Material sales; null on legacy orders.
+  saleDate      DateTime? // Business date of the adjustment (may be back-dated); null = use createdAt.
 
   @@index([organizationId])
   @@index([customerId])
@@ -520,16 +520,19 @@ model Payment {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  amount     BigInt
-  method     String // cash | transfer | pos | cheque | paystack
-  reference  String?
-  recordedBy String?
-  createdAt  DateTime @default(now())
+  amount      BigInt
+  method      String // cash | transfer | pos | cheque | paystack
+  reference   String?
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+  // Business date the money was received (may be back-dated); null = use createdAt.
+  paymentDate DateTime?
 
   allocations PaymentAllocation[]
 
   @@index([organizationId])
   @@index([customerId])
+  @@index([customerId, paymentDate])
 }
 
 // Join record, not arithmetic — reversing a payment reverses its allocations (core-algorithms
@@ -810,6 +813,7 @@ model Order {
   // distinguishable without a separate ledger per channel.
   channel       String?
   createdAt     DateTime @default(now())
+  saleDate      DateTime? // Business date of the sale (may be back-dated); null = use createdAt.
   // Separate from Order.status: a booked sale can still await physical delivery.
   // Existing sales are treated as delivered; new Building Material sales set this explicitly.
   deliveryStatus   String   @default("delivered") // pending | delivered
@@ -825,6 +829,7 @@ model Order {
   @@unique([organizationId, orderNumber])
   @@unique([organizationId, offlineId])
   @@index([organizationId])
+  @@index([organizationId, saleDate])
   @@index([branchId])
   @@index([customerId])
 }
@@ -946,6 +951,7 @@ model Delivery {
   linkedStockMoveId String?
   createdBy         String?
   createdAt         DateTime  @default(now())
+  businessDate      DateTime? // Business date the ATC/delivery was recorded for (may be back-dated); null = use createdAt.
 
   // Materials/cement-only: an ATC's own tracking number (paired with the brand's abbreviation for
   // display, e.g. "DAN-001" — ecana_shop-app's ATC.atcNumber, ported). `notes` is the free-text field
@@ -1083,6 +1089,7 @@ model CashDeposit {
   approvedBy    String?
   note          String?
   createdAt     DateTime @default(now())
+  depositDate   DateTime? // Business date of the deposit (may be back-dated); null = use createdAt.
 
   // Set only by the historical backfill wizard (Part 4) — see Shift.isBackfill for the full rationale.
   isBackfill Boolean @default(false)
