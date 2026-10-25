@@ -6,6 +6,8 @@ import { getCachedOrganization, getOrgCustomerFlags } from '@/lib/orgLookup';
 import TopBar from '@/components/shell/TopBar';
 import Sidebar from '@/components/shell/Sidebar';
 import LapsedBanner from '@/components/shell/LapsedBanner';
+import QuickActions from '@/components/shell/QuickActions';
+import AdminCountsProvider from '@/components/shell/AdminCountsProvider';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 
 // Every page under here reads the session and the org's live data — never statically prerenderable.
@@ -32,7 +34,7 @@ export default async function AdminLayout({ children }) {
   if (session.user.role === 'super_admin') redirect('/platform/organizations');
 
   const orgId = requireOrg(session);
-  const [organization, accessibleBranches, { hasCustomers }] = await Promise.all([
+  const [organization, accessibleBranches, { hasCustomers, hasOrdering }] = await Promise.all([
     getCachedOrganization(orgId),
     getAccessibleBranchIds(session),
     getOrgCustomerFlags(orgId),
@@ -44,14 +46,20 @@ export default async function AdminLayout({ children }) {
     });
   const services = allBusinessServices.filter((service) => service.isActive);
 
+  // The people who run customer conversations and orders; see components/shell/QuickActions.js.
+  const showQuickActions = hasCustomers && ['owner', 'manager', 'materials_manager'].includes(session.user.role);
+
   return (
-    <div className="min-h-screen flex flex-col">
-      <TopBar org={organization} services={services} user={session.user} hasCustomers={hasCustomers} />
-      <LapsedBanner org={organization} />
-      <div className="flex flex-1">
-        <Sidebar services={services} businessType={organization.businessType} user={session.user} hasCustomers={hasCustomers} />
-        <main className="flex-1 p-6 pb-24 md:pb-6 max-w-6xl mx-auto w-full">{children}</main>
+    <AdminCountsProvider enabled={showQuickActions}>
+      <div className="min-h-screen flex flex-col">
+        <TopBar org={organization} services={services} user={session.user} hasCustomers={hasCustomers} />
+        <LapsedBanner org={organization} />
+        {showQuickActions && <QuickActions hasOrdering={hasOrdering} />}
+        <div className="flex flex-1">
+          <Sidebar services={services} businessType={organization.businessType} user={session.user} hasCustomers={hasCustomers} />
+          <main className="flex-1 p-6 pb-24 md:pb-6 max-w-6xl mx-auto w-full">{children}</main>
+        </div>
       </div>
-    </div>
+    </AdminCountsProvider>
   );
 }

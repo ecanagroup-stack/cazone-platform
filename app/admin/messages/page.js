@@ -33,7 +33,15 @@ export default function MessagesInboxPage() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
-  useEffect(() => { if (searchParams.get('announce') === '1') setShowBroadcast(true); }, [searchParams]);
+  // The strip's ANNOUNCEMENT link opens the modal; drop the param so clicking it again re-triggers this.
+  useEffect(() => {
+    if (searchParams.get('announce') !== '1') return;
+    setShowBroadcast(true);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('announce');
+    const qs = params.toString();
+    router.replace(qs ? `/admin/messages?${qs}` : '/admin/messages');
+  }, [searchParams, router]);
 
   const openBroadcast = () => {
     setBroadcastBody('');

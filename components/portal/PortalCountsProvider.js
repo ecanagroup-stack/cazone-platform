@@ -34,10 +34,10 @@ export function usePortalCounts() {
   return useContext(CountsContext);
 }
 
-export function CountBadge({ count, label, className = '' }) {
+export function CountBadge({ count, label, unread = true, className = '' }) {
   if (!count) return null;
   return (
-    <span aria-label={`${count} unread ${label}`} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white ${className}`}>
+    <span aria-label={`${count}${unread ? ' unread' : ''} ${label}`} className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white ${className}`}>
       {count > 99 ? '99+' : count}
     </span>
   );

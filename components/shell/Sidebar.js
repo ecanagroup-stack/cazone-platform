@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
   FiHome, FiAlertTriangle, FiDroplet, FiShoppingCart, FiUsers, FiTruck, FiSettings, FiBox,
   FiMapPin, FiUserCheck, FiCreditCard, FiBarChart2, FiSliders, FiLayers, FiMap, FiFileText,
-  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare,
+  FiCheckCircle, FiBookOpen, FiClock, FiShield, FiMessageSquare, FiShoppingBag,
 } from 'react-icons/fi';
-
-const CHAT_POLL_MS = 30000;
+import { useAdminCounts } from './AdminCountsProvider';
 
 // Shared operations for non-fuel businesses; Account is appended to every business menu. Sell holds the
 // counter itself — one entry per pack, not a list of pages. Manage's "at most two items per pack"
@@ -40,6 +38,7 @@ const GROUPS = [
       // (plain staff, and the vertical-specific tiers like cashier/supervisor/materials_manager)
       // never sees this in the nav at all, not just a 403 if they guess the URL.
       { href: '/admin/messages', label: 'Messages', icon: FiMessageSquare, roles: ['owner', 'manager', 'materials_manager'] },
+      { href: '/admin/orders', label: 'Orders', icon: FiShoppingBag, pack: ['shop', 'general_store'], roles: ['owner', 'manager', 'materials_manager'] },
       { href: '/admin/deliveries', label: 'Deliveries', icon: FiTruck, roles: ['owner', 'manager', 'materials_manager', 'atc_manager', 'staff'] },
       { href: '/admin/fuel/tanks', label: 'Fuel Setup', icon: FiSettings, pack: 'fuel_station' },
         { href: '/admin/fuel/products', label: 'Fuel Products', icon: FiBox, pack: 'fuel_station', roles: ['owner', 'manager'] },
@@ -124,23 +123,14 @@ export function visibleAdminGroups({ services = [], businessType, role, serviceI
   const menu = [...(currentServiceType === 'fuel_station' ? FUEL_GROUPS : GROUPS), ACCOUNT_GROUP];
   return menu.map((group) => ({
     ...group,
-    items: group.items.filter((item) => (hasCustomers || !CUSTOMER_HREFS.includes(item.href)) && (!item.pack || item.pack === currentServiceType) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
+    items: group.items.filter((item) => (hasCustomers || !CUSTOMER_HREFS.includes(item.href)) && (!item.pack || [].concat(item.pack).includes(currentServiceType)) && (!item.roles || item.roles.includes(role)) && (services.length > 0 || ['/admin/account', '/admin/billing', '/admin/settings', '/admin/services', '/admin/users'].includes(item.href))),
   })).filter((group) => group.items.length > 0);
 }
 
 export default function Sidebar({ services = [], businessType, user, hasCustomers = true }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [unreadChats, setUnreadChats] = useState(0);
-
-  const canSeeChat = hasCustomers && ['owner', 'manager', 'materials_manager'].includes(user?.role);
-  useEffect(() => {
-    if (!canSeeChat) return;
-    const load = () => fetch('/api/admin/chat/unread-count').then((r) => r.json()).then((d) => { if (d.success) setUnreadChats(d.data.count); });
-    load();
-    const t = setInterval(load, CHAT_POLL_MS);
-    return () => clearInterval(t);
-  }, [canSeeChat]);
+  const { chat: unreadChats, pendingOrders } = useAdminCounts();
   // Every page under /admin reads its working service/branch from the URL (ServiceBranchSwitcher) —
   // a sidebar link that dropped those params would force a re-pick on every single navigation. Only
   // service/branch carry forward; anything else a page put in the URL (e.g. a tab) shouldn't leak
@@ -158,6 +148,7 @@ export default function Sidebar({ services = [], businessType, user, hasCustomer
   const currentServiceId = searchParams.get('service') || '';
   const currentServiceType = services.find((s) => s.id === currentServiceId)?.type || businessType || null;
   const groups = visibleAdminGroups({ services, businessType, role: user?.role, serviceId: currentServiceId, hasCustomers });
+  const badgeFor = (item) => item.href === '/admin/messages' ? unreadChats : item.href === '/admin/orders' ? pendingOrders : 0;
   const isActive = (item) => {
     if (currentServiceType === 'fuel_station' && pathname === '/admin/users') {
       if (item.href === '/admin/fuel/staff') return searchParams.get('view') === 'staff';
@@ -185,9 +176,9 @@ export default function Sidebar({ services = [], businessType, user, hasCustomer
                   >
                     <Icon size={16} className={active ? 'text-brand-600' : 'text-gray-400'} />
                     {item.label}
-                    {item.href === '/admin/messages' && unreadChats > 0 && (
+                    {badgeFor(item) > 0 && (
                       <span className="ml-auto min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-xs font-medium flex items-center justify-center">
-                        {unreadChats > 99 ? '99+' : unreadChats}
+                        {badgeFor(item) > 99 ? '99+' : badgeFor(item)}
                       </span>
                     )}
                   </Link>
@@ -202,7 +193,7 @@ export default function Sidebar({ services = [], businessType, user, hasCustomer
       {groups.flatMap((group) => group.items).map((item) => {
         const Icon = item.icon;
         return <Link key={`${item.href}-${item.label}`} href={withParams(item.href)} className={`flex min-w-[5rem] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-center text-[11px] ${isActive(item) ? 'bg-brand-50 font-semibold text-brand-700' : 'text-gray-600'}`}>
-          <span className="relative"><Icon size={18} />{item.href === '/admin/messages' && unreadChats > 0 && <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-red-500" />}</span><span>{item.label}</span>
+          <span className="relative"><Icon size={18} />{badgeFor(item) > 0 && <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-red-500" />}</span><span>{item.label}</span>
         </Link>;
       })}
     </nav>

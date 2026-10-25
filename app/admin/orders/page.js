@@ -1,19 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { Card, Loader, PageHeader, EmptyRow, theadCls, tableScrollCls } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
+import { can } from '@/lib/permissions';
+import PendingOrdersQueue from '@/components/PendingOrdersQueue';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState(null);
-  useEffect(() => {
+  const { data: authSession } = useSession();
+  const load = useCallback(() => {
     fetch('/api/admin/orders').then((response) => response.json()).then((result) => setOrders(result.success ? result.data : []));
   }, []);
+  useEffect(() => { load(); }, [load]);
   if (!orders) return <Loader />;
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Recent customer and staff orders" />
+      <PageHeader title="Orders" subtitle="Pending customer orders to confirm, and recent customer and staff orders" />
+      {can(authSession?.user?.role, 'sales.record') && <div className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Pending Orders</h2>
+        <PendingOrdersQueue onChange={load} />
+      </div>}
+      <h2 className="mb-3 text-sm font-semibold text-gray-900">Recent Orders</h2>
       <Card className="overflow-hidden"><div className={tableScrollCls}><table className="w-full text-sm">
         <thead className={theadCls}><tr>
           <th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">Reference</th>
