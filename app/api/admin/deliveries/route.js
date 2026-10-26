@@ -98,6 +98,11 @@ export const POST = withOrg(async (request) => {
 
     const branch = await prisma.branch.findUnique({ where: { id: branchId }, include: { service: { select: { type: true } } } });
     if (!branch || !canAccessBranch(await getAccessibleBranchIds(session), branchId)) throw new ApiError('Branch not found', 404);
+    if (useDip) {
+      const tank = await prisma.tank.findFirst({ where: { id: body.tankId, branchId } });
+      if (!tank) throw new ApiError('Tank does not belong to this branch', 400);
+      if (tank.productId !== productId) throw new ApiError('This tank does not hold the selected product', 400);
+    }
     // A delivery logged late carries the day it actually arrived. Fuel branches keep their tank, shift
     // and reconciliation records per day, so a past fuel delivery goes through Historical Entries.
     const deliveryDate = optionalBusinessDate(body.deliveryDate, 'Delivery date');

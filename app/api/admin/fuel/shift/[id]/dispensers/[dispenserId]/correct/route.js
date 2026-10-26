@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { exactMeterSale } from '@/lib/fuelCollections.mjs';
 
 // Fix a mistake in an already-approved pump reading — petrol-station-app's Reports day-detail
@@ -25,7 +26,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!reason) throw new ApiError('A reason is required to correct a reading', 400);
 
     const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });
-    if (!reading) throw new ApiError('Reading not found', 404);
+    await requireRecordBranch(session, reading, 'Reading not found');
     if (reading.reviewStatus !== 'approved') throw new ApiError('Only an approved reading can be corrected this way', 400);
 
     const changingLitres = body.closing !== undefined || body.rtt !== undefined;

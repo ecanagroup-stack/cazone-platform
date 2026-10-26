@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can, FUEL_PERFORMANCE_ROLES } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
-import { requireBranch } from '@/lib/branchAccess';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // One attendant's full scorecard: every shift they've ever worked, meter sales vs. what was
@@ -16,8 +16,7 @@ export const GET = withOrg(async (request, { params }) => {
     if (!FUEL_PERFORMANCE_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const { id } = await params;
     const attendant = await prisma.attendant.findUnique({ where: { id } });
-    if (!attendant) throw new ApiError('Attendant not found', 404);
-    await requireBranch(session, attendant.branchId);
+    await requireRecordBranch(session, attendant, 'Attendant not found');
 
     const [assignments, notes] = await Promise.all([
       prisma.attendantAssignment.findMany({
@@ -113,6 +112,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (typeof body.gender === 'string') update.gender = body.gender.trim() || null;
     if (typeof body.employmentDate === 'string') update.employmentDate = body.employmentDate ? new Date(body.employmentDate) : null;
     if (typeof body.photoUrl === 'string') update.photoUrl = body.photoUrl.trim() || null;
+    await requireRecordBranch(session, await prisma.attendant.findUnique({ where: { id } }), 'Attendant not found');
     const updated = await prisma.attendant.update({ where: { id }, data: update });
     return NextResponse.json({ success: true, data: updated });
   } catch (e) {

@@ -18,7 +18,12 @@ export const PATCH = withOrg(async (request, { params }) => {
     if ('driverPhone' in body) data.driverPhone = String(body.driverPhone || '').trim() || null;
     if ('capacity' in body) { data.capacity = body.capacity === '' || body.capacity == null ? null : Number(body.capacity); if (data.capacity != null && (!Number.isFinite(data.capacity) || data.capacity <= 0)) throw new ApiError('Capacity must be positive', 400); }
     if ('ownership' in body) { if (!['own', 'supplier'].includes(body.ownership)) throw new ApiError('Choose truck ownership', 400); data.ownership = body.ownership; }
-    if ('isActive' in body) { if (typeof body.isActive !== 'boolean') throw new ApiError('Invalid status', 400); data.isActive = body.isActive; }
+    if ('isActive' in body) {
+      if (typeof body.isActive !== 'boolean') throw new ApiError('Invalid status', 400);
+      // A tanker serves every station, so taking it out of service is not a decision for one station's manager.
+      if (body.isActive !== truck.isActive && session.user.role !== 'owner') throw new ApiError('Only the Admin can activate or deactivate a truck', 403);
+      data.isActive = body.isActive;
+    }
     if (Object.keys(data).length === 0) throw new ApiError('No changes submitted', 400);
     const updated = await prisma.vehicle.update({ where: { id: truck.id }, data });
     await logAudit({ organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name, action: 'fuel.truck.updated', entityType: 'Vehicle', entityId: truck.id, before: { plateNumber: truck.plateNumber, driverName: truck.driverName, driverPhone: truck.driverPhone, capacity: truck.capacity, ownership: truck.ownership, isActive: truck.isActive }, after: { ...data, reason } });

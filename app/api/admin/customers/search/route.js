@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
 
 // Small, scoped customer lookup shared by any pack's sale-recording picker (materials counter) — not the full
 // customer-management screen. Strictly filtered to customers with CustomerAccess for the caller's current branch: a customer not tagged there isn't a valid sale
@@ -14,6 +15,7 @@ export const GET = withOrg(async (request) => {
     const branchId = searchParams.get('branchId');
     if (q.length < 2) return NextResponse.json({ success: true, data: [] });
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
 
     const customers = await prisma.customer.findMany({
       where: {

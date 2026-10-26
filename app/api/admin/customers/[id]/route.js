@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
+import { getAccessibleBranchIds, branchScope } from '@/lib/branchAccess';
 import { buildCustomerStatement } from '@/lib/statement';
 import { normalizeCreditLimit } from '@/lib/credit';
 import { normalizeCustomerName, findDuplicateCustomerName } from '@/lib/customerName';
@@ -11,9 +12,12 @@ import { normalizeCustomerName, findDuplicateCustomerName } from '@/lib/customer
 export const GET = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
-    const customer = await prisma.customer.findUnique({
-      where: { id },
-      include: { user: { select: { isActive: true } }, access: { include: { branch: { include: { service: true } } } } },
+    const accessible = await getAccessibleBranchIds(await getOrgSession());
+    // Staff limited to some stations open only customers registered at one of them; another station's
+    // customer answers like a missing one.
+    const customer = await prisma.customer.findFirst({
+      where: { id, ...(accessible === null ? {} : { access: { some: branchScope(accessible) } }) },
+      include: { user: { select: { isActive: true } }, access: { where: branchScope(accessible), include: { branch: { include: { service: true } } } } },
     });
     if (!customer) throw new ApiError('Customer not found', 404);
 

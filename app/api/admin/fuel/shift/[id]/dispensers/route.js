@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 // Add a pump to an already-open shift — petrol-station-app's "Open Pumps" late-add. Same
 // AttendantAssignment + opening MeterReading shape Begin Shift creates per dispenser
@@ -24,8 +25,15 @@ export const POST = withOrg(async (request, { params }) => {
     }
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
+
+    // The pump and attendant ids come from the client: both must belong to the shift's own station.
+    const [pump, attendant] = await Promise.all([
+      prisma.dispenser.findFirst({ where: { id: dispenserId, branchId: shift.branchId }, select: { id: true } }),
+      prisma.attendant.findFirst({ where: { id: attendantId, branchId: shift.branchId }, select: { id: true } }),
+    ]);
+    if (!pump || !attendant) throw new ApiError('The pump and attendant must belong to this station', 400);
 
     const existing = await prisma.attendantAssignment.findFirst({ where: { shiftId, dispenserId, endedAt: null } });
     if (existing) throw new ApiError('This pump is already part of the shift', 400);

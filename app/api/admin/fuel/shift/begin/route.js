@@ -6,6 +6,7 @@ import { setPrice } from '@/lib/pricing';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
+import { requireBranch } from '@/lib/branchAccess';
 
 // Transaction: applies any price changes (closing the old effective-dated PriceRule, opening a new
 // one — core-algorithms skill §1, "changing a price never mutates a row"), creates the Shift, and
@@ -24,6 +25,7 @@ export const POST = withOrg(async (request) => {
     const tankOpenings = Array.isArray(body.tankOpenings) ? body.tankOpenings : [];
 
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(session, branchId);
     if (assignments.length === 0) throw new ApiError('Assign at least one dispenser to open a shift', 400);
     for (const a of assignments) {
       if (!a.dispenserId || !a.attendantId || !Number.isFinite(Number(a.opening))) {
@@ -37,6 +39,9 @@ export const POST = withOrg(async (request) => {
       throw new ApiError('Every selected pump must be active and linked to a tank at this branch', 400);
     }
     const dispenserById = Object.fromEntries(assignedDispensers.map((d) => [d.id, d]));
+    const attendantIds = [...new Set(assignments.map((a) => a.attendantId))];
+    const stationAttendants = await prisma.attendant.count({ where: { branchId, id: { in: attendantIds } } });
+    if (stationAttendants !== attendantIds.length) throw new ApiError('Every attendant must belong to this station', 400);
 
     const existing = await prisma.shift.findFirst({ where: { branchId, status: 'open' } });
     if (existing) throw new ApiError('A shift is already open for this branch', 400);

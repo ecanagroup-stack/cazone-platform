@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 import { createShiftTankReconciliations } from '@/lib/fuelTankReconciliation';
 
@@ -25,10 +25,8 @@ export const POST = withOrg(async (request, { params }) => {
     if (!Number.isFinite(countedCash)) throw new ApiError('Counted cash is required', 400);
 
     const shift = await prisma.shift.findUnique({ where: { id } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
-    const access = await getAccessibleBranchIds(session);
-    if (!canAccessBranch(access, shift.branchId)) throw new ApiError('Access denied to this branch', 403);
 
     const readings = await prisma.meterReading.findMany({ where: { shiftId: id }, include: { dispenser: { include: { tank: true } } } });
     if (readings.length === 0) throw new ApiError('No dispenser has been closed for this shift yet', 400);

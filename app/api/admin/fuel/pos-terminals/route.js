@@ -30,6 +30,8 @@ export const POST = withOrg(async (request) => {
     const branchId = body.branchId;
     const label = (body.label || '').trim();
     if (!branchId || !label) throw new ApiError('Branch and label are required', 400);
+    await requireBranch(session, branchId);
+    if (!await prisma.branch.findUnique({ where: { id: branchId }, select: { id: true } })) throw new ApiError('Branch not found', 404);
 
     const terminal = await prisma.posTerminal.create({
       data: { branchId, label, terminalId: (body.terminalId || '').trim() || null, provider: (body.provider || '').trim() || null },

@@ -6,7 +6,7 @@ import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput, exactMeterSale } from '@/lib/fuelCollections.mjs';
 import { evaluateVariance } from '@/lib/reconciliation';
-import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
+import { canAccessBranch, getAccessibleBranchIds, requireRecordBranch } from '@/lib/branchAccess';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // Shared historical station entry — one step per call (Date & Branch -> Shift -> Pump Readings ->
@@ -62,8 +62,8 @@ export const POST = withOrg(async (request) => {
 
 async function loadBackfillShift(shiftId, session) {
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-  if (!shift?.isBackfill) throw new ApiError('Not a backfill shift', 400);
-  if (!canAccessBranch(await getAccessibleBranchIds(session), shift.branchId)) throw new ApiError('Branch access denied', 403);
+  await requireRecordBranch(session, shift, 'Shift not found');
+  if (!shift.isBackfill) throw new ApiError('Not a backfill shift', 400);
   return shift;
 }
 
@@ -96,6 +96,10 @@ async function handleShift(session, body, date) {
   const dispensers = await prisma.dispenser.findMany({ where: { branchId, id: { in: assignments.map((assignment) => assignment.dispenserId) } }, include: { tank: true } });
   if (dispensers.length !== assignments.length || dispensers.some((dispenser) => !dispenser.tank)) {
     throw new ApiError('Every pump must be linked to a tank at this branch', 400);
+  }
+  const attendantIds = [...new Set(assignments.map((assignment) => assignment.attendantId).filter(Boolean))];
+  if (attendantIds.length && await prisma.attendant.count({ where: { branchId, id: { in: attendantIds } } }) !== attendantIds.length) {
+    throw new ApiError('Every attendant must belong to this station', 400);
   }
   const dispenserById = Object.fromEntries(dispensers.map((dispenser) => [dispenser.id, dispenser]));
   const tanks = await prisma.tank.findMany({ where: { branchId, isActive: true } });

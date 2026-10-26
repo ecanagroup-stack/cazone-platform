@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { can } from '@/lib/permissions';
 import { isValidServiceType, serviceLabel } from '@/lib/services';
 import { ApiError } from '@/lib/apiError';
 import { slugify } from '@/lib/format';
@@ -32,8 +31,8 @@ export const GET = withOrg(async () => {
 // isn't a useful state to leave an org in.
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'services.manage')) {
-    return NextResponse.json({ error: 'You do not have permission to manage services' }, { status: 403 });
+  if (session.user.role !== 'owner') {
+    return NextResponse.json({ error: 'Only the Admin can manage services' }, { status: 403 });
   }
   try {
     const body = await request.json();

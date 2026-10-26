@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
@@ -16,7 +17,7 @@ export const POST = withOrg(async (request) => {
     if (!tankId || !label) throw new ApiError('Tank and dispenser label are required', 400);
 
     const tank = await prisma.tank.findUnique({ where: { id: tankId } });
-    if (!tank) throw new ApiError('Tank not found', 404);
+    await requireRecordBranch(session, tank, 'Tank not found');
 
     const dispenser = await prisma.dispenser.create({ data: { branchId: tank.branchId, tankId, label } });
     return NextResponse.json({ success: true, data: dispenser }, { status: 201 });

@@ -60,6 +60,7 @@ export const POST = withOrg(async (request) => {
     const newProductName = (body.newProductName || '').trim();
 
     if (!branchId || !label) throw new ApiError('Branch and tank label are required', 400);
+    await requireBranch(session, branchId);
     if (!Number.isFinite(capacity) || capacity <= 0) throw new ApiError('Capacity must be a positive number', 400);
     if (!body.productId && !newProductName) throw new ApiError('Choose a product or name a new one', 400);
 

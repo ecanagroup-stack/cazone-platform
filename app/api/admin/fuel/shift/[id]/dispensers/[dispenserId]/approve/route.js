@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // The manager's half of D5's review chain — the only step that actually creates the Order/StockMove.
@@ -23,7 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (decision === 'query' && !note) throw new ApiError('A note is required when querying a submission', 400);
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Only an open shift can be reviewed', 400);
 
     const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });

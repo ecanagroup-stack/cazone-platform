@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { exactMeterSale } from '@/lib/fuelCollections.mjs';
 
 // D5 of the fuel port: this used to close the loop by itself (create the Order immediately). Now
@@ -22,7 +23,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!Number.isFinite(closing)) throw new ApiError('Closing reading is required', 400);
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
 
     const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });

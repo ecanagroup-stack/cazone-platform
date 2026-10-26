@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // Correcting a delivery's recorded quantity/cost after receipt — the one Day Detail correction
@@ -27,7 +28,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!reason) throw new ApiError('A reason is required to correct a delivery', 400);
 
     const delivery = await prisma.delivery.findUnique({ where: { id } });
-    if (!delivery) throw new ApiError('Delivery not found', 404);
+    await requireRecordBranch(session, delivery, 'Delivery not found');
     if (delivery.qtyRemaining != null) throw new ApiError('Only a received delivery can be corrected — this one is still an allocation', 400);
 
     const newQuantity = body.quantity !== undefined ? Number(body.quantity) : delivery.quantity;

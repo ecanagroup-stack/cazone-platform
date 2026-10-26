@@ -28,6 +28,8 @@ export const POST = withOrg(async (request) => {
     const staffNumber = (body.staffNumber || '').trim();
     const name = (body.name || '').trim();
     if (!branchId || !staffNumber || !name) throw new ApiError('Branch, staff number and name are required', 400);
+    await requireBranch(session, branchId);
+    if (!await prisma.branch.findUnique({ where: { id: branchId }, select: { id: true } })) throw new ApiError('Branch not found', 404);
 
     const attendant = await prisma.attendant.create({
       data: {

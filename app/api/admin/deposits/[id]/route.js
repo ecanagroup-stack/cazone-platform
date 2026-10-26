@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { notify } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
@@ -17,7 +18,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (!['approved', 'rejected'].includes(status)) throw new ApiError('Invalid decision', 400);
 
     const existing = await prisma.cashDeposit.findUnique({ where: { id } });
-    if (!existing) throw new ApiError('Not found', 404);
+    await requireRecordBranch(session, existing, 'Not found');
     if (existing.status !== 'pending') throw new ApiError('This deposit has already been decided', 400);
 
     const updated = await prisma.cashDeposit.update({

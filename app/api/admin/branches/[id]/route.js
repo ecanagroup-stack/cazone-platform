@@ -28,6 +28,7 @@ export const PATCH = withOrg(async (request, { params }) => {
   }
   try {
     const { id } = await params;
+    await requireBranch(session, id);
     const body = await request.json();
     const update = {};
     let toleranceChange = null;

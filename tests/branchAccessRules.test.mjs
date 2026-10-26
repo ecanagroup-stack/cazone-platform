@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  resolveBranchAccess, seesEveryBranchWithoutRows, canAccessBranch, filterByBranchAccess, branchScope,
+  resolveBranchAccess, seesEveryBranchWithoutRows, canAccessBranch, canAccessRecord, filterByBranchAccess, branchScope,
   mergeAssignedBranches, branchAssignmentError, resolveBranchParam,
 } from '../lib/branchAccessRules.mjs';
 
@@ -38,6 +38,16 @@ test('no role means no access', () => {
 test('seesEveryBranchWithoutRows separates whole-business roles from unassigned staff', () => {
   assert.equal(seesEveryBranchWithoutRows('auditor', 'fuel_station'), true);
   assert.equal(seesEveryBranchWithoutRows('manager', 'fuel_station'), false);
+});
+
+test('canAccessRecord judges a loaded record by its own branch', () => {
+  assert.equal(canAccessRecord(['A'], { branchId: 'A' }), true);
+  assert.equal(canAccessRecord(['A'], { branchId: 'B' }), false); // another station's record
+  assert.equal(canAccessRecord(['A'], null), false); // missing record: same answer as a foreign one
+  assert.equal(canAccessRecord([], { branchId: 'A' }), false); // fails closed with no stations
+  assert.equal(canAccessRecord(['A'], { branchId: null }), false); // org-level record, restricted caller
+  assert.equal(canAccessRecord(null, { branchId: null }), true); // org-level record, unrestricted caller
+  assert.equal(canAccessRecord(null, null), false);
 });
 
 test('canAccessBranch honours null, lists and missing ids', () => {

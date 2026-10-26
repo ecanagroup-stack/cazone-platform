@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 // Drop a pump that was opened by mistake — petrol-station-app's "Open Pumps" force-remove. Only
 // available while the pump is still untouched (opened, nothing submitted yet): once a closing
@@ -20,7 +21,7 @@ export const DELETE = withOrg(async (request, { params }) => {
     const { id: shiftId, dispenserId } = await params;
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
 
     const assignment = await prisma.attendantAssignment.findFirst({ where: { shiftId, dispenserId, endedAt: null } });

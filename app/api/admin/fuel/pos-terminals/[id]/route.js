@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
@@ -16,6 +17,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (typeof body.isActive === 'boolean') update.isActive = body.isActive;
     if (!Object.keys(update).length) throw new ApiError('Nothing to update', 400);
 
+    await requireRecordBranch(session, await prisma.posTerminal.findUnique({ where: { id } }), 'Terminal not found');
     const terminal = await prisma.posTerminal.update({ where: { id }, data: update });
     return NextResponse.json({ success: true, data: terminal });
   } catch (e) {

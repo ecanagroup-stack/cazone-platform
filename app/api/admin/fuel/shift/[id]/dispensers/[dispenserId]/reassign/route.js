@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 // Mid-shift attendant swap on a pump — a permanent audit trail, not an edit. Ends the current
 // AttendantAssignment with a required reason and opens a new one for the replacement attendant.
@@ -23,8 +24,11 @@ export const POST = withOrg(async (request, { params }) => {
     if (!reason) throw new ApiError('A reason is required for a reassignment', 400);
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (shift.status !== 'open') throw new ApiError('Shift is not open', 400);
+
+    const incoming = await prisma.attendant.findFirst({ where: { id: newAttendantId, branchId: shift.branchId }, select: { id: true } });
+    if (!incoming) throw new ApiError('The attendant must belong to this station', 400);
 
     const current = await prisma.attendantAssignment.findFirst({ where: { shiftId, dispenserId, endedAt: null } });
     if (!current) throw new ApiError('No active assignment found for this pump', 404);

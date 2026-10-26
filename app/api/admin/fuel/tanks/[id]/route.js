@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { logAudit } from '@/lib/audit';
 
 export const PATCH = withOrg(async (request, { params }) => {
@@ -22,7 +23,7 @@ export const PATCH = withOrg(async (request, { params }) => {
       update.capacity = n;
     }
     const current = await prisma.tank.findUnique({ where: { id } });
-    if (!current) throw new ApiError('Tank not found', 404);
+    await requireRecordBranch(session, current, 'Tank not found');
     const changed = Object.entries(update).some(([key, value]) => current[key] !== value);
     const reason = String(body.editReason || '').trim();
     if (changed && reason.length < 5) throw new ApiError('Provide a reason for the tank change (at least 5 characters)', 400);

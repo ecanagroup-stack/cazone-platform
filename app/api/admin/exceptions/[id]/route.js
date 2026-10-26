@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 // core-algorithms skill §5: "raise an exception that a manager must acknowledge with a reason
 // before the period can close" — there's no period-close gate yet, but the acknowledge-with-a-
@@ -19,7 +20,7 @@ export const PATCH = withOrg(async (request, { params }) => {
     if (!note) throw new ApiError('A note is required to acknowledge', 400);
 
     const flag = await prisma.flag.findUnique({ where: { id } });
-    if (!flag) throw new ApiError('Not found', 404);
+    await requireRecordBranch(session, flag, 'Not found');
 
     const updated = await prisma.flag.update({
       where: { id },

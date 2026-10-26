@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
 import { effectiveDate } from '@/lib/businessDates.mjs';
 import { optionalBusinessDate } from '@/lib/saleDates.mjs';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { getAccessibleBranchIds, canAccessBranch, branchScope } from '@/lib/branchAccess';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 
 // Ported from ecana_shop-app's /api/atcs — an ATC is a Delivery allocation (qtyRemaining set) whose
@@ -25,10 +25,13 @@ export const GET = withOrg(async (request) => {
     if (!serviceId) throw new ApiError('serviceId is required', 400);
 
     await autoArriveDueAllocations();
+    // Allocations are branch deliveries: show only the stations the caller handles (all of them for the Admin / ATC manager).
+    const access = await getAccessibleBranchIds(await getOrgSession());
 
     const atcs = await prisma.delivery.findMany({
       where: {
         qtyRemaining: { not: null },
+        ...branchScope(access),
         product: { serviceId, abbreviation: { not: null } },
         ...(status ? { status } : {}),
         ...(brand ? { productId: brand } : {}),

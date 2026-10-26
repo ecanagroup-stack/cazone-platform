@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection, validateCollectionInput, operatingDateAt } from '@/lib/fuelCollections.mjs';
 import { logAudit } from '@/lib/audit';
 import { ApiError } from '@/lib/apiError';
@@ -26,9 +26,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (requestId && requestId.length > 100) throw new ApiError('Request ID is too long', 400);
 
     const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
-    if (!shift) throw new ApiError('Shift not found', 404);
-    const access = await getAccessibleBranchIds(session);
-    if (!canAccessBranch(access, shift.branchId)) throw new ApiError('Access denied to this branch', 403);
+    await requireRecordBranch(session, shift, 'Shift not found');
     if (!['open', 'closed'].includes(shift.status)) throw new ApiError('The shift has not been opened', 409);
 
     const reading = await prisma.meterReading.findUnique({ where: { shiftId_dispenserId: { shiftId, dispenserId } } });

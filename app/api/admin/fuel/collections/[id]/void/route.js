@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
@@ -17,10 +17,8 @@ export const POST = withOrg(async (request, { params }) => {
     const { reason } = await request.json();
     if (!reason?.trim()) throw new ApiError('A correction reason is required', 400);
     const collection = await prisma.fuelCollection.findUnique({ where: { id } });
-    if (!collection) throw new ApiError('Collection not found', 404);
+    await requireRecordBranch(session, collection, 'Collection not found');
     if (collection.voidedAt) throw new ApiError('Collection has already been corrected', 409);
-    const access = await getAccessibleBranchIds(session);
-    if (!canAccessBranch(access, collection.branchId)) throw new ApiError('Access denied to this branch', 403);
     const shift = await prisma.shift.findUnique({ where: { id: collection.shiftId } });
     if (shift?.status !== 'open') throw new ApiError('Only open-shift collections can be corrected', 409);
 

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { can } from '@/lib/permissions';
 
+// Deactivating or renaming a service reaches every station in the business (withOrg refuses all fuel
+// station calls once the service is inactive), so a station manager cannot do it: Admin only.
 export const PATCH = withOrg(async (request, { params }) => {
   const session = await getOrgSession();
-  if (!can(session.user.role, 'services.manage')) {
-    return NextResponse.json({ error: 'You do not have permission to manage services' }, { status: 403 });
+  if (session.user.role !== 'owner') {
+    return NextResponse.json({ error: 'Only the Admin can manage services' }, { status: 403 });
   }
   try {
     const { id } = await params;

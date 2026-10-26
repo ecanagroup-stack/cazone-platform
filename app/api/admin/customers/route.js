@@ -2,23 +2,27 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { getAccessibleBranchIds, canAccessBranch, branchScope } from '@/lib/branchAccess';
 import { ApiError } from '@/lib/apiError';
 import { normalizeCreditLimit } from '@/lib/credit';
 import { normalizeCustomerName, findDuplicateCustomerName } from '@/lib/customerName';
 
 // The management list — unlike the counter-facing search (app/api/admin/customers/search), this
-// shows every customer regardless of branch access when no branchId is given, since an owner/manager
-// needs to see the whole org to manage who has access to what. Pass branchId to narrow it.
+// shows every customer when no branchId is given, since the Admin needs to see the whole org to manage
+// who has access to what. Staff limited to some stations see only the customers registered at those
+// stations, and only those stations' access rows. Pass branchId to narrow it.
 export const GET = withOrg(async (request) => {
+  const session = await getOrgSession();
   const q = (new URL(request.url).searchParams.get('q') || '').trim();
   const branchId = new URL(request.url).searchParams.get('branchId');
+  const accessible = await getAccessibleBranchIds(session);
+  const accessFilter = [branchId ? { branchId } : null, accessible === null ? null : branchScope(accessible)].filter(Boolean);
   const customers = await prisma.customer.findMany({
     where: {
-      ...(branchId ? { access: { some: { branchId } } } : {}),
+      ...(accessFilter.length ? { access: { some: { AND: accessFilter } } } : {}),
       ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { phone: { contains: q } }, { businessName: { contains: q, mode: 'insensitive' } }] } : {}),
     },
-    include: { access: { include: { branch: { include: { service: true } } } } },
+    include: { access: { where: branchScope(accessible), include: { branch: { include: { service: true } } } } },
     orderBy: { name: 'asc' },
   });
   return NextResponse.json({ success: true, data: customers });

@@ -4,6 +4,7 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { computePeriod, evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 // Fuel typically runs well under 1% variance (core-algorithms skill §5) — this default applies
@@ -23,7 +24,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!Number.isFinite(measured) || measured < 0) throw new ApiError('Measured litres must be a non-negative number', 400);
 
     const tank = await prisma.tank.findUnique({ where: { id: tankId }, include: { branch: { select: { config: true } } } });
-    if (!tank) throw new ApiError('Tank not found', 404);
+    await requireRecordBranch(session, tank, 'Tank not found');
     if (!tank.isActive) throw new ApiError('This tank is inactive', 400);
     const openShift = await prisma.shift.findFirst({ where: { branchId: tank.branchId, status: 'open' } });
     if (openShift) {

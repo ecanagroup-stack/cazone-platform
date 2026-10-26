@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
+import { requireRecordBranch } from '@/lib/branchAccess';
 
 // Fix a mistake in a bank deposit record — no stock/order ledger involved, so this is the simplest
 // of the correction routes (compare app/api/admin/fuel/shift/.../correct/route.js for the ledger
@@ -21,7 +22,7 @@ export const POST = withOrg(async (request, { params }) => {
     if (!reason) throw new ApiError('A reason is required to correct a deposit', 400);
 
     const deposit = await prisma.cashDeposit.findUnique({ where: { id } });
-    if (!deposit) throw new ApiError('Deposit not found', 404);
+    await requireRecordBranch(session, deposit, 'Deposit not found');
 
     const newAmount = body.amount !== undefined ? Math.round(Number(body.amount)) : deposit.amount;
     if (!Number.isFinite(newAmount) || newAmount <= 0) throw new ApiError('Amount must be a positive number', 400);
