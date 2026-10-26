@@ -4,7 +4,7 @@ import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 import { logAudit } from '@/lib/audit';
 import { ATC_SELECT, ATC_SELLER_SELECT, atcJson, atcProductsWithPrice, readAtcNumber } from '@/lib/distributor';
-import { atcTotalKobo, displayStatus, formatSerial, isAtcProduct, OPEN_STATUSES, parseLitres, sellableWhere } from '@/lib/petroleumAtc.mjs';
+import { atcTotalKobo, displayStatus, FIRST_SERIAL, formatSerial, isAtcProduct, OPEN_STATUSES, parseLitres, sellableWhere } from '@/lib/petroleumAtc.mjs';
 
 // What the `status` filter means to the board: a lapsed hold counts as available, only a live one is reserved.
 function statusWhere(status, now) {
@@ -14,7 +14,7 @@ function statusWhere(status, now) {
   return {};
 }
 
-// The real ATC number never appears here: ATC_SELECT has no hash or cipher column. Staff who may
+// The real ATC number never appears here: ATC_SELECT has no atcNumber column. Staff who may
 // only sell see just what is on sale; the sold board (customers, payments) needs atc.view.
 export const GET = withOrg(async (request) => {
   const session = await getOrgSession();
@@ -65,7 +65,7 @@ export const POST = withOrg(async (request) => {
   if (!can(session?.user?.role, 'atc.manage')) return atcJson({ error: 'You do not have permission to record an ATC' }, { status: 403 });
   try {
     const body = await request.json();
-    const secret = readAtcNumber(body);
+    const number = readAtcNumber(body);
     const [product, vehicle] = await Promise.all([
       prisma.product.findFirst({ where: { id: String(body.productId || ''), isActive: true } }),
       prisma.vehicle.findFirst({ where: { id: String(body.vehicleId || ''), isActive: true, type: 'tanker' } }),
@@ -76,7 +76,7 @@ export const POST = withOrg(async (request) => {
     const litres = parseLitres(body.litres, vehicle.capacity);
 
     const [duplicate, onTruck] = await Promise.all([
-      prisma.petroleumAtc.findFirst({ where: { atcHash: secret.atcHash }, select: { serial: true, status: true } }),
+      prisma.petroleumAtc.findFirst({ where: { atcNumber: number.atcNumber }, select: { serial: true, status: true } }),
       prisma.petroleumAtc.findFirst({ where: { vehicleId: vehicle.id, status: { in: OPEN_STATUSES } }, select: { serial: true } }),
     ]);
     if (duplicate) throw new ApiError(`That ATC number is already recorded as ${duplicate.serial}${duplicate.status === 'cancelled' ? ' (cancelled; a number stays reserved once recorded)' : ''}`, 409);
@@ -87,11 +87,11 @@ export const POST = withOrg(async (request) => {
       atc = await prisma.$transaction(async (tx) => {
         const counter = await tx.counter.upsert({
           where: { organizationId_key: { organizationId: session.user.organizationId, key: 'petroleumAtc' } },
-          update: { seq: { increment: 1 } }, create: { key: 'petroleumAtc', seq: 1 },
+          update: { seq: { increment: 1 } }, create: { key: 'petroleumAtc', seq: FIRST_SERIAL },
         });
         return tx.petroleumAtc.create({
           data: {
-            serial: formatSerial(counter.seq), productId: product.id, vehicleId: vehicle.id, litres, ...secret,
+            serial: formatSerial(counter.seq), productId: product.id, vehicleId: vehicle.id, litres, ...number,
             notes: String(body.notes || '').trim() || null, createdBy: session.user.id,
           },
           select: ATC_SELECT,

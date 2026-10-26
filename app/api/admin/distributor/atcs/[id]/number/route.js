@@ -3,7 +3,6 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { logAudit } from '@/lib/audit';
-import { decryptAtcNumber } from '@/lib/atcSecret';
 
 // The one place the real ATC number leaves the database: only the ATC manager and the Admin, one ATC
 // at a time, as an explicit action that is audit-logged (who and which ATC, never the number itself).
@@ -15,9 +14,9 @@ export const POST = withOrg(async (request, { params }) => {
   }
   try {
     const { id } = await params;
-    const atc = await prisma.petroleumAtc.findFirst({ where: { id }, select: { serial: true, atcCipher: true } });
+    const atc = await prisma.petroleumAtc.findFirst({ where: { id }, select: { serial: true, atcNumber: true } });
     if (!atc) throw new ApiError('ATC not found', 404);
-    const atcNumber = decryptAtcNumber(atc.atcCipher);
+    const { atcNumber } = atc;
     await logAudit({
       organizationId: session.user.organizationId, actorUserId: session.user.id, actorName: session.user.name,
       action: 'petroleum_atc.number_viewed', entityType: 'PetroleumAtc', entityId: id, after: { serial: atc.serial },

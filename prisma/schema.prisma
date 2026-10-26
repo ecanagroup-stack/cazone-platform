@@ -1188,10 +1188,10 @@ model Counter {
 
 // A petroleum distributor's ATC (Authority To Collect) held for sale to a customer — the
 // `distributor` add-on of a fuel station. Prepaid only, so there is deliberately no Order/Payment
-// mirror: the sale lives on this row. `serial` (ATC-000123, from Counter key petroleumAtc) is the
-// only identifier customers and sales staff ever see; the real ATC number is stored just as a keyed
-// hash (duplicate guard) and an AES-GCM ciphertext (see lib/atcSecret.js), and neither is ever
-// returned by an API — the ATC manager and Admin read the number through an audited view action.
+// mirror: the sale lives on this row. `serial` (100001, 100002 ... from Counter key petroleumAtc,
+// widening to 7 digits after 999999) is the only identifier customers and sales staff ever see; the
+// real ATC number is stored as plain text (normalised, unique per organization) and is never returned
+// by an ordinary API — the ATC manager and Admin read it through an audited view action.
 // A truck carries one open (available/reserved/sold) ATC at a time, enforced by a partial unique
 // index on vehicleId that Prisma cannot express (see the migration).
 // Preserve that index by hand: review any generated migration for a DROP INDEX on
@@ -1211,8 +1211,7 @@ model PetroleumAtc {
   vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
   litres    Int
 
-  atcHash   String
-  atcCipher String
+  atcNumber String
 
   status               String    @default("available")
   // A customer paying online holds the ATC until reservedUntil; a lapsed hold is sellable again.
@@ -1244,7 +1243,7 @@ model PetroleumAtc {
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, serial])
-  @@unique([organizationId, atcHash])
+  @@unique([organizationId, atcNumber])
   @@index([organizationId, status])
   @@index([vehicleId])
   @@index([customerId])

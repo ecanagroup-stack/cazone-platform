@@ -24,10 +24,10 @@ export const PATCH = withOrg(async (request, { params }) => {
     const data = {};
     const changed = [];
     if (body.atcNumber || body.atcNumberConfirm) {
-      const secret = readAtcNumber(body);
-      const duplicate = await prisma.petroleumAtc.findFirst({ where: { atcHash: secret.atcHash, id: { not: id } }, select: { serial: true, status: true } });
+      const number = readAtcNumber(body);
+      const duplicate = await prisma.petroleumAtc.findFirst({ where: { atcNumber: number.atcNumber, id: { not: id } }, select: { serial: true, status: true } });
       if (duplicate) throw new ApiError(`That ATC number is already recorded as ${duplicate.serial}${duplicate.status === 'cancelled' ? ' (cancelled; a number stays reserved once recorded)' : ''}`, 409);
-      Object.assign(data, secret);
+      Object.assign(data, number);
       changed.push('atcNumber');
     }
     if (body.productId && body.productId !== existing.productId) {

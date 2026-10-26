@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ATC_FUEL_TYPES, atcSku, atcTotalKobo, displayStatus, formatSerial, holdUntil, HOLD_MINUTES, isAtcProduct, isHoldLapsed,
+  ATC_FUEL_TYPES, FIRST_SERIAL, atcSku, atcTotalKobo, displayStatus, formatSerial, holdUntil, HOLD_MINUTES, isAtcProduct, isHoldLapsed,
   isSellable, parseLitres, pricePerLitreKobo, sellableWhere, atcPaystackReference, classifyAtcPayment,
 } from '../lib/petroleumAtc.mjs';
 
 const now = new Date('2026-10-25T12:00:00Z');
 
-test('serials are zero-padded', () => {
-  assert.equal(formatSerial(1), 'ATC-000001');
-  assert.equal(formatSerial(123), 'ATC-000123');
-  assert.equal(formatSerial(1234567), 'ATC-1234567');
+test('serials start at 100001 and grow to seven digits once six are used up', () => {
+  assert.equal(FIRST_SERIAL, 100001);
+  assert.equal(formatSerial(FIRST_SERIAL), '100001');
+  assert.equal(formatSerial(999999), '999999');
+  assert.equal(formatSerial(999999 + 1), '1000000');
 });
 
 test('litres must be a positive whole number within the truck capacity', () => {

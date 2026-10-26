@@ -13,7 +13,7 @@ const FILTERS = ['', 'available', 'reserved', 'sold', 'delivered', 'cancelled'];
 const blankForm = { productId: '', atcNumber: '', atcNumberConfirm: '', vehicleId: '', litres: '', notes: '' };
 const blankTruck = { plateNumber: '', driverName: '', driverPhone: '', capacity: '', ownership: 'own' };
 
-// Same normalising the server applies (lib/atcSecret.js, which is server-only).
+// Same normalising the server applies (normalizeAtcNumber in lib/atcNumber.js, which is server-only).
 const norm = (value) => value.replace(/\s+/g, '').toUpperCase();
 const post = (url, body, method = 'POST') => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
 
