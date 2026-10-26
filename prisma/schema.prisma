@@ -193,6 +193,7 @@ model Organization {
   posPayments          PosPayment[]
   fuelCollections      FuelCollection[]
   fuelTankDips         FuelTankDip[]
+  deliveryTanks        DeliveryTank[]
   legacyFuelRecords    LegacyFuelRecord[]
 
   provisioningRequests ProvisioningRequest[]
@@ -979,6 +980,17 @@ model Delivery {
   closingDip      Float?
   offloadVariance Float?
 
+  // Fuel tanker offload, live form (petrol-station-app's driverName/driverPhone/dayShiftId): the driver
+  // is snapshotted per trip (editable, defaults from the Vehicle), and the delivery belongs to the shift
+  // that was open when it was offloaded. `tankId`/`openingDip`/`closingDip` above hold the FIRST tank's
+  // figures for older readers; `tanks` below is the full per-tank split. `quantity` stays the ACTUAL
+  // litres received, `declaredLoad` the waybill, `offloadVariance` = actual - declared (negative = short).
+  driverName  String?
+  driverPhone String?
+  shiftId     String?
+  shift       Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  tanks       DeliveryTank[]
+
   // Set only by the historical backfill wizard (Part 4) — see Shift.isBackfill for the full rationale.
   isBackfill Boolean @default(false)
 
@@ -986,6 +998,28 @@ model Delivery {
 
   @@index([organizationId])
   @@index([branchId])
+  @@index([shiftId])
+}
+
+// One receiving tank of a fuel offload (petrol-station-app's offloadDistribution): a single tanker can
+// discharge into several tanks of the same product. `offloaded` is that tank's litres (closing - opening
+// dip, or the typed actual when no dips were taken, in which case both dips are null).
+model DeliveryTank {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveryId     String
+  delivery       Delivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  tankId         String
+  tank           Tank         @relation(fields: [tankId], references: [id], onDelete: Cascade)
+  openingDip     Float?
+  closingDip     Float?
+  offloaded      Float
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([deliveryId])
+  @@index([tankId])
 }
 
 // The shared bulk-reconciliation abstraction (core-algorithms skill §5) — a tank dip and a
@@ -1071,6 +1105,7 @@ model Shift {
   attendantAssignments AttendantAssignment[]
   fuelCollections      FuelCollection[]
   fuelTankDips         FuelTankDip[]
+  deliveries           Delivery[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -1289,6 +1324,7 @@ model Tank {
 
   dispensers Dispenser[]
   deliveries Delivery[]
+  deliveryTanks DeliveryTank[]
   fuelTankDips FuelTankDip[]
 
   @@unique([branchId, label])

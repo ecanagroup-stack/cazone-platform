@@ -216,9 +216,10 @@ function DeliveriesTab({ branchId }) {
                     <td className="px-4 py-3 text-right">
                       {d.quantity.toLocaleString()} {d.product.unit}
                       {isAllocation && <span className="block text-xs text-gray-400">{d.qtyRemaining.toLocaleString()} left</span>}
-                      {d.offloadVariance != null && (
-                        <span className={`block text-xs ${Math.abs(d.offloadVariance) > 0.01 ? 'text-amber-700' : 'text-gray-400'}`}>
-                          Dip: {d.openingDip.toLocaleString()}→{d.closingDip.toLocaleString()} ({d.offloadVariance > 0 ? '+' : ''}{d.offloadVariance.toFixed(1)}L vs declared)
+                      {d.declaredLoad != null && (
+                        <span className={`block text-xs ${d.shortage > 0 || d.excess > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+                          {d.tanks?.length > 0 && d.tanks.every((t) => t.openingDip != null && t.closingDip != null) ? `Dip: ${d.tanks.map((t) => `${t.openingDip.toLocaleString()}→${t.closingDip.toLocaleString()}`).join(', ')} ` : ''}
+                          ({d.declaredLoad.toLocaleString()}L declared{d.shortage > 0 ? `, ${d.shortage.toLocaleString()}L short` : d.excess > 0 ? `, ${d.excess.toLocaleString()}L over` : ''})
                         </span>
                       )}
                     </td>
