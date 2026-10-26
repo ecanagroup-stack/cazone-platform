@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
+import { FUEL_DAY_DETAIL_ROLES } from '@/lib/permissions';
 import { jsonSafe } from '@/lib/jsonSafe';
 
 // Ported from petrol-station-app's admin Reports Day Detail (Manager/Supervisor/Cashier tabs) — a
@@ -11,11 +13,14 @@ import { jsonSafe } from '@/lib/jsonSafe';
 // links to it (query a reading, approve/reject a deposit, correct a delivery).
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
+    if (!FUEL_DAY_DETAIL_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const date = url.searchParams.get('date');
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (!date) throw new ApiError('date is required', 400);
+    await requireBranch(session, branchId);
 
     const shifts = await prisma.shift.findMany({
       where: { branchId, operatingDate: date },

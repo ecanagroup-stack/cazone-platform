@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { computePeriod } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
+import { FUEL_SUMMARY_ROLES } from '@/lib/permissions';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // Ported from petrol-station-app's Summary Book (lib/summaryBookRows.js) — one row per shift per
@@ -13,12 +15,15 @@ import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 // stock checkpoint, so this reuses those directly instead of re-deriving anything.
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
+    if (!FUEL_SUMMARY_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (!from || !to) throw new ApiError('from and to are required', 400);
+    await requireBranch(session, branchId);
 
     const shifts = await prisma.shift.findMany({
       where: { branchId, operatingDate: { gte: from, lte: to } },

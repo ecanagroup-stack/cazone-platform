@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   resolveBranchAccess, seesEveryBranchWithoutRows, canAccessBranch, filterByBranchAccess, branchScope,
-  mergeAssignedBranches, branchAssignmentError,
+  mergeAssignedBranches, branchAssignmentError, resolveBranchParam,
 } from '../lib/branchAccessRules.mjs';
 
 const access = (role, branchIds = [], businessType = 'fuel_station') => resolveBranchAccess({ role, businessType, branchIds });
@@ -106,4 +106,16 @@ test('only an unrestricted actor may leave an auditor with no station', () => {
 test('stations are assigned to staff accounts only', () => {
   assert.match(branchAssignmentError({ ...base, targetRole: 'customer' }).error, /staff accounts/);
   assert.match(branchAssignmentError({ ...base, targetRole: 'super_admin' }).error, /staff accounts/);
+});
+
+test('resolveBranchParam keeps an accessible branch and falls back from one the caller cannot open', () => {
+  const branches = [{ id: 'A', isActive: true }, { id: 'B', isActive: true }, { id: 'C', isActive: false }];
+  assert.equal(resolveBranchParam({ requested: 'B', branches, preferredId: 'A' }), 'B');
+  assert.equal(resolveBranchParam({ requested: 'C', branches, preferredId: 'A' }), 'C');
+  assert.equal(resolveBranchParam({ requested: 'X', branches, preferredId: 'B' }), 'B');
+  assert.equal(resolveBranchParam({ requested: 'X', branches, preferredId: 'C' }), 'A');
+  assert.equal(resolveBranchParam({ requested: 'X', branches, preferredId: null }), 'A');
+  assert.equal(resolveBranchParam({ requested: 'X', branches: [{ id: 'C', isActive: false }], preferredId: 'C' }), '');
+  assert.equal(resolveBranchParam({ requested: 'X', branches: [], preferredId: 'A' }), '');
+  assert.equal(resolveBranchParam({ requested: '', branches, preferredId: 'A' }), '');
 });

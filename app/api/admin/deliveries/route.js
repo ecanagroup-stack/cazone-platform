@@ -7,7 +7,7 @@ import { autoArriveDueAllocations } from '@/lib/allocation';
 import { evaluateVariance } from '@/lib/reconciliation';
 import { ApiError } from '@/lib/apiError';
 import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { getAccessibleBranchIds, canAccessBranch, requireBranch } from '@/lib/branchAccess';
 import { optionalBusinessDate, backdatedAt } from '@/lib/saleDates.mjs';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { jsonSafe } from '@/lib/jsonSafe';
@@ -23,6 +23,7 @@ export const GET = withOrg(async (request) => {
   try {
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
 
     await autoArriveDueAllocations();
 

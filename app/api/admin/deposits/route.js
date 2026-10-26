@@ -6,11 +6,13 @@ import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { optionalBusinessDate } from '@/lib/saleDates.mjs';
 import { requireBackdateOtp, assertBackdateOtpPresent, backdatedNotice } from '@/lib/backdating';
-import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
+import { getAccessibleBranchIds, canAccessBranch, branchScope } from '@/lib/branchAccess';
 
-// Org-wide, not branch-filtered — same convention as the exceptions/flags list.
+// Org-wide for the Admin; everyone else sees only the deposits of the stations they handle.
 export const GET = withOrg(async () => {
+  const access = await getAccessibleBranchIds(await getOrgSession());
   const deposits = await prisma.cashDeposit.findMany({
+    where: branchScope(access),
     include: { branch: true },
     orderBy: { createdAt: 'desc' },
     take: 100,

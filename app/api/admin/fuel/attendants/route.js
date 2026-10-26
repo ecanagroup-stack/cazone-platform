@@ -3,11 +3,13 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
 
 export const GET = withOrg(async (request) => {
   try {
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
     const attendants = await prisma.attendant.findMany({ where: { branchId }, orderBy: { createdAt: 'asc' } });
     return NextResponse.json({ success: true, data: attendants });
   } catch (e) {

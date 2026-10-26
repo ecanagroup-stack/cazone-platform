@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
+import { requireBranch } from '@/lib/branchAccess';
 
 // Returns both the branch's tanks (with dispensers nested) and the branch's service's product
 // catalog, so the client can populate the tank form's product picker in one request.
@@ -12,6 +13,7 @@ export const GET = withOrg(async (request) => {
   try {
     const branchId = new URL(request.url).searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
 
     const branch = await prisma.branch.findUnique({ where: { id: branchId }, include: { service: { select: { type: true } } } });
     if (!branch) throw new ApiError('Branch not found', 404);

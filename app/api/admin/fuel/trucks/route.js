@@ -3,13 +3,16 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { logAudit } from '@/lib/audit';
+import { getAccessibleBranchIds, branchScope } from '@/lib/branchAccess';
 
 const fuelVehicles = { OR: [{ type: 'tanker' }, { deliveries: { some: { branch: { service: { type: 'fuel_station' } } } } }] };
 
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
   if (!['owner', 'manager'].includes(session?.user?.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const trucks = await prisma.vehicle.findMany({ where: fuelVehicles, select: { id: true, plateNumber: true, driverName: true, driverPhone: true, ownership: true, capacity: true, isActive: true, deliveries: { where: { branch: { service: { type: 'fuel_station' } } }, select: { id: true, quantity: true, createdAt: true, branch: { select: { id: true, name: true } }, product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'desc' }, take: 5 } }, orderBy: { plateNumber: 'asc' } });
+  // Trucks are shared across the business, but the deliveries listed under each are only to the caller's stations.
+  const access = await getAccessibleBranchIds(session);
+  const trucks = await prisma.vehicle.findMany({ where: fuelVehicles, select: { id: true, plateNumber: true, driverName: true, driverPhone: true, ownership: true, capacity: true, isActive: true, deliveries: { where: { branch: { service: { type: 'fuel_station' } }, ...branchScope(access) }, select: { id: true, quantity: true, createdAt: true, branch: { select: { id: true, name: true } }, product: { select: { name: true, unit: true } } }, orderBy: { createdAt: 'desc' }, take: 5 } }, orderBy: { plateNumber: 'asc' } });
   return NextResponse.json({ success: true, data: trucks });
 });
 

@@ -3,12 +3,14 @@ import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
 
 export const GET = withOrg(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const branchId = searchParams.get('branchId');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
     const where = { branchId };
     if (searchParams.get('activeOnly') === '1') where.isActive = true;
     const terminals = await prisma.posTerminal.findMany({ where, orderBy: { label: 'asc' } });

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
 import { jsonSafe } from '@/lib/jsonSafe';
+import { REPORT_ROLES } from '@/lib/permissions';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
 
 // Building Material-only reports (M6) — ported from ecana_shop-app's reports/products,
@@ -15,6 +17,8 @@ import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
 // OrderLine.qty alone (which only ever holds the billed figure).
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
+    if (!REPORT_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || 'products';
     const branchId = url.searchParams.get('branchId');
@@ -25,7 +29,10 @@ export const GET = withOrg(async (request) => {
     if (!from || !to) throw new ApiError('from and to are required', 400);
 
     const branchWhere = branchId ? { id: branchId } : { serviceId };
-    const branches = await prisma.branch.findMany({ where: branchWhere, select: { id: true } });
+    // Only the stations the caller handles go into the report, whether one was asked for or the whole service.
+    const accessible = await getAccessibleBranchIds(session);
+    if (branchId && !canAccessBranch(accessible, branchId)) throw new ApiError('You do not have access to this station', 403);
+    const branches = (await prisma.branch.findMany({ where: branchWhere, select: { id: true } })).filter((b) => canAccessBranch(accessible, b.id));
     const branchIds = branches.map((b) => b.id);
 
     if (type === 'trucks') {

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
+import { FUEL_PERFORMANCE_ROLES } from '@/lib/permissions';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // Ported from petrol-station-app's /api/attendant-performance + Staff Performance Heatmap — per
@@ -12,12 +14,15 @@ import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 // aggregation — one shift/reading join per assignment, no separate price lookup.
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
+    if (!FUEL_PERFORMANCE_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to') || from;
     if (!branchId) throw new ApiError('branchId is required', 400);
     if (!from) throw new ApiError('from is required', 400);
+    await requireBranch(session, branchId);
 
     const shifts = await prisma.shift.findMany({
       where: { branchId, operatingDate: { gte: from, lte: to } },

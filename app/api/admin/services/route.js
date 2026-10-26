@@ -6,15 +6,18 @@ import { isValidServiceType, serviceLabel } from '@/lib/services';
 import { ApiError } from '@/lib/apiError';
 import { slugify } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
+import { getAccessibleBranchIds, branchScope } from '@/lib/branchAccess';
 
+// Branches are limited to the ones the caller handles (the Admin sees them all): every station picker is built from this.
 export const GET = withOrg(async () => {
   const session = await getOrgSession();
   const organizationId = session.user.organizationId;
+  const access = await getAccessibleBranchIds(session);
   const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { businessType: true } });
   const services = await prisma.service.findMany({
     where: { organizationId, type: org.businessType },
     include: {
-      branches: { orderBy: { name: 'asc' }, include: { addon: true } },
+      branches: { where: branchScope(access, 'id'), orderBy: { name: 'asc' }, include: { addon: true } },
     },
     orderBy: { createdAt: 'asc' },
   });

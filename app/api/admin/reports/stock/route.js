@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { REPORT_ROLES } from '@/lib/permissions';
+import { getAccessibleBranchIds, canAccessBranch } from '@/lib/branchAccess';
 
 // StockMove ledger grouped by product/reason for the range (what came in, what sold, what was
 // adjusted), plus any Reconciliation rows in range for their measured variance — the two things the
@@ -9,6 +11,8 @@ import { ApiError } from '@/lib/apiError';
 // every branch of that service into one report — buckets then split by branch too.
 export const GET = withOrg(async (request) => {
   try {
+    const session = await getOrgSession();
+    if (!REPORT_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const url = new URL(request.url);
     const branchId = url.searchParams.get('branchId');
     const serviceId = url.searchParams.get('serviceId');
@@ -19,7 +23,10 @@ export const GET = withOrg(async (request) => {
 
     const range = { gte: new Date(from), lte: new Date(`${to}T23:59:59.999`) };
     const branchWhere = branchId ? { id: branchId } : { serviceId };
-    const branches = await prisma.branch.findMany({ where: branchWhere, select: { id: true, name: true } });
+    // Only the stations the caller handles go into the report, whether one was asked for or the whole service.
+    const accessible = await getAccessibleBranchIds(session);
+    if (branchId && !canAccessBranch(accessible, branchId)) throw new ApiError('You do not have access to this station', 403);
+    const branches = (await prisma.branch.findMany({ where: branchWhere, select: { id: true, name: true } })).filter((b) => canAccessBranch(accessible, b.id));
     const branchNameById = Object.fromEntries(branches.map((b) => [b.id, b.name]));
     const allBranches = !branchId;
     const branchIds = branches.map((b) => b.id);

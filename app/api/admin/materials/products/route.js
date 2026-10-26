@@ -6,6 +6,7 @@ import { setPrice } from '@/lib/pricing';
 import { getOnHandByProduct } from '@/lib/stock';
 import { ApiError } from '@/lib/apiError';
 import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
+import { getAccessibleBranchIds, requireBranch, branchScope } from '@/lib/branchAccess';
 
 // The open list-price rule only (what resolvePrice charges when a customer has no rate of their own),
 // so currentPrice never shows a customer's or a branch's special rate as the product's price.
@@ -26,10 +27,12 @@ export const GET = withOrg(async (request) => {
     const serviceId = url.searchParams.get('serviceId');
     const branchId = url.searchParams.get('branchId'); // optional — on-hand is per-branch
     await getOwnedService(serviceId, session.user.organizationId);
+    if (branchId) await requireBranch(session, branchId);
+    const access = await getAccessibleBranchIds(session);
 
     const products = await prisma.product.findMany({
       where: { serviceId },
-      include: { priceRules: LIST_PRICE_RULE, tanks: { include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } } },
+      include: { priceRules: LIST_PRICE_RULE, tanks: { where: branchScope(access), include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } } },
       orderBy: { name: 'asc' },
     });
     const onHand = branchId ? await getOnHandByProduct(branchId, products.map((p) => p.id)) : {};

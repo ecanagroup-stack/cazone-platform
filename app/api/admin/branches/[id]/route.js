@@ -4,13 +4,15 @@ import { withOrg, getOrgSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
 import { logAudit } from '@/lib/audit';
+import { requireBranch } from '@/lib/branchAccess';
 
 export const GET = withOrg(async (request, { params }) => {
   try {
     const { id } = await params;
+    const session = await getOrgSession();
+    await requireBranch(session, id);
     const branch = await prisma.branch.findUnique({ where: { id }, include: { service: { select: { type: true, isActive: true } } } });
     if (!branch) throw new ApiError('Branch not found', 404);
-    const session = await getOrgSession();
     const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
     if (!branch.service.isActive || branch.service.type !== org.businessType) throw new ApiError('Branch not found', 404);
     return NextResponse.json({ success: true, data: branch });

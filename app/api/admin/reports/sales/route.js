@@ -2,13 +2,10 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
-import { can } from '@/lib/permissions';
+import { can, REPORT_ROLES } from '@/lib/permissions';
 import { canAccessBranch, getAccessibleBranchIds } from '@/lib/branchAccess';
 import { dateRangeWhere } from '@/lib/businessDates.mjs';
 import { salesReportRow } from '@/lib/salesReportRows.mjs';
-
-// Same roles the Reports sidebar item is shown to (components/shell/Sidebar.js).
-const REPORT_ROLES = ['owner', 'manager', 'materials_manager', 'auditor', 'daily_auditor', 'external_auditor'];
 
 // One row per transaction, with its line items (lib/salesReportRows.mjs) for the report, sale detail and CSV.
 export const GET = withOrg(async (request) => {

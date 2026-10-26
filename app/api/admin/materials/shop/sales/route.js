@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { withOrg } from '@/lib/session';
+import { withOrg, getOrgSession } from '@/lib/session';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
 import { dateRangeWhere, effectiveDate } from '@/lib/businessDates.mjs';
 
 // Cement Warehouse's "Sales History" tab — raw Order rows (not the aggregated report), channel:'shop'
@@ -13,6 +14,7 @@ export const GET = withOrg(async (request) => {
     const from = searchParams.get('from');
     const to = searchParams.get('to');
     if (!branchId) throw new ApiError('branchId is required', 400);
+    await requireBranch(await getOrgSession(), branchId);
 
     const orders = await prisma.order.findMany({
       where: {

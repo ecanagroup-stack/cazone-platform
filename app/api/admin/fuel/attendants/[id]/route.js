@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withOrg, getOrgSession } from '@/lib/session';
-import { can } from '@/lib/permissions';
+import { can, FUEL_PERFORMANCE_ROLES } from '@/lib/permissions';
 import { ApiError } from '@/lib/apiError';
+import { requireBranch } from '@/lib/branchAccess';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
 // One attendant's full scorecard: every shift they've ever worked, meter sales vs. what was
@@ -11,9 +12,12 @@ import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 // instead of one branch across a date range.
 export const GET = withOrg(async (request, { params }) => {
   try {
+    const session = await getOrgSession();
+    if (!FUEL_PERFORMANCE_ROLES.includes(session?.user?.role)) throw new ApiError('Forbidden', 403);
     const { id } = await params;
     const attendant = await prisma.attendant.findUnique({ where: { id } });
     if (!attendant) throw new ApiError('Attendant not found', 404);
+    await requireBranch(session, attendant.branchId);
 
     const [assignments, notes] = await Promise.all([
       prisma.attendantAssignment.findMany({
