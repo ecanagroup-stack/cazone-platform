@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/apiError';
 import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
-import { computeFuelOffload, offloadVariance } from '@/lib/fuelDelivery.mjs';
+import { computeFuelOffload, offloadVariance, canOffloadFuel, canViewFuelDeliveries } from '@/lib/fuelDelivery.mjs';
 import { getAccessibleBranchIds, canAccessBranch, requireBranch } from '@/lib/branchAccess';
 import { optionalBusinessDate, backdatedAt, parseBusinessDate } from '@/lib/saleDates.mjs';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
@@ -43,6 +43,8 @@ export const GET = withOrg(async (request) => {
     if (!branch) throw new ApiError('Branch not found', 404);
 
     const isFuel = branch.service.type === 'fuel_station';
+    // A fuel branch's history carries costs, suppliers and driver phones: the Truck Offload page's roles only.
+    if (isFuel && !canViewFuelDeliveries(session.user.role)) throw new ApiError('You do not have access to fuel deliveries', 403);
     const [deliveries, suppliers, products, tanks, vehicles, openShift] = await Promise.all([
       prisma.delivery.findMany({
         where: { branchId },
@@ -56,7 +58,7 @@ export const GET = withOrg(async (request) => {
       // the chosen product actually has a receiving tank.
       prisma.tank.findMany({ where: { branchId, isActive: true }, orderBy: { label: 'asc' } }),
       // A fuel offload needs a registered tanker and an open shift to belong to.
-      isFuel && can(session.user.role, 'stock.receive')
+      isFuel && canOffloadFuel(session.user.role)
         ? prisma.vehicle.findMany({ where: FUEL_VEHICLES, select: { id: true, plateNumber: true, driverName: true, driverPhone: true, capacity: true }, orderBy: { plateNumber: 'asc' } })
         : [],
       isFuel ? prisma.shift.findFirst({ where: { branchId, status: 'open' }, orderBy: { openedAt: 'desc' }, select: { id: true, operatingDate: true, openedAt: true } }) : null,
@@ -64,7 +66,15 @@ export const GET = withOrg(async (request) => {
 
     const onHand = await getOnHandByProduct(branchId, products.map((p) => p.id));
 
-    return NextResponse.json(jsonSafe({ success: true, data: { deliveries: deliveries.map(withOffloadFigures), suppliers, products, onHand, tanks, vehicles, openShift, serviceType: branch.service.type } }));
+    // Each tank's last closing dip, shown as its "current level" hint on the offload form (a reference only:
+    // a fresh opening dip is still taken at the pour).
+    const lastDip = {};
+    if (isFuel && tanks.length) {
+      const dips = await prisma.fuelTankDip.findMany({ where: { tankId: { in: tanks.map((t) => t.id) }, period: 'closing' }, orderBy: { createdAt: 'desc' }, select: { tankId: true, measured: true, createdAt: true } });
+      for (const dip of dips) if (!(dip.tankId in lastDip)) lastDip[dip.tankId] = { measured: dip.measured, at: dip.createdAt };
+    }
+
+    return NextResponse.json(jsonSafe({ success: true, data: { deliveries: deliveries.map(withOffloadFigures), suppliers, products, onHand, tanks: tanks.map((t) => ({ ...t, lastDip: lastDip[t.id]?.measured ?? null, lastDipAt: lastDip[t.id]?.at ?? null })), vehicles, openShift, serviceType: branch.service.type } }));
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: e.status || 400 });
   }
@@ -189,6 +199,7 @@ export const POST = withOrg(async (request) => {
     // yet in that mode (it's picked at the assign step, once one is actually sent to collect it).
     const asAllocation = body.mode === 'allocation';
     if (branch.service.type === 'fuel_station' && !asAllocation) {
+      if (!canOffloadFuel(session.user.role)) throw new ApiError('Only an owner or manager can record a fuel delivery', 403);
       return NextResponse.json(jsonSafe({ success: true, data: await recordFuelDelivery({ session, body, branch }) }), { status: 201 });
     }
 

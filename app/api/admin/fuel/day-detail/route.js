@@ -42,7 +42,7 @@ export const GET = withOrg(async (request) => {
       }),
       prisma.delivery.findMany({
         where: { branchId, createdAt: range },
-        include: { supplier: true, vehicle: true, product: true },
+        include: { supplier: true, vehicle: true, product: true, tanks: { include: { tank: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.reconciliation.findMany({

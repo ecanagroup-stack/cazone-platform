@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import {
   Loader, PageHeader, Card, EmptyRow, EmptyState, Modal, FormButtons, Field, Tabs,
@@ -9,6 +10,7 @@ import {
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney, minorUnitsToDecimal } from '@/lib/format';
 import { todayLocalDate } from '@/lib/saleDates.mjs';
+import { FuelDeliveryModal, FuelCorrectModal, fmtL } from './FuelOffload';
 
 const TABS = [
   { key: 'deliveries', label: 'Deliveries' },
@@ -36,12 +38,12 @@ export default function DeliveriesPage() {
     <div>
       <PageHeader title="Deliveries" subtitle="Stock received, and who it comes from" />
       <Tabs tabs={TABS} active={activeTab} onChange={setTab} />
-      {activeTab === 'deliveries' ? <DeliveriesTab branchId={branchId} /> : <SuppliersTab />}
+      {activeTab === 'deliveries' ? <DeliveriesTab key={branchId} branchId={branchId} /> : <SuppliersTab />}
     </div>
   );
 }
 
-const blankDelivery = () => ({ mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '', useDip: false, tankId: '', openingDip: '', closingDip: '', deliveryDate: todayLocalDate(), backdateOtp: '' });
+const blankDelivery = () => ({ mode: 'received', supplierId: '', newSupplierName: '', vehiclePlate: '', productId: '', quantity: '', costPerUnit: '', deliveryDate: todayLocalDate(), backdateOtp: '' });
 const blankAssign = () => ({ vehiclePlate: '', driverName: '', driverPhone: '', date: todayLocalDate(), backdateOtp: '' });
 const blankStage = () => ({ date: todayLocalDate(), backdateOtp: '', arrivalDate: '' }); // a loading / arrival date, with its back-dating code
 const ALLOCATION_STATUS_COLOR = { pending: 'gray', assigned: 'blue', loaded: 'amber', arrived: 'green', closed: 'gray' };
@@ -51,9 +53,89 @@ const LOADING_HOURS_AGO = [
   { value: 3, label: '3 hours ago' }, { value: 4, label: '4 hours ago' }, { value: 5, label: '5 hours ago' },
 ];
 
+// A fuel branch's deliveries: the tanker, its driver, the tank(s) and the declared-vs-actual litres. A shortage is
+// red, an excess amber; stock moved by the Actual column.
+// The driver of a trip: what was recorded with it. Only a delivery from before drivers were snapshotted per trip
+// (no shift) falls back to the tanker's registered driver.
+const tripDriver = (d) => (d.shiftId
+  ? { name: d.driverName, phone: d.driverPhone }
+  : { name: d.driverName || d.vehicle?.driverName, phone: d.driverPhone || d.vehicle?.driverPhone });
+
+function FuelDeliveriesTable({ deliveries, onCorrect, renderActions }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className={tableScrollCls}>
+        <table className="w-full text-sm">
+          <thead className={theadCls}>
+            <tr>
+              <th className="px-4 py-3 text-left font-medium">Date</th>
+              <th className="px-4 py-3 text-left font-medium">Truck</th>
+              <th className="px-4 py-3 text-left font-medium">Driver</th>
+              <th className="px-4 py-3 text-left font-medium">Product</th>
+              <th className="px-4 py-3 text-left font-medium">Tank(s)</th>
+              <th className="px-4 py-3 text-right font-medium">Declared</th>
+              <th className="px-4 py-3 text-right font-medium">Actual</th>
+              <th className="px-4 py-3 text-right font-medium">Shortage / Excess</th>
+              <th className="px-4 py-3 text-left font-medium">Supplier</th>
+              <th className="px-4 py-3 text-right font-medium">Cost</th>
+              <th className="px-4 py-3 text-right font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {deliveries.length === 0 && <EmptyRow colSpan={11} text="No deliveries recorded yet" />}
+            {deliveries.map((d) => {
+              const isAllocation = d.qtyRemaining != null;
+              const tankList = d.tanks?.length ? d.tanks : d.tank ? [{ tankId: d.tank.id, tank: d.tank, offloaded: d.quantity }] : [];
+              return (
+                <tr key={d.id}>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(d.businessDate ? d.businessDate.slice(0, 10) : d.createdAt)}</td>
+                  <td className="px-4 py-3 font-medium">{d.vehicle?.plateNumber || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {tripDriver(d).name || '—'}
+                    {tripDriver(d).phone && <span className="block text-xs text-gray-400">{tripDriver(d).phone}</span>}
+                  </td>
+                  <td className="px-4 py-3">{d.product.name}</td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {tankList.length === 0 ? '—' : tankList.map((t) => (
+                      <span key={t.tankId} className="block">{t.tank?.label}{tankList.length > 1 ? ` (${fmtL(t.offloaded)} L)` : ''}</span>
+                    ))}
+                  </td>
+                  <td className="px-4 py-3 text-right">{d.declaredLoad != null ? `${fmtL(d.declaredLoad)} L` : '—'}</td>
+                  <td className="px-4 py-3 text-right font-medium">
+                    {fmtL(d.quantity)} {d.product.unit}
+                    {isAllocation && (
+                      <span className="block text-xs text-gray-400 font-normal">{d.qtyRemaining.toLocaleString()} left · {ALLOCATION_STATUS_LABEL[d.status]}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {d.declaredLoad == null ? <span className="text-gray-400">—</span>
+                      : d.shortage > 0 ? <span className="font-medium text-red-700">−{fmtL(d.shortage)} L short</span>
+                      : d.excess > 0 ? <span className="font-medium text-amber-700">+{fmtL(d.excess)} L excess</span>
+                      : <span className="text-gray-400">Exact</span>}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{d.supplier?.name || '—'}</td>
+                  <td className="px-4 py-3 text-right">{formatMinorMoney(d.totalCost)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {!isAllocation && <button onClick={() => onCorrect(d)} className={tableActionCls}>Correct</button>}
+                    {renderActions(d)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 function DeliveriesTab({ branchId }) {
-  const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand, tanks }
+  const { data: session } = useSession();
+  const [data, setData] = useState(null); // { deliveries, suppliers, products, onHand, tanks, vehicles, openShift }
   const [showModal, setShowModal] = useState(false);
+  const [showFuelModal, setShowFuelModal] = useState(false);
+  const [fuelResult, setFuelResult] = useState(null); // the offload just recorded, for the result banner
+  const [correcting, setCorrecting] = useState(null); // a fuel delivery
   const [form, setForm] = useState(blankDelivery);
   const [submitting, setSubmitting] = useState(false);
   const [assignFor, setAssignFor] = useState(null); // delivery
@@ -82,17 +164,11 @@ function DeliveriesTab({ branchId }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branchId, ...form, costPerUnit: form.costPerUnit === '' ? null : Math.round(Number(form.costPerUnit) * 100),
-          tankId: form.useDip ? form.tankId : undefined,
-          openingDip: form.useDip ? form.openingDip : undefined,
-          closingDip: form.useDip ? form.closingDip : undefined,
         }),
       });
       const d = await r.json();
       if (d.success) {
-        toast[d.data.flagged ? 'error' : 'success'](
-          d.data.flagged ? 'Delivery recorded — offload variance flagged for review'
-            : form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded'
-        );
+        toast.success(form.mode === 'allocation' ? 'Allocation started' : 'Delivery recorded');
         setShowModal(false); setForm(blankDelivery()); load();
       } else toast.error(d.error);
     } finally {
@@ -152,8 +228,35 @@ function DeliveriesTab({ branchId }) {
 
   if (!data) return <Loader />;
 
-  const { deliveries, suppliers, products, onHand, tanks, serviceType } = data;
-  const tanksForProduct = (tanks || []).filter((t) => t.productId === form.productId);
+  const { deliveries, suppliers, products, onHand, serviceType, openShift } = data;
+  const isFuel = serviceType === 'fuel_station';
+  const canAddTanker = ['owner', 'manager'].includes(session?.user?.role); // the Fuel > Trucks API's roles
+
+  // An allocation's stage buttons (assign / mark loaded / mark arrived), shared by both tables.
+  const renderActions = (d) => {
+    if (d.qtyRemaining == null) return null;
+    return (
+      <>
+        {d.status === 'pending' && <button onClick={() => { setAssignFor(d); setAssignForm(blankAssign()); }} className={tableActionCls}>Assign vehicle</button>}
+        {d.status === 'assigned' && <button onClick={() => { setLoadingFor(d); setHoursAgo(0); setLoadingStage(blankStage()); }} className={tableActionCls}>Mark loaded</button>}
+        {d.status === 'loaded' && <button onClick={() => { setArriveFor(d); setArriveStage(blankStage()); }} className={tableActionCls}>Mark arrived</button>}
+      </>
+    );
+  };
+
+  const fuelCsvColumns = [
+    { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.businessDate ? r.businessDate.slice(0, 10) : r.createdAt) },
+    { key: 'vehicle.plateNumber', label: 'Truck' },
+    { key: 'driverName', label: 'Driver', value: (r) => tripDriver(r).name || '' },
+    { key: 'product.name', label: 'Product' },
+    { key: 'tanks', label: 'Tanks', value: (r) => (r.tanks?.length ? r.tanks.map((t) => t.tank?.label).join(', ') : r.tank?.label || '') },
+    { key: 'declaredLoad', label: 'Declared (L)' },
+    { key: 'quantity', label: 'Actual (L)' },
+    { key: 'shortage', label: 'Shortage (L)' },
+    { key: 'excess', label: 'Excess (L)' },
+    { key: 'supplier.name', label: 'Supplier' },
+    { key: 'totalCost', label: 'Cost', value: (r) => minorUnitsToDecimal(r.totalCost) },
+  ];
 
   return (
     <div>
@@ -162,7 +265,7 @@ function DeliveriesTab({ branchId }) {
           title="Deliveries"
           csvFilename="deliveries"
           csvRows={deliveries}
-          csvColumns={[
+          csvColumns={isFuel ? fuelCsvColumns : [
             { key: 'createdAt', label: 'Date', value: (r) => formatDate(r.businessDate ? r.businessDate.slice(0, 10) : r.createdAt) },
             { key: 'supplier.name', label: 'Supplier' },
             { key: 'product.name', label: 'Product' },
@@ -172,8 +275,35 @@ function DeliveriesTab({ branchId }) {
             { key: 'status', label: 'Status', value: (r) => (r.qtyRemaining != null ? r.status : 'received') },
           ]}
         />
-        <button onClick={() => { setForm(blankDelivery()); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>
+        {isFuel
+          ? (
+            <div className="flex gap-2">
+              {/* A paid-for load not collected yet is still tracked as an allocation (stages below), not an offload. */}
+              <button onClick={() => { setForm({ ...blankDelivery(), mode: 'allocation' }); setShowModal(true); }} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-50">Start Allocation</button>
+              <button onClick={() => { setFuelResult(null); setShowFuelModal(true); }} disabled={!openShift} title={openShift ? undefined : 'Open a shift first'} className={`${btnPrimaryCls} disabled:opacity-50`}>Record Offload</button>
+            </div>
+          )
+          : <button onClick={() => { setForm(blankDelivery()); setShowModal(true); }} className={btnPrimaryCls}>Record Delivery</button>}
       </div>
+
+      {isFuel && !openShift && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded mb-4 text-sm">
+          No shift is open at this branch. Open a shift before recording a fuel delivery; a past delivery goes through Historical Entries.
+        </div>
+      )}
+
+      {fuelResult && (
+        <div className={`px-4 py-4 rounded mb-4 text-sm border flex justify-between items-start gap-3 ${fuelResult.shortage > 0 ? 'bg-red-50 border-red-200 text-red-800' : fuelResult.excess > 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+          <div>
+            <p className="font-semibold">Offload recorded{fuelResult.vehicle ? ` - ${fuelResult.vehicle.plateNumber}` : ''}.</p>
+            <p className="mt-0.5">
+              Declared {fmtL(fuelResult.declaredLoad)} L · Actual {fmtL(fuelResult.actualLitres)} L ·{' '}
+              {fuelResult.shortage > 0 ? `Shortage ${fmtL(fuelResult.shortage)} L (reported to the oversight team)` : fuelResult.excess > 0 ? `Excess ${fmtL(fuelResult.excess)} L` : 'Exact match'}
+            </p>
+          </div>
+          <button type="button" onClick={() => setFuelResult(null)} className="text-xs font-semibold shrink-0">Dismiss</button>
+        </div>
+      )}
 
       {products.length > 0 && (
         <Card className="p-4 mb-6">
@@ -189,6 +319,9 @@ function DeliveriesTab({ branchId }) {
         </Card>
       )}
 
+      {isFuel ? (
+        <FuelDeliveriesTable deliveries={deliveries} onCorrect={setCorrecting} renderActions={renderActions} />
+      ) : (
       <Card className="overflow-hidden">
         <div className={tableScrollCls}>
           <table className="w-full text-sm">
@@ -216,29 +349,13 @@ function DeliveriesTab({ branchId }) {
                     <td className="px-4 py-3 text-right">
                       {d.quantity.toLocaleString()} {d.product.unit}
                       {isAllocation && <span className="block text-xs text-gray-400">{d.qtyRemaining.toLocaleString()} left</span>}
-                      {d.declaredLoad != null && (
-                        <span className={`block text-xs ${d.shortage > 0 || d.excess > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
-                          {d.tanks?.length > 0 && d.tanks.every((t) => t.openingDip != null && t.closingDip != null) ? `Dip: ${d.tanks.map((t) => `${t.openingDip.toLocaleString()}→${t.closingDip.toLocaleString()}`).join(', ')} ` : ''}
-                          ({d.declaredLoad.toLocaleString()}L declared{d.shortage > 0 ? `, ${d.shortage.toLocaleString()}L short` : d.excess > 0 ? `, ${d.excess.toLocaleString()}L over` : ''})
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-right">{formatMinorMoney(d.totalCost)}</td>
                     <td className="px-4 py-3 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
                     <td className="px-4 py-3">
                       {isAllocation ? <StatusPill status={ALLOCATION_STATUS_LABEL[d.status]} color={ALLOCATION_STATUS_COLOR[d.status]} /> : <StatusPill status="Received" color="green" />}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {isAllocation && d.status === 'pending' && (
-                        <button onClick={() => { setAssignFor(d); setAssignForm(blankAssign()); }} className={tableActionCls}>Assign vehicle</button>
-                      )}
-                      {isAllocation && d.status === 'assigned' && (
-                        <button onClick={() => { setLoadingFor(d); setHoursAgo(0); setLoadingStage(blankStage()); }} className={tableActionCls}>Mark loaded</button>
-                      )}
-                      {isAllocation && d.status === 'loaded' && (
-                        <button onClick={() => { setArriveFor(d); setArriveStage(blankStage()); }} className={tableActionCls}>Mark arrived</button>
-                      )}
-                    </td>
+                    <td className="px-4 py-3 text-right">{renderActions(d)}</td>
                   </tr>
                 );
               })}
@@ -246,15 +363,27 @@ function DeliveriesTab({ branchId }) {
           </table>
         </div>
       </Card>
+      )}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Record Delivery">
+      {showFuelModal && (
+        <FuelDeliveryModal
+          open onClose={() => setShowFuelModal(false)} branchId={branchId} data={data} canAddTanker={canAddTanker} onReload={load}
+          onSaved={(recorded) => {
+            setShowFuelModal(false); setFuelResult(recorded); load();
+            toast.success(recorded.shortage > 0 ? 'Offload recorded - shortage reported' : 'Offload recorded');
+          }}
+        />
+      )}
+      {correcting && <FuelCorrectModal delivery={correcting} onClose={() => setCorrecting(null)} onSaved={() => { setCorrecting(null); load(); }} />}
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={isFuel ? 'Start Allocation' : 'Record Delivery'}>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="When is this on hand?" required>
+          {!isFuel && <Field label="When is this on hand?" required>
             <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} className={inputCls}>
               <option value="received">Received now — goes straight into stock</option>
               <option value="allocation">Paid for, not collected yet — track as an allocation</option>
             </select>
-          </Field>
+          </Field>}
           <Field label="Supplier" required>
             {suppliers.length > 0 ? (
               <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value, newSupplierName: '' })} className={inputCls}>
@@ -277,66 +406,24 @@ function DeliveriesTab({ branchId }) {
             </Field>
           )}
           <Field label="Product" required>
-            <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value, tankId: '' })} className={inputCls} required>
+            <select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} className={inputCls} required>
               <option value="">Select...</option>
               {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
 
-          {form.mode === 'received' && tanksForProduct.length > 0 && (
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <input
-                type="checkbox" checked={form.useDip}
-                onChange={(e) => setForm({ ...form, useDip: e.target.checked, tankId: e.target.checked ? tanksForProduct[0].id : '' })}
-              />
-              Verify with tank dip (tanker offload)
-            </label>
-          )}
-
-          {form.useDip ? (
-            <>
-              <Field label="Receiving tank" required>
-                <select value={form.tankId} onChange={(e) => setForm({ ...form, tankId: e.target.value })} className={inputCls} required>
-                  {tanksForProduct.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Opening dip (before offload)" required>
-                  <NumberInput value={form.openingDip} onChange={(e) => setForm({ ...form, openingDip: e.target.value })} required />
-                </Field>
-                <Field label="Closing dip (after offload)" required>
-                  <NumberInput value={form.closingDip} onChange={(e) => setForm({ ...form, closingDip: e.target.value })} required />
-                </Field>
-              </div>
-              {form.openingDip !== '' && form.closingDip !== '' && Number.isFinite(Number(form.closingDip) - Number(form.openingDip)) && (
-                <p className="text-xs text-gray-500">Actual offloaded: {(Number(form.closingDip) - Number(form.openingDip)).toLocaleString()} L</p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Declared load (per waybill)" required>
-                  <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
-                </Field>
-                <Field label="Cost per unit (optional)">
-                  <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
-                </Field>
-              </div>
-            </>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
-                <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
-              </Field>
-              <Field label="Cost per unit (optional)">
-                <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
-              </Field>
-            </div>
-          )}
-          {/* Fuel branches keep per-day tank/shift records, so a past delivery goes through Historical Entries. */}
-          {serviceType !== 'fuel_station' && (
-            <BusinessDateField
-              label={form.mode === 'allocation' ? 'Date paid for' : 'Date received'} value={form.deliveryDate} onChange={(deliveryDate) => setForm({ ...form, deliveryDate })}
-              otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))}
-            />
-          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={form.mode === 'allocation' ? 'Quantity paid for' : 'Quantity'} required>
+              <NumberInput value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
+            </Field>
+            <Field label="Cost per unit (optional)">
+              <NumberInput value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
+            </Field>
+          </div>
+          <BusinessDateField
+            label={form.mode === 'allocation' ? 'Date paid for' : 'Date received'} value={form.deliveryDate} onChange={(deliveryDate) => setForm({ ...form, deliveryDate })}
+            otp={form.backdateOtp} onOtpChange={(backdateOtp) => setForm((f) => ({ ...f, backdateOtp }))}
+          />
           <FormButtons onCancel={() => setShowModal(false)} submitting={submitting} submitLabel={form.mode === 'allocation' ? 'Start Allocation' : 'Record Delivery'} />
         </form>
       </Modal>

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney } from '@/lib/format';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
+import { FuelCorrectModal } from '../../deliveries/FuelOffload';
 
 function todayIso() {
   return operatingDateAt();
@@ -168,7 +169,6 @@ function DayDetail({ branchId, date, onBack }) {
   const [data, setData] = useState(null);
   const [section, setSection] = useState('supervisor');
   const [correctingDelivery, setCorrectingDelivery] = useState(null);
-  const [correctForm, setCorrectForm] = useState({ quantity: '', costPerUnit: '', reason: '' });
   const [correctingReading, setCorrectingReading] = useState(null);
   const [correctReadingForm, setCorrectReadingForm] = useState({ closing: '', rtt: '', reason: '' });
   const [correctingDeposit, setCorrectingDeposit] = useState(null);
@@ -185,27 +185,6 @@ function DayDetail({ branchId, date, onBack }) {
   }, [branchId, date]);
 
   useEffect(() => { load(); }, [load]);
-
-  const openCorrect = (delivery) => {
-    setCorrectingDelivery(delivery);
-    setCorrectForm({ quantity: delivery.quantity.toString(), costPerUnit: delivery.costPerUnit == null ? '' : (delivery.costPerUnit / 100).toString(), reason: '' });
-  };
-
-  const submitCorrect = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const r = await fetch(`/api/admin/deliveries/${correctingDelivery.id}/correct`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: Number(correctForm.quantity), costPerUnit: correctForm.costPerUnit === '' ? null : Math.round(Number(correctForm.costPerUnit) * 100), reason: correctForm.reason }),
-      });
-      const d = await r.json();
-      if (d.success) { toast.success('Delivery corrected'); setCorrectingDelivery(null); load(); }
-      else toast.error(d.error);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const openCorrectReading = (r) => {
     setCorrectingReading(r);
@@ -464,7 +443,7 @@ function DayDetail({ branchId, date, onBack }) {
                           <td className="px-4 py-2 text-right">{formatMinorMoney(d.totalCost)}</td>
                           <td className="px-4 py-2 text-gray-500">{d.vehicle?.plateNumber || '—'}</td>
                           <td className="px-4 py-2 text-right">
-                            {d.qtyRemaining == null && <button onClick={() => openCorrect(d)} className={tableActionCls}>Correct</button>}
+                            {d.qtyRemaining == null && <button onClick={() => setCorrectingDelivery(d)} className={tableActionCls}>Correct</button>}
                           </td>
                         </tr>
                       ))}
@@ -541,23 +520,7 @@ function DayDetail({ branchId, date, onBack }) {
         </>
       )}
 
-      <Modal open={!!correctingDelivery} onClose={() => setCorrectingDelivery(null)} title="Correct Delivery">
-        <form onSubmit={submitCorrect} className="space-y-4">
-          <p className="text-sm text-gray-500">Adjusts the recorded quantity/cost and appends an offsetting stock entry for the difference — the original delivery isn't erased, just corrected.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Quantity" required>
-              <NumberInput value={correctForm.quantity} onChange={(e) => setCorrectForm({ ...correctForm, quantity: e.target.value })} required />
-            </Field>
-            <Field label="Cost per unit (optional)">
-              <NumberInput value={correctForm.costPerUnit} onChange={(e) => setCorrectForm({ ...correctForm, costPerUnit: e.target.value })} />
-            </Field>
-          </div>
-          <Field label="Reason" required>
-            <input type="text" value={correctForm.reason} onChange={(e) => setCorrectForm({ ...correctForm, reason: e.target.value })} className={inputCls} required placeholder="Why is this being corrected?" />
-          </Field>
-          <FormButtons onCancel={() => setCorrectingDelivery(null)} submitting={submitting} submitLabel="Correct Delivery" />
-        </form>
-      </Modal>
+      {correctingDelivery && <FuelCorrectModal delivery={correctingDelivery} onClose={() => setCorrectingDelivery(null)} onSaved={() => { setCorrectingDelivery(null); load(); }} />}
 
       <Modal open={!!correctingReading} onClose={() => setCorrectingReading(null)} title="Correct Pump Reading">
         <form onSubmit={submitCorrectReading} className="space-y-4">

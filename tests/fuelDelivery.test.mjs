@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeFuelOffload, offloadVariance, reallocateOffload } from '../lib/fuelDelivery.mjs';
+import { computeFuelOffload, offloadVariance, reallocateOffload, canOffloadFuel, canViewFuelDeliveries } from '../lib/fuelDelivery.mjs';
 
 const branchTanks = [
   { id: 't1', label: 'Tank 1', productId: 'pms' },
@@ -84,4 +84,11 @@ test('a multi-tank correction needs a per-tank split that adds up to the new tot
   assert.throws(() => reallocateOffload(rows, 700, [{ tankId: 't1', offloaded: 400 }, { tankId: 'x', offloaded: 300 }]), /do not match/);
   const fixed = reallocateOffload(rows, 700, [{ tankId: 't1', offloaded: 400 }, { tankId: 't2', offloaded: 300 }]);
   assert.deepEqual(fixed.map((r) => [r.tankId, r.offloaded, r.closingDip]), [['t1', 400, 500], ['t2', 300, 300]]);
+});
+
+test('only owner and manager record a fuel offload; auditors may read the history, plain staff neither', () => {
+  assert.ok(canOffloadFuel('owner') && canOffloadFuel('manager'));
+  for (const role of ['staff', 'materials_manager', 'atc_manager', 'supervisor', 'cashier', 'auditor']) assert.equal(canOffloadFuel(role), false, role);
+  assert.ok(canViewFuelDeliveries('auditor') && canViewFuelDeliveries('manager'));
+  for (const role of ['staff', 'cashier', 'supervisor']) assert.equal(canViewFuelDeliveries(role), false, role);
 });

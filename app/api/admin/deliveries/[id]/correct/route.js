@@ -7,7 +7,7 @@ import { notifyAlteration } from '@/lib/notify';
 import { ApiError } from '@/lib/apiError';
 import { requireRecordBranch } from '@/lib/branchAccess';
 import { jsonSafe } from '@/lib/jsonSafe';
-import { offloadVariance, reallocateOffload } from '@/lib/fuelDelivery.mjs';
+import { offloadVariance, reallocateOffload, canOffloadFuel } from '@/lib/fuelDelivery.mjs';
 
 // Correcting a delivery's recorded quantity/cost after receipt — the one Day Detail correction
 // (Part 3) with no existing audited path to reuse (a wrong meter reading gets queried/resubmitted;
@@ -30,6 +30,9 @@ export const POST = withOrg(async (request, { params }) => {
 
     const delivery = await prisma.delivery.findUnique({ where: { id }, include: { tanks: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } } });
     await requireRecordBranch(session, delivery, 'Delivery not found');
+    // A tanker offload at a fuel branch is an owner / manager record (stock.receive alone also covers plain staff).
+    const branch = await prisma.branch.findUnique({ where: { id: delivery.branchId }, include: { service: { select: { type: true } } } });
+    if (branch?.service.type === 'fuel_station' && !canOffloadFuel(session.user.role)) throw new ApiError('Only an owner or manager can correct a fuel delivery', 403);
     if (delivery.qtyRemaining != null) throw new ApiError('Only a received delivery can be corrected — this one is still an allocation', 400);
 
     const newQuantity = body.quantity !== undefined ? Number(body.quantity) : delivery.quantity;
@@ -58,7 +61,9 @@ export const POST = withOrg(async (request, { params }) => {
       : delivery.tankId && delivery.openingDip != null
         ? [{ tankId: delivery.tankId, openingDip: delivery.openingDip, closingDip: delivery.closingDip, offloaded: delivery.quantity }]
         : [];
-    const newTankRows = quantityDelta !== 0 ? reallocateOffload(tankRows, newQuantity, body.tanks) : tankRows;
+    // A new split of the same total (several tanks) is applied too, not only a change of the total.
+    const resplit = tankRows.length > 1 && body.tanks !== undefined;
+    const newTankRows = quantityDelta !== 0 || resplit ? reallocateOffload(tankRows, newQuantity, body.tanks) : tankRows;
     const firstTank = newTankRows.find((row) => row.tankId === delivery.tankId);
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -70,15 +75,15 @@ export const POST = withOrg(async (request, { params }) => {
             note: `Correction on delivery ${delivery.id}: ${reason}`,
           },
         });
-        if (delivery.tanks.length) {
-          for (const row of newTankRows) await tx.deliveryTank.update({ where: { id: row.id }, data: { offloaded: row.offloaded, closingDip: row.closingDip } });
-        }
+      }
+      if ((quantityDelta !== 0 || resplit) && delivery.tanks.length) {
+        for (const row of newTankRows) await tx.deliveryTank.update({ where: { id: row.id }, data: { offloaded: row.offloaded, closingDip: row.closingDip } });
       }
       return tx.delivery.update({
         where: { id },
         data: {
           quantity: newQuantity, costPerUnit: newCostPerUnit, totalCost: newTotalCost, offloadVariance: newVariance,
-          ...(quantityDelta !== 0 && firstTank ? { closingDip: firstTank.closingDip } : {}),
+          ...((quantityDelta !== 0 || resplit) && firstTank ? { closingDip: firstTank.closingDip } : {}),
         },
       });
     }, { timeout: 15000 });
