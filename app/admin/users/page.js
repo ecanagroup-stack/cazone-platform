@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { invitableRolesForBusiness, isOrgWideRole } from '@/lib/businessRoles';
+import { seesEveryBranchWithoutRows } from '@/lib/branchAccessRules.mjs';
 import { ROLE_LABELS } from '@/lib/roleLabels';
 import { Loader, PageHeader, Card, EmptyRow, Modal, FormButtons, Field, inputCls, StatusPill, btnPrimaryCls, theadCls, tableScrollCls, tableActionCls, ReportToolbar, PasswordInput, UsernameField } from '@/components/ui';
 
@@ -60,6 +61,9 @@ export default function UsersPage() {
   const [form, setForm] = useState(blankUser);
   const [submitting, setSubmitting] = useState(false);
   const [resetFor, setResetFor] = useState(null); // the user being password-reset, or null
+  const [stationsFor, setStationsFor] = useState(null); // the user whose stations are being edited, or null
+  const [stationIds, setStationIds] = useState([]);
+  const [savingStations, setSavingStations] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
   const [search, setSearch] = useState('');
@@ -115,6 +119,28 @@ export default function UsersPage() {
     }
   };
 
+  // Offers every station the editor can assign plus the ones the user already has (a deactivated station
+  // would otherwise silently drop off when the list is saved).
+  const stationOptions = (user) => {
+    const held = (user.branchAccess || []).map((a) => a.branch).filter((b) => !accessibleBranchIds || accessibleBranchIds.includes(b.id));
+    return [...allBranches, ...held.filter((b) => !allBranches.some((x) => x.id === b.id))];
+  };
+
+  const handleSaveStations = async (e) => {
+    e.preventDefault();
+    setSavingStations(true);
+    try {
+      const r = await fetch(`/api/admin/users/${stationsFor.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchIds: stationIds }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(`${stationsFor.name}'s ${businessType === 'fuel_station' ? 'stations were' : 'branches were'} updated`); setStationsFor(null); load(); }
+      else toast.error(d.error);
+    } finally {
+      setSavingStations(false);
+    }
+  };
+
   const toggleActive = async (user) => {
     const goingActive = !user.isActive;
     if (!goingActive && !confirm(`Deactivate ${user.name}? Their history stays, they just can't log in.`)) return;
@@ -134,11 +160,13 @@ export default function UsersPage() {
   const selectedBranch = allBranches.some((branch) => branch.id === requestedBranch) ? requestedBranch : '';
   const filteredUsers = users.filter((user) => {
     if (staffView && !FUEL_STAFF_ROLES.includes(user.role)) return false;
-    // A legacy account without explicit branch rows is unrestricted under getAccessibleBranchIds.
-    if (selectedBranch && user.role !== 'owner' && user.branchAccess?.length && !user.branchAccess.some(({ branch }) => branch.id === selectedBranch)) return false;
+    // An account without branch rows has no station, unless its role works across the whole business.
+    if (selectedBranch && user.role !== 'owner' && (user.branchAccess?.length ? !user.branchAccess.some(({ branch }) => branch.id === selectedBranch) : !seesEveryBranchWithoutRows(user.role, businessType))) return false;
     const value = search.trim().toLowerCase();
     return !value || [user.name, user.email, user.username, user.phone, roleLabel(user.role, businessType, addonTypes)].some((part) => part?.toLowerCase().includes(value));
   });
+  const unassignedCount = users.filter((user) => user.isActive && user.role !== 'owner' && !user.branchAccess?.length && !seesEveryBranchWithoutRows(user.role, businessType)).length;
+  const canEditStations = (u) => u.role !== 'owner' && !isOrgWideRole(u.role, businessType) && (session?.user?.role === 'owner' || !['owner', 'manager'].includes(u.role));
   const viewHref = (view) => {
     const params = new URLSearchParams(searchParams.toString());
     if (view === 'staff') params.set('view', 'staff'); else params.delete('view');
@@ -154,6 +182,8 @@ export default function UsersPage() {
       />
 
       {fuelBusiness && <div className="mb-5 flex flex-wrap items-center gap-2" role="navigation" aria-label="Fuel users view"><Link href={viewHref('all')} className={`rounded-lg px-4 py-2 text-sm font-medium ${!staffView ? 'bg-brand-700 text-white' : 'border bg-white text-gray-700'}`}>All users</Link><Link href={viewHref('staff')} className={`rounded-lg px-4 py-2 text-sm font-medium ${staffView ? 'bg-brand-700 text-white' : 'border bg-white text-gray-700'}`}>Station staff</Link><span className="ml-auto text-xs text-gray-500">{filteredUsers.length} {filteredUsers.length === 1 ? 'account' : 'accounts'}{selectedBranch ? ' at selected station' : ''}</span></div>}
+
+      {unassignedCount > 0 && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{unassignedCount} active {unassignedCount === 1 ? 'account has' : 'accounts have'} no {fuelBusiness ? 'station' : 'branch'} assigned and can open nothing until {unassignedCount === 1 ? 'it is' : 'they are'} given one. Use Edit {fuelBusiness ? 'Stations' : 'Branches'} on the account.</div>}
 
       {!staffView && <Card className="p-4 mb-6">
         <table className="w-full text-sm">
@@ -202,10 +232,11 @@ export default function UsersPage() {
                   <td className="px-4 py-3">{roleLabel(u.role, businessType, addonTypes)}</td>
                   <td className="px-4 py-3 text-gray-500">{u.email || u.username || u.phone || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
-                    {u.role === 'owner' ? (fuelBusiness ? 'All stations' : 'All branches') : (u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : (isOrgWideRole(u.role, businessType) ? 'Whole business' : fuelBusiness ? 'All stations (legacy access)' : 'None assigned'))}
+                    {u.role === 'owner' ? (fuelBusiness ? 'All stations' : 'All branches') : u.branchAccess?.length ? u.branchAccess.map((a) => a.branch.name).join(', ') : isOrgWideRole(u.role, businessType) ? 'Whole business' : seesEveryBranchWithoutRows(u.role, businessType) ? (fuelBusiness ? 'All stations' : 'All branches') : <span className="font-medium text-red-700">{fuelBusiness ? 'No station assigned - no access' : 'No branch assigned - no access'}</span>}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={u.isActive ? 'Active' : 'Inactive'} color={u.isActive ? 'green' : 'gray'} /></td>
                   <td className="px-4 py-3 text-right">
+                    {canEditStations(u) && <button onClick={() => { setStationsFor(u); setStationIds((u.branchAccess || []).map((a) => a.branch.id).filter((id) => !accessibleBranchIds || accessibleBranchIds.includes(id))); }} className={`${tableActionCls} mr-3`}>{fuelBusiness ? 'Edit Stations' : 'Edit Branches'}</button>}
                     {(!fuelBusiness || session?.user?.role === 'owner' || !['owner', 'manager'].includes(u.role)) && <button onClick={() => { setResetFor(u); setNewPassword(''); }} className={`${tableActionCls} mr-3`}>Reset Password</button>}
                     {u.role !== 'owner' && (!fuelBusiness || session?.user?.role === 'owner' || u.role !== 'manager') && (
                       <button onClick={() => toggleActive(u)} className={tableActionCls}>
@@ -251,6 +282,21 @@ export default function UsersPage() {
             </Field>
           </div>
           <FormButtons onCancel={() => setShowAdd(false)} submitting={submitting} submitLabel={staffView ? 'Add Staff' : 'Add User'} />
+        </form>
+      </Modal>
+
+      <Modal open={!!stationsFor} onClose={() => setStationsFor(null)} title={`${fuelBusiness ? 'Stations' : 'Branches'} — ${stationsFor?.name || ''}`}>
+        <form onSubmit={handleSaveStations} className="space-y-4">
+          <p className="text-sm text-gray-500">{stationsFor && seesEveryBranchWithoutRows(stationsFor.role, businessType) ? `With none ticked this account sees every ${fuelBusiness ? 'station' : 'branch'}; ticking some limits it to those.` : `This user can open only the ${fuelBusiness ? 'stations' : 'branches'} ticked here.`}</p>
+          <div className="flex flex-wrap gap-3 max-h-48 overflow-y-auto">
+            {stationsFor && stationOptions(stationsFor).map((b) => (
+              <label key={b.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={stationIds.includes(b.id)} onChange={() => setStationIds((ids) => ids.includes(b.id) ? ids.filter((id) => id !== b.id) : [...ids, b.id])} />
+                {b.name}
+              </label>
+            ))}
+          </div>
+          <FormButtons onCancel={() => setStationsFor(null)} submitting={savingStations} submitLabel="Save" />
         </form>
       </Modal>
 

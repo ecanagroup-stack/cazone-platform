@@ -39,9 +39,17 @@ export async function GET(request) {
           const existingNotice = await prisma.notification.findFirst({ where: {
             relatedType: 'Shift', relatedId: shift.id, title: 'Overdue fuel shift needs completion',
           } });
-          if (!existingNotice) await notify({ recipientRole: 'manager', type: 'flag_raised',
-            title: 'Overdue fuel shift needs completion', relatedType: 'Shift', relatedId: shift.id,
-            message: `${shift.operatingDate}: ${blockers.join('; ')}.` });
+          if (!existingNotice) {
+            // One notice per person, not per role: only the Admin and the managers of this station hear
+            // about it (a manager with no station rows handles none).
+            const recipients = await prisma.user.findMany({ where: { isActive: true, OR: [
+              { role: 'owner' },
+              { role: 'manager', branchAccess: { some: { branchId: shift.branchId } } },
+            ] }, select: { id: true } });
+            await Promise.all(recipients.map((user) => notify({ recipientUserId: user.id, type: 'flag_raised',
+              title: 'Overdue fuel shift needs completion', relatedType: 'Shift', relatedId: shift.id,
+              message: `${branch?.name ? `${branch.name}, ` : ''}${shift.operatingDate}: ${blockers.join('; ')}.` })));
+          }
           return { id: shift.id, status: 'blocked', blockers };
         }
         const active = collections.filter((collection) => !collection.voidedAt);

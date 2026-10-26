@@ -4,6 +4,7 @@ import { getOrgSession } from '@/lib/session';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 import { requireOrg } from '@/lib/tenantScope';
 import { Card } from '@/components/ui';
+import NoStationAssigned from '@/components/shell/NoStationAssigned';
 import FuelQuickPriceUpdate from '@/components/fuel/FuelQuickPriceUpdate';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
 
@@ -37,7 +38,10 @@ export default async function FuelDashboard({ searchParams }) {
   requireOrg(session);
   const role = session.user.role;
   const access = await getAccessibleBranchIds(session);
+  if (access && access.length === 0) return <NoStationAssigned />;
   const service = await prisma.service.findFirst({ where: { type: 'fuel_station' }, select: { id: true, branches: { where: { isActive: true, ...(access ? { id: { in: access } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' } } } });
+  // Rows that point only at deactivated stations leave nothing to open either.
+  if (access && !service?.branches.length) return <NoStationAssigned />;
   if (!service) return <div className="rounded-xl border bg-white p-6">Fuel service is unavailable.</div>;
   const view = ROLE_VIEW[role] || { title: 'Petrol Station', subtitle: 'Your station workspace' };
   const selectedBranch = service.branches.find((branch) => branch.id === params?.branch) || (service.branches.length === 1 ? service.branches[0] : null);

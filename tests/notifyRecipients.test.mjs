@@ -47,13 +47,15 @@ test('managers of other branches and inactive managers are never notified', () =
   assert.ok(!ids.includes('inactiveMgrA'));
 });
 
-test('a manager with no branch rows is unrestricted and is notified for any affected branch', () => {
-  const withUnrestricted = [...users, { id: 'mgrAll', role: 'manager', isActive: true, branchIds: [] }];
-  const ids = alterationRecipients({ actor: { id: 'cashier', role: 'cashier' }, branchId: 'B', users: withUnrestricted });
-  assert.ok(ids.includes('mgrAll'));
-  assert.ok(!ids.includes('mgrA'));
-  const noBranch = alterationRecipients({ actor: { id: 'cashier', role: 'cashier' }, branchId: null, users: withUnrestricted });
-  assert.ok(!noBranch.includes('mgrAll'));
+test('a manager with no branch rows has no station and is never notified', () => {
+  const withUnassigned = [...users, { id: 'mgrNone', role: 'manager', isActive: true, branchIds: [] }];
+  const ids = alterationRecipients({ actor: { id: 'cashier', role: 'cashier' }, branchId: 'B', users: withUnassigned });
+  assert.ok(!ids.includes('mgrNone'));
+  assert.ok(ids.includes('mgrB'));
+  const customerLevel = alterationRecipients({ actor: { id: 'cashier', role: 'cashier' }, branchIds: ['A', 'B'], users: withUnassigned });
+  assert.ok(!customerLevel.includes('mgrNone'));
+  const noBranch = alterationRecipients({ actor: { id: 'cashier', role: 'cashier' }, branchId: null, users: withUnassigned });
+  assert.ok(!noBranch.includes('mgrNone'));
 });
 
 test('without a branch no manager is notified', () => {
@@ -68,4 +70,15 @@ test('a customer-level change notifies the managers of every branch the customer
 
 test('unknown actor role falls through to the default recipient set', () => {
   assert.deepEqual(alterationRecipientRoles(undefined), ['owner', 'materials_manager', 'auditor', 'daily_auditor', 'external_auditor']);
+});
+
+test('an auditor or GSM limited to other branches is not told, one limited to the affected branch is', () => {
+  const scoped = [
+    { id: 'audA', role: 'auditor', isActive: true, branchIds: ['A'] },
+    { id: 'audB', role: 'auditor', isActive: true, branchIds: ['B'] },
+    { id: 'gsmB', role: 'materials_manager', isActive: true, branchIds: ['B'] },
+    { id: 'audAll', role: 'auditor', isActive: true, branchIds: [] },
+  ];
+  const ids = alterationRecipients({ actor: { id: 'x', role: 'cashier' }, branchId: 'A', users: scoped });
+  assert.deepEqual(sorted(ids), sorted(['audA', 'audAll']));
 });

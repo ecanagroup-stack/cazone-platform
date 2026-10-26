@@ -11,7 +11,7 @@ import { roleLabel } from '@/lib/roleLabels';
 // Business name, then service/branch switcher, then user menu — nothing else goes in the top bar
 // (platform-ui skill, section 1). The business-name switcher itself is plain text here: no user
 // belongs to more than one organization yet, so a dropdown would be premature.
-export default function TopBar({ org, services, user, hasCustomers, addons }) {
+export default function TopBar({ org, services, user, hasCustomers, addons, noStation = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -23,11 +23,11 @@ export default function TopBar({ org, services, user, hasCustomers, addons }) {
       </div>
 
       <div className="flex-1 min-w-0">
-        <ServiceBranchSwitcher services={services} />
+        <ServiceBranchSwitcher services={services} noStation={noStation} placeLabel={org?.businessType === 'fuel_station' ? 'station' : 'branch'} />
       </div>
 
-      <AdminLinkSearch services={services} businessType={org?.businessType} role={user?.role} hasCustomers={hasCustomers} addons={addons} />
-      <NotificationBell role={user?.role} />
+      {!noStation && <AdminLinkSearch services={services} businessType={org?.businessType} role={user?.role} hasCustomers={hasCustomers} addons={addons} />}
+      {!noStation && <NotificationBell role={user?.role} />}
 
       <div className="relative shrink-0">
         <button type="button" onClick={() => setMenuOpen((o) => !o)} className="flex items-center gap-2 text-sm">

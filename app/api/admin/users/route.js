@@ -19,12 +19,13 @@ export const GET = withOrg(async () => {
     return NextResponse.json({ error: 'You do not have permission to view users' }, { status: 403 });
   }
   const org = await prisma.organization.findUnique({ where: { id: session.user.organizationId }, select: { businessType: true } });
-  const access = org.businessType === 'fuel_station' ? await getAccessibleBranchIds(session) : null;
+  const access = await getAccessibleBranchIds(session);
   const addonTypes = await activeAddonTypes(session.user.organizationId);
   const users = await prisma.user.findMany({
     where: { role: { not: 'customer' }, ...(access ? { OR: [{ role: 'owner' }, { branchAccess: { some: { branchId: { in: access } } } }] } : {}) },
     select: { id: true, name: true, role: true, email: true, username: true, phone: true, isActive: true,
-      branchAccess: { where: { branch: { service: { type: org.businessType } } }, select: { branch: { select: { id: true, name: true } } } } },
+      // A branch-limited caller is only told about the stations they can see themselves.
+      branchAccess: { where: { branch: { service: { type: org.businessType } }, ...(access ? { branchId: { in: access } } : {}) }, select: { branch: { select: { id: true, name: true } } } } },
     orderBy: { createdAt: 'asc' },
   });
   return NextResponse.json({ success: true, data: users, accessibleBranchIds: access, addonTypes });
@@ -59,10 +60,8 @@ export const POST = withOrg(async (request) => {
       if (branchIds.length === 0) throw new ApiError('Select at least one branch for this user', 400);
       const selectedBranches = await prisma.branch.findMany({ where: { id: { in: branchIds }, isActive: true, service: { type: org.businessType } }, select: { id: true, service: { select: { type: true, isActive: true, config: true } } } });
       if (selectedBranches.length !== new Set(branchIds).size || selectedBranches.length !== branchIds.length || selectedBranches.some((branch) => !branch.service.isActive)) throw new ApiError('Select available branches of this business only', 400);
-      if (org.businessType === 'fuel_station') {
-        const access = await getAccessibleBranchIds(session);
-        if (access && branchIds.some((id) => !access.includes(id))) throw new ApiError('You can assign users only to stations you manage', 403);
-      }
+      const access = await getAccessibleBranchIds(session);
+      if (access && branchIds.some((id) => !access.includes(id))) throw new ApiError('You can assign users only to stations you manage', 403);
     }
 
     const { field: idField, value: idValue } = classifyIdentifier(identifier);

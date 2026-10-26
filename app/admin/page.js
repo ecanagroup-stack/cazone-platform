@@ -8,6 +8,8 @@ import { isConfinedAtcManager } from '@/lib/atcContainment.mjs';
 import { hasActiveDistributor } from '@/lib/distributor';
 import { dateRangeWhere } from '@/lib/businessDates.mjs';
 import { businessToday } from '@/lib/saleDates.mjs';
+import { getAccessibleBranchIds, branchScope } from '@/lib/branchAccess';
+import NoStationAssigned from '@/components/shell/NoStationAssigned';
 import { Card, btnPrimaryCls } from '@/components/ui';
 
 // Org-wide by default — "the organization's admin can see any and all his business" — with an
@@ -20,13 +22,18 @@ export default async function TodayPage({ searchParams }) {
   const session = await getOrgSession();
   const orgId = requireOrg(session);
 
-  const [organization, staffCount, me] = await Promise.all([
+  const [organization, access, me] = await Promise.all([
     prisma.organization.findUnique({ where: { id: orgId }, select: { businessType: true } }),
-    prisma.user.count({ where: { role: { not: 'customer' } } }),
+    getAccessibleBranchIds(session),
     prisma.user.findUnique({ where: { id: session.user.id }, select: { lastServiceId: true, lastBranchId: true } }),
   ]);
-  const allBusinessServices = await prisma.service.findMany({ where: { type: organization.businessType }, include: { branches: { where: { isActive: true } } }, orderBy: { createdAt: 'asc' } });
+  // Staff are counted the way the Users page lists them: the Admin plus anyone at one of the caller's branches.
+  const staffCount = await prisma.user.count({ where: { role: { not: 'customer' }, ...(access ? { OR: [{ role: 'owner' }, { branchAccess: { some: { branchId: { in: access } } } }] } : {}) } });
+  const allBusinessServices = await prisma.service.findMany({ where: { type: organization.businessType }, include: { branches: { where: { isActive: true, ...(access ? { id: { in: access } } : {}) } } }, orderBy: { createdAt: 'asc' } });
   const services = allBusinessServices.filter((service) => service.isActive);
+  // A staff login with no branch to open (no UserBranchAccess rows, or only rows for deactivated branches)
+  // has nothing to land on.
+  if (access && services.every((service) => service.branches.length === 0)) return <NoStationAssigned fuel={organization.businessType === 'fuel_station'} />;
 
   // A fuel station's ATC manager has no pump dashboard (middleware confines the role): straight to the
   // distribution pages, or to their account once the add-on has lapsed.
@@ -37,7 +44,7 @@ export default async function TodayPage({ searchParams }) {
   if (organization.businessType === 'fuel_station') {
     const fuel = services[0];
     if (!fuel) return <div className="max-w-2xl space-y-4"><h1 className="text-2xl font-bold">Petrol Station</h1><Card className="p-6"><h2 className="font-semibold">Start your Petrol Station</h2><p className="mt-2 text-sm text-gray-600">Your business account is ready, but its first station service and branch have not been created yet.</p>{session.user.role === 'owner' && <Link href="/admin/services" className="mt-4 inline-block rounded-lg bg-brand-700 px-4 py-2 font-medium text-white">Start Business</Link>}</Card></div>;
-    const branchId = params?.branch || me?.lastBranchId || (fuel.branches.length === 1 ? fuel.branches[0].id : '');
+    const branchId = [params?.branch, me?.lastBranchId].find((id) => fuel.branches.some((branch) => branch.id === id)) || (fuel.branches.length === 1 ? fuel.branches[0].id : '');
     const qs = new URLSearchParams({ service: fuel.id, ...(branchId ? { branch: branchId } : {}) });
     redirect(`/admin/fuel/dashboard?${qs.toString()}`);
   }
@@ -60,7 +67,7 @@ export default async function TodayPage({ searchParams }) {
     where: {
       product: { serviceId: selectedService.id, abbreviation: { not: null } },
       branch: { isActive: true },
-      ...(selectedBranchId ? { branchId: selectedBranchId } : {}),
+      ...(selectedBranchId ? { branchId: selectedBranchId } : branchScope(access)),
       ...SELLABLE_ALLOCATION_WHERE,
     },
     select: { qtyRemaining: true, productId: true, product: { select: { name: true } } },
@@ -75,7 +82,7 @@ export default async function TodayPage({ searchParams }) {
   }, new Map()).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
   const atcsHref = selectedService ? `/admin/materials/atcs?service=${selectedService.id}${selectedBranchId ? `&branch=${selectedBranchId}` : ''}` : '/admin/materials/atcs';
   const recentSales = selectedService ? await prisma.order.aggregate({
-    where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : {}), ...dateRangeWhere('saleDate', { from: businessToday(new Date(Date.now() - 6 * 86400000)) }) },
+    where: { status: 'active', branch: { serviceId: selectedService.id }, ...(selectedBranchId ? { branchId: selectedBranchId } : branchScope(access)), ...dateRangeWhere('saleDate', { from: businessToday(new Date(Date.now() - 6 * 86400000)) }) },
     _count: true, _sum: { grandTotal: true },
   }) : null;
   const counterHref = selectedService?.type === 'shop' ? '/admin/materials/counter' : '/admin/retail/counter';

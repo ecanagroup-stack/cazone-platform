@@ -10,6 +10,7 @@ import QuickActions from '@/components/shell/QuickActions';
 import AdminCountsProvider from '@/components/shell/AdminCountsProvider';
 import { getAccessibleBranchIds } from '@/lib/branchAccess';
 import { can } from '@/lib/permissions';
+import NoStationAssigned from '@/components/shell/NoStationAssigned';
 
 // Every page under here reads the session and the org's live data — never statically prerenderable.
 // Without this, Next can attempt a build-time static pass on a page that happens not to touch any
@@ -46,6 +47,18 @@ export default async function AdminLayout({ children }) {
       orderBy: { createdAt: 'asc' },
     });
   const services = allBusinessServices.filter((service) => service.isActive);
+
+  // A staff login with no branch to open (no UserBranchAccess rows, or only rows for deactivated branches)
+  // gets only the top bar, to sign out or change the password, and a message to ask the Admin — not a
+  // shell full of pages that would each fail.
+  if (accessibleBranches && services.every((service) => service.branches.length === 0)) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <TopBar org={organization} services={services} user={session.user} hasCustomers={false} addons={[]} noStation />
+        <main className="flex-1 p-6 max-w-6xl mx-auto w-full"><NoStationAssigned fuel={organization.businessType === 'fuel_station'} /></main>
+      </div>
+    );
+  }
 
   // The people who run customer conversations and orders; see components/shell/QuickActions.js.
   const showQuickActions = hasCustomers && ['owner', 'manager', 'materials_manager'].includes(session.user.role);

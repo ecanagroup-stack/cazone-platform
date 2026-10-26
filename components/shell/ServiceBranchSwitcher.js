@@ -10,7 +10,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 // an admin-only destination page, never a header widget a single-station manager sees. A
 // single-service/single-branch org here now gets the same feel — the only option is auto-selected
 // (no click required) and shown as plain text, not a one-item dropdown.
-export default function ServiceBranchSwitcher({ services }) {
+export default function ServiceBranchSwitcher({ services, noStation = false, placeLabel = 'station' }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -38,10 +38,17 @@ export default function ServiceBranchSwitcher({ services }) {
   // Auto-select the only service/branch a single-option org has, so no page ever shows a "pick a
   // service/branch" empty state just because nobody's clicked a dropdown with one item in it yet.
   useEffect(() => {
+    if (noStation) return;
     if (!serviceId && services.length === 1) { setParam('service', services[0].id); return; }
     if (activeService && !branchId && activeService.branches.length === 1) { setParam('branch', activeService.branches[0].id); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serviceId, branchId, activeService]);
+  }, [serviceId, branchId, activeService, noStation]);
+
+  // The signed-in login has no station/branch it may open (see app/admin/layout.js): say so rather than
+  // leaving an empty switcher, and never write a selection back.
+  if (noStation) {
+    return <span className="text-sm font-medium text-amber-700">No {placeLabel} assigned</span>;
+  }
 
   if (services.length === 0) {
     return <span className="text-sm text-gray-400">No services enabled yet</span>;
