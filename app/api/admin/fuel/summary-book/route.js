@@ -25,6 +25,11 @@ export const GET = withOrg(async (request) => {
     if (!from || !to) throw new ApiError('from and to are required', 400);
     await requireBranch(session, branchId);
 
+    // Tolerance is the allowed loss as a % of the litres sold (the branch's reconciliation tolerance, 0.5% unless
+    // the owner set another); each row carries it in litres so the book can total it like stock in and revenue.
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { config: true } });
+    const tolerancePct = Number(branch?.config?.reconciliationTolerancePct) || 0.5;
+
     const shifts = await prisma.shift.findMany({
       where: { branchId, operatingDate: { gte: from, lte: to } },
       orderBy: { openedAt: 'asc' },
@@ -94,6 +99,7 @@ export const GET = withOrg(async (request) => {
           shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
           product: agg.product.name, productId,
           openingStock: opening, stockIn: receipts, book, sales: agg.sales, price,
+          tolerancePct, tolerance: Math.round(agg.sales * tolerancePct * 10) / 1000,
           totalAmount: agg.amount, collected: agg.collected,
           closingStock: closingRecon ? closingRecon.measured : recordedClosingDips.length
             ? recordedClosingDips.reduce((sum, dip) => sum + dip.measured, 0) : null,
@@ -107,7 +113,7 @@ export const GET = withOrg(async (request) => {
         date: `${shift.operatingDate}T12:00:00.000Z`, openedAt: shift.openedAt,
         shiftLabel: shift.shiftLabel, shiftOrder: shift.shiftOrder,
         product: 'Unconfirmed pump readings', productId: null,
-        openingStock: 0, stockIn: 0, book: null, sales: 0, price: 0,
+        openingStock: 0, stockIn: 0, book: null, sales: 0, price: 0, tolerancePct, tolerance: 0,
         totalAmount: 0, collected: 0, closingStock: null, closingStockSource: null,
         salesShortage: 0, deliveryShortage: 0, deliveryExcess: 0,
         shortage: 0, unknownCollections: 0, incompleteReadings,

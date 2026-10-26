@@ -480,7 +480,8 @@ function CashSummary({ branchId, serviceId, from, to }) {
           csvRows={data.deposits}
           csvColumns={[
             ...(allBranches ? [{ key: 'branch', label: 'Branch' }] : []),
-            { key: 'businessDate', label: 'Date', value: (r) => formatDate(r.businessDate) },
+            { key: 'businessDate', label: 'Date of Deposit', value: (r) => formatDate(r.businessDate) },
+            { key: 'operatingDate', label: 'Operating Day', value: (r) => r.operatingDate ? formatDate(r.operatingDate) : '' },
             { key: 'amount', label: 'Amount', value: (r) => (r.amount / 100).toFixed(2) },
             { key: 'bankName', label: 'Bank' },
             { key: 'status', label: 'Status' },
@@ -493,18 +494,20 @@ function CashSummary({ branchId, serviceId, from, to }) {
             <thead className={theadCls}>
               <tr>
                 {allBranches && <th className="px-4 py-3 text-left font-medium">Branch</th>}
-                <th className="px-4 py-3 text-left font-medium">Date</th>
+                <th className="px-4 py-3 text-left font-medium">Date of deposit</th>
+                <th className="px-4 py-3 text-left font-medium">Operating day</th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
                 <th className="px-4 py-3 text-left font-medium">Bank</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {data.deposits.length === 0 && <EmptyRow colSpan={allBranches ? 5 : 4} text="No deposits in this range" />}
+              {data.deposits.length === 0 && <EmptyRow colSpan={allBranches ? 6 : 5} text="No deposits in this range" />}
               {data.deposits.map((d) => (
                 <tr key={d.id}>
                   {allBranches && <td className="px-4 py-3">{d.branch}</td>}
                   <td className="px-4 py-3 text-gray-500">{formatDate(d.businessDate)}</td>
+                  <td className="px-4 py-3 text-gray-500">{d.operatingDate ? formatDate(d.operatingDate) : '—'}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(d.amount / 100)}</td>
                   <td className="px-4 py-3">{d.bankName}</td>
                   <td className="px-4 py-3"><StatusPill status={d.status} color={d.status === 'approved' ? 'green' : d.status === 'rejected' ? 'red' : 'amber'} /></td>

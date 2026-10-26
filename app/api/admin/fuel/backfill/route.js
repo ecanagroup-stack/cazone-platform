@@ -8,6 +8,33 @@ import { summarizePumpCollection, summarizeTankProduct, validateCollectionInput,
 import { evaluateVariance } from '@/lib/reconciliation';
 import { canAccessBranch, getAccessibleBranchIds, requireRecordBranch } from '@/lib/branchAccess';
 import { jsonSafe } from '@/lib/jsonSafe';
+import { logAudit } from '@/lib/audit';
+import { parseBusinessDate } from '@/lib/saleDates.mjs';
+import { computeBackfillDelivery, withOffloadFigures, canOffloadFuel, FUEL_VEHICLE_WHERE } from '@/lib/fuelDelivery.mjs';
+
+const DELIVERY_STAFF = ['owner', 'manager', 'supervisor'];
+const DELIVERY_INCLUDE = { supplier: true, vehicle: true, product: true, tank: true, tanks: { include: { tank: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } };
+
+// A historical shift's saved deliveries (and the tankers a delivery can name), so the Deliveries step can
+// list, edit and delete what is already recorded rather than only the forms submitted this visit.
+export const GET = withOrg(async (request) => {
+  try {
+    const session = await getOrgSession();
+    if (!DELIVERY_STAFF.includes(session.user.role)) throw new ApiError('Only station managers and supervisors can enter this historical record', 403);
+    const shiftId = new URL(request.url).searchParams.get('shiftId');
+    if (!shiftId) throw new ApiError('shiftId is required', 400);
+    const shift = await loadBackfillShift(shiftId, session);
+    // Deliveries saved before they carried a shiftId belong to the shift whose window holds their time.
+    const mine = { branchId: shift.branchId, isBackfill: true, OR: [{ shiftId }, { shiftId: null, createdAt: { gte: shift.openedAt, lte: shift.closedAt } }] };
+    const [deliveries, vehicles] = await Promise.all([
+      prisma.delivery.findMany({ where: mine, include: DELIVERY_INCLUDE, orderBy: { createdAt: 'asc' } }),
+      prisma.vehicle.findMany({ where: FUEL_VEHICLE_WHERE, select: { id: true, plateNumber: true, driverName: true, driverPhone: true }, orderBy: { plateNumber: 'asc' } }),
+    ]);
+    return NextResponse.json(jsonSafe({ success: true, data: { deliveries: deliveries.map(withOffloadFigures), vehicles } }));
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: e.status || 400 });
+  }
+});
 
 // Shared historical station entry — one step per call (Date & Branch -> Shift -> Pump Readings ->
 // Deliveries -> Tank Dips -> Payments -> Bank Deposits), with OTP verification for each new shift.
@@ -24,8 +51,8 @@ import { jsonSafe } from '@/lib/jsonSafe';
 // has no live supervisor/cashier/manager division of labor to route through.
 export const POST = withOrg(async (request) => {
   const session = await getOrgSession();
-  if (!['owner', 'manager', 'supervisor', 'cashier'].includes(session.user.role))
-    return NextResponse.json({ error: 'Station staff access required' }, { status: 403 });
+  if (!['owner', 'manager', 'supervisor'].includes(session.user.role))
+    return NextResponse.json({ error: 'Only owners, managers and supervisors can enter historical records' }, { status: 403 });
   try {
     const body = await request.json();
     const type = body.type;
@@ -37,10 +64,10 @@ export const POST = withOrg(async (request) => {
       throw new ApiError('Branch access denied', 403);
     if (type === 'shift' && !['owner', 'manager', 'supervisor'].includes(session.user.role))
       throw new ApiError('Only station managers and supervisors can create historical shifts', 403);
-    if (['reading', 'delivery', 'dip'].includes(type) && !['owner', 'manager', 'supervisor'].includes(session.user.role))
+    if (['reading', 'delivery', 'updateDelivery', 'deleteDelivery', 'dip'].includes(type) && !DELIVERY_STAFF.includes(session.user.role))
       throw new ApiError('Only station managers and supervisors can enter this historical record', 403);
-    if (['payment', 'deposit'].includes(type) && !['owner', 'manager', 'cashier'].includes(session.user.role))
-      throw new ApiError('Only station managers and cashiers can enter this historical record', 403);
+    if (['payment', 'deposit'].includes(type) && !['owner', 'manager'].includes(session.user.role))
+      throw new ApiError('Only station managers can enter this historical record', 403);
 
     // OTP verified once per shift created — an OtpCode is single-use (lib/otp.js), so each new
     // historical shift needs its own fresh code. Every other step just requires that shift to already
@@ -52,6 +79,8 @@ export const POST = withOrg(async (request) => {
     if (type === 'reading') return await handleReading(session, body);
     if (type === 'payment') return await handlePayment(session, body);
     if (type === 'delivery') return await handleDelivery(session, body);
+    if (type === 'updateDelivery') return await handleUpdateDelivery(session, body);
+    if (type === 'deleteDelivery') return await handleDeleteDelivery(session, body);
     if (type === 'dip') return await handleDip(session, body);
     if (type === 'deposit') return await handleDeposit(session, body);
     throw new ApiError('Invalid backfill type', 400);
@@ -244,16 +273,60 @@ async function handlePayment(session, body) {
   return NextResponse.json({ success: true, data: updated });
 }
 
+// Reads and validates one historical delivery's form: the product's receiving tank, the DECLARED load
+// (waybill, optional) and the ACTUAL litres received (required; stock goes up by this, never the declared
+// load), an optional cost per litre (kobo), supplier and tanker/driver. Shared by add and edit.
+async function readDeliveryInput(branchId, body) {
+  const productId = body.productId;
+  if (!productId) throw new ApiError('Shift and product are required', 400);
+  const [product, tanks] = await Promise.all([
+    prisma.product.findUnique({ where: { id: productId } }),
+    prisma.tank.findMany({ where: { branchId } }),
+  ]);
+  if (!product) throw new ApiError('Product not found', 404);
+
+  let offload;
+  try { offload = computeBackfillDelivery({ productId, tankId: body.tankId, declaredLoad: body.declaredLoad, actualLitres: body.actualLitres, branchTanks: tanks }); }
+  catch (error) { throw new ApiError(error.message, 400); }
+
+  // Optional, as in the old backfill form: a delivery with no price on the paper record is still a delivery.
+  let costPerUnit = null;
+  let totalCost = null;
+  if (body.costPerUnit !== '' && body.costPerUnit != null) {
+    costPerUnit = Math.round(Number(body.costPerUnit));
+    if (!Number.isSafeInteger(costPerUnit) || costPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
+    const totalCostNumber = Math.round(offload.actual * costPerUnit);
+    if (!Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
+    totalCost = BigInt(totalCostNumber);
+  }
+
+  // The truck and driver are optional too. A named tanker prefills the driver, which stays editable per trip.
+  let vehicle = null;
+  if (body.vehicleId) {
+    vehicle = await prisma.vehicle.findFirst({ where: { AND: [FUEL_VEHICLE_WHERE, { id: String(body.vehicleId) }] } });
+    if (!vehicle) throw new ApiError('Choose a registered tanker, or leave the truck blank', 400);
+  }
+  const driverName = String(body.driverName ?? vehicle?.driverName ?? '').trim() || null;
+  const driverPhone = String(body.driverPhone ?? vehicle?.driverPhone ?? '').trim() || null;
+  return { product, offload, costPerUnit, totalCost, vehicle, driverName, driverPhone, supplierName: String(body.supplierName || '').trim() };
+}
+
+// The supplier a delivery names: an existing one by id, or by name (reused when the business already has
+// it, so typing the same supplier on every delivery does not pile up duplicates), else a new one.
+async function resolveSupplier(tx, body, supplierName) {
+  if (body.supplierId) {
+    if (!(await tx.supplier.findFirst({ where: { id: body.supplierId } }))) throw new ApiError('Supplier not found', 400);
+    return body.supplierId;
+  }
+  if (!supplierName) return null;
+  const existing = await tx.supplier.findFirst({ where: { name: { equals: supplierName, mode: 'insensitive' } } });
+  return (existing || await tx.supplier.create({ data: { name: supplierName } })).id;
+}
+
 async function handleDelivery(session, body) {
   const organizationId = session.user.organizationId;
   const shiftId = body.shiftId;
-  const productId = body.productId;
-  const quantity = Number(body.quantity);
-  const costPerUnit = Math.round(Number(body.costPerUnit));
-  const supplierName = (body.supplierName || '').trim();
-  if (!shiftId || !productId) throw new ApiError('Shift and product are required', 400);
-  if (!Number.isFinite(quantity) || quantity <= 0) throw new ApiError('Quantity must be positive', 400);
-  if (!Number.isFinite(costPerUnit) || costPerUnit < 0) throw new ApiError('Invalid cost per unit', 400);
+  if (!shiftId) throw new ApiError('Shift and product are required', 400);
 
   const shift = await loadBackfillShift(shiftId, session);
   const branchId = shift.branchId;
@@ -261,28 +334,154 @@ async function handleDelivery(session, body) {
   // computing this specific shift's period.
   const at = new Date((shift.openedAt.getTime() + shift.closedAt.getTime()) / 2);
 
-  const totalCostNumber = Math.round(quantity * costPerUnit);
-  if (!Number.isSafeInteger(totalCostNumber)) throw new ApiError('Total delivery cost is too large to record safely', 400);
-  const totalCost = BigInt(totalCostNumber);
-  const dup = await prisma.delivery.findFirst({
-    where: { branchId, productId, quantity, costPerUnit, isBackfill: true, createdAt: { gte: shift.openedAt, lte: shift.closedAt } },
-  });
-  if (dup) return NextResponse.json(jsonSafe({ success: true, data: dup, reused: true }));
+  const input = await readDeliveryInput(branchId, body);
+  const { product, offload, vehicle } = input;
 
-  const { delivery } = await prisma.$transaction(async (tx) => {
-    let supplierId = body.supplierId || null;
-    if (!supplierId && supplierName) {
-      const supplier = await tx.supplier.create({ data: { organizationId, name: supplierName } });
-      supplierId = supplier.id;
-    }
+  // The same load (shift, product, tank, litres) submitted twice is almost certainly a double click or a
+  // re-sent form, so the saved one comes back instead of a second record. Two different loads differ in tank or litres.
+  const dup = await prisma.delivery.findFirst({
+    where: { branchId, shiftId, productId: product.id, tankId: offload.tank.tankId, quantity: offload.actual, isBackfill: true },
+    include: DELIVERY_INCLUDE,
+  });
+  if (dup) return NextResponse.json(jsonSafe({ success: true, data: withOffloadFigures(dup), reused: true }));
+
+  const delivery = await prisma.$transaction(async (tx) => {
+    const supplierId = await resolveSupplier(tx, body, input.supplierName);
     const created = await tx.delivery.create({
-      data: { organizationId, branchId, supplierId, productId, quantity, costPerUnit, totalCost, status: 'received', receivedAt: at, createdBy: session.user.id, createdAt: at, isBackfill: true },
+      data: {
+        organizationId, branchId, supplierId, vehicleId: vehicle?.id ?? null, productId: product.id,
+        quantity: offload.actual, costPerUnit: input.costPerUnit, totalCost: input.totalCost,
+        status: 'received', receivedAt: at, createdBy: session.user.id, createdAt: at, isBackfill: true,
+        shiftId, businessDate: shift.operatingDate ? parseBusinessDate(shift.operatingDate, 'Shift date') : null,
+        driverName: input.driverName, driverPhone: input.driverPhone,
+        // Only a declared load makes this a delivery with a variance; without one it stays a plain receipt.
+        declaredLoad: offload.declaredLoad, offloadVariance: offload.variance,
+        tankId: offload.tank.tankId,
+      },
     });
-    await tx.stockMove.create({ data: { organizationId, branchId, productId, qty: quantity, reason: 'purchase', ref: created.id, userId: session.user.id, at } });
-    return { delivery: created };
+    await tx.deliveryTank.create({ data: { organizationId, deliveryId: created.id, tankId: offload.tank.tankId, openingDip: null, closingDip: null, offloaded: offload.actual } });
+    await tx.stockMove.create({ data: { organizationId, branchId, productId: product.id, qty: offload.actual, reason: 'purchase', ref: created.id, userId: session.user.id, at } });
+    return tx.delivery.findUnique({ where: { id: created.id }, include: DELIVERY_INCLUDE });
   }, { timeout: 15000 });
 
-  return NextResponse.json(jsonSafe({ success: true, data: delivery }), { status: 201 });
+  await logAudit({
+    organizationId, actorUserId: session.user.id, actorName: session.user.name,
+    action: 'fuel.delivery.backfilled', entityType: 'Delivery', entityId: delivery.id,
+    after: {
+      branchId, shiftId, operatingDate: shift.operatingDate, product: product.name, tank: offload.tank.tankLabel, truck: vehicle?.plateNumber ?? null,
+      declaredLoad: offload.declaredLoad, actual: offload.actual, offloadVariance: offload.variance,
+    },
+  });
+  if (offload.shortage > 0) {
+    await notifyAlteration({
+      actor: session.user, branchId, type: 'delivery_shortage', title: 'Fuel delivery came in short',
+      message: `${session.user.name} recorded a historical delivery for ${shift.operatingDate}: ${offload.actual.toLocaleString()} L of ${product.name} received${vehicle ? ` from truck ${vehicle.plateNumber}` : ''}, ${offload.shortage.toLocaleString()} L short of the ${offload.declaredLoad.toLocaleString()} L declared.`,
+      relatedType: 'Delivery', relatedId: delivery.id,
+    });
+  }
+
+  return NextResponse.json(jsonSafe({ success: true, data: withOffloadFigures(delivery) }), { status: 201 });
+}
+
+// Loads a saved historical delivery for an edit or delete. The branch comes from the delivery itself (never
+// from the request), and only a delivery entered through Historical Entries can be changed here: a live one
+// goes through the audited correction on the Truck Offload page.
+async function loadBackfillDelivery(session, deliveryId) {
+  if (!canOffloadFuel(session.user.role)) throw new ApiError('Only an owner or manager can change a historical fuel delivery', 403);
+  if (!deliveryId) throw new ApiError('deliveryId is required', 400);
+  const delivery = await prisma.delivery.findUnique({ where: { id: deliveryId }, include: { product: true } });
+  await requireRecordBranch(session, delivery, 'Delivery not found');
+  if (!delivery.isBackfill) throw new ApiError('Only a historical delivery can be changed here', 400);
+  return delivery;
+}
+
+const deliverySnapshot = (delivery) => ({
+  productId: delivery.productId, tankId: delivery.tankId, quantity: delivery.quantity, declaredLoad: delivery.declaredLoad,
+  offloadVariance: delivery.offloadVariance, costPerUnit: delivery.costPerUnit, totalCost: delivery.totalCost?.toString() ?? null,
+  supplierId: delivery.supplierId, vehicleId: delivery.vehicleId, driverName: delivery.driverName, driverPhone: delivery.driverPhone,
+});
+
+// The offsetting entries for a historical delivery's stock are dated where the original receipt sits (inside
+// its shift), so stock as of any date, and the shifts after it, still add up. Nothing in the ledger is edited.
+async function deliveryReceiptTime(tx, delivery) {
+  const receipt = await tx.stockMove.findFirst({ where: { ref: delivery.id, reason: 'purchase' }, orderBy: { at: 'asc' } });
+  return receipt?.at || delivery.createdAt;
+}
+
+async function handleUpdateDelivery(session, body) {
+  const delivery = await loadBackfillDelivery(session, body.deliveryId);
+  const organizationId = session.user.organizationId;
+  const branchId = delivery.branchId;
+
+  const input = await readDeliveryInput(branchId, body);
+  const { product, offload, vehicle } = input;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const at = await deliveryReceiptTime(tx, delivery);
+    const note = `Edit of historical delivery ${delivery.id}`;
+    const move = (productId, qty) => tx.stockMove.create({ data: { organizationId, branchId, productId, qty, reason: 'adjustment', ref: delivery.id, userId: session.user.id, note, at } });
+    if (product.id !== delivery.productId) {
+      await move(delivery.productId, -delivery.quantity);
+      await move(product.id, offload.actual);
+    } else if (offload.actual !== delivery.quantity) {
+      await move(product.id, offload.actual - delivery.quantity);
+    }
+
+    const supplierId = await resolveSupplier(tx, body, input.supplierName);
+    await tx.deliveryTank.deleteMany({ where: { deliveryId: delivery.id } });
+    await tx.deliveryTank.create({ data: { organizationId, deliveryId: delivery.id, tankId: offload.tank.tankId, openingDip: null, closingDip: null, offloaded: offload.actual } });
+    await tx.delivery.update({
+      where: { id: delivery.id },
+      data: {
+        productId: product.id, tankId: offload.tank.tankId, quantity: offload.actual, costPerUnit: input.costPerUnit, totalCost: input.totalCost,
+        supplierId, vehicleId: vehicle?.id ?? null, driverName: input.driverName, driverPhone: input.driverPhone,
+        declaredLoad: offload.declaredLoad, offloadVariance: offload.variance, openingDip: null, closingDip: null,
+      },
+    });
+    return tx.delivery.findUnique({ where: { id: delivery.id }, include: DELIVERY_INCLUDE });
+  }, { timeout: 15000 });
+
+  await logAudit({
+    organizationId, actorUserId: session.user.id, actorName: session.user.name,
+    action: 'fuel.delivery.backfill_edited', entityType: 'Delivery', entityId: delivery.id,
+    before: deliverySnapshot(delivery), after: deliverySnapshot(updated),
+  });
+  const shortNote = offload.shortage > 0 ? ` It is now ${offload.shortage.toLocaleString()} L short of the ${offload.declaredLoad.toLocaleString()} L declared.` : '';
+  await notifyAlteration({
+    actor: session.user, branchId, type: offload.shortage > 0 ? 'delivery_shortage' : 'delivery_corrected', title: 'Historical fuel delivery edited',
+    message: `${session.user.name} edited a historical delivery of ${delivery.product.name} from ${delivery.quantity.toLocaleString()} L to ${offload.actual.toLocaleString()} L received.${shortNote}`,
+    relatedType: 'Delivery', relatedId: delivery.id,
+  });
+
+  return NextResponse.json(jsonSafe({ success: true, data: withOffloadFigures(updated) }));
+}
+
+async function handleDeleteDelivery(session, body) {
+  const delivery = await loadBackfillDelivery(session, body.deliveryId);
+  const organizationId = session.user.organizationId;
+  const branchId = delivery.branchId;
+
+  await prisma.$transaction(async (tx) => {
+    const at = await deliveryReceiptTime(tx, delivery);
+    // The litres come back out of stock through an offsetting entry; the original receipt stays in the ledger.
+    await tx.stockMove.create({
+      data: { organizationId, branchId, productId: delivery.productId, qty: -delivery.quantity, reason: 'adjustment', ref: delivery.id, userId: session.user.id, note: `Deleted historical delivery ${delivery.id}`, at },
+    });
+    await tx.delivery.delete({ where: { id: delivery.id } });
+  }, { timeout: 15000 });
+
+  await logAudit({
+    organizationId, actorUserId: session.user.id, actorName: session.user.name,
+    action: 'fuel.delivery.backfill_deleted', entityType: 'Delivery', entityId: delivery.id,
+    before: { ...deliverySnapshot(delivery), shiftId: delivery.shiftId },
+  });
+  await notifyAlteration({
+    actor: session.user, branchId, type: 'delivery_corrected', title: 'Historical fuel delivery deleted',
+    message: `${session.user.name} deleted a historical delivery of ${delivery.quantity.toLocaleString()} L of ${delivery.product.name}.`,
+    relatedType: 'Delivery', relatedId: delivery.id,
+  });
+
+  return NextResponse.json({ success: true, data: { deleted: true } });
 }
 
 async function handleDip(session, body) {

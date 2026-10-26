@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { BusinessDateField, Card, EmptyState, Field, Loader, NumberInput, PageHeader, btnPrimaryCls, inputCls } from '@/components/ui';
 import { businessToday } from '@/lib/saleDates.mjs';
+import { operatingDateAt } from '@/lib/fuelCollections.mjs';
 
 const blankDeposit = () => ({ shiftId: '', amount: '', bankName: '', accountNumber: '', depositDate: businessToday(), backdateOtp: '' });
 
@@ -153,7 +154,7 @@ export default function FuelCollectionsPage() {
           </div>
           <button disabled={saving} className={btnPrimaryCls}>Record Deposit</button>
         </form>
-        {data.deposits.length > 0 && <div className="mt-4 text-sm space-y-1">{data.deposits.map((d) => <p key={d.id}>₦{(d.amount / 100).toLocaleString()} · {d.bankName} · {d.status}</p>)}</div>}
+        {data.deposits.length > 0 && <div className="mt-4 text-sm space-y-1">{data.deposits.map((d) => <p key={d.id}>₦{(d.amount / 100).toLocaleString()} · {d.bankName} · deposited {d.depositDate ? d.depositDate.slice(0, 10) : operatingDateAt(new Date(d.createdAt))} · {d.status}</p>)}</div>}
       </Card>}
     </>}
     {target && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"><Card className="p-5 w-full max-w-lg">

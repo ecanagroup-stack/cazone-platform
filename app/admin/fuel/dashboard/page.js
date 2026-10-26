@@ -7,6 +7,7 @@ import { Card } from '@/components/ui';
 import NoStationAssigned from '@/components/shell/NoStationAssigned';
 import FuelQuickPriceUpdate from '@/components/fuel/FuelQuickPriceUpdate';
 import { summarizePumpCollection } from '@/lib/fuelCollections.mjs';
+import { getOnHandByProduct } from '@/lib/stock';
 
 const ROLE_VIEW = {
   owner: { title: 'Station Overview', subtitle: 'Shifts, sales, cash collections and review across your stations' },
@@ -29,6 +30,9 @@ const ACTIONS = {
   external_auditor: [['Daily summary', '/admin/fuel/summary-book'], ['Flags', '/admin/exceptions']],
   auditor: [['Daily summary', '/admin/fuel/summary-book'], ['Tank stock', '/admin/fuel/tanks'], ['Flags', '/admin/exceptions']],
 };
+
+// Roles that see the litres left in the tanks on their dashboard (the cashier works on money, not stock).
+const STOCK_VIEW_ROLES = ['owner', 'manager', 'supervisor', 'auditor', 'daily_auditor'];
 
 const money = (kobo) => `₦${(kobo / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 
@@ -58,6 +62,19 @@ export default async function FuelDashboard({ searchParams }) {
 
   const openShift = await prisma.shift.findFirst({ where: { branchId: selectedBranch.id, status: 'open' }, select: { id: true, shiftLabel: true, operatingDate: true, openedAt: true }, orderBy: { openedAt: 'desc' } });
   const operatingDate = openShift?.operatingDate || new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date());
+  // Remaining stock is the live ledger balance per product, set against the capacity of the tanks that hold it.
+  const stockByProduct = STOCK_VIEW_ROLES.includes(role) ? await (async () => {
+    const tanks = await prisma.tank.findMany({ where: { branchId: selectedBranch.id }, include: { product: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } });
+    const onHand = await getOnHandByProduct(selectedBranch.id, [...new Set(tanks.map((tank) => tank.productId))]);
+    const byProduct = new Map();
+    for (const tank of tanks) {
+      const entry = byProduct.get(tank.productId) || { name: tank.product?.name || 'Fuel', litres: onHand[tank.productId] || 0, capacity: 0, tanks: 0 };
+      entry.capacity += tank.capacity || 0;
+      entry.tanks += 1;
+      byProduct.set(tank.productId, entry);
+    }
+    return [...byProduct.values()].sort((a, b) => a.name.localeCompare(b.name));
+  })() : null;
   const [sales, collections, deposits, pending, cashierRows] = await Promise.all([
     prisma.meterReading.aggregate({ where: { branchId: selectedBranch.id, shift: { operatingDate }, ...(role === 'supervisor' ? { recordedBy: session.user.id } : {}), litres: { gt: 0 } }, _sum: { litres: true, expectedAmount: true }, _count: true }),
     prisma.fuelCollection.aggregate({ where: { branchId: selectedBranch.id, operatingDate, voidedAt: null, ...(role === 'cashier' ? { recordedBy: session.user.id } : {}) }, _sum: { cashAmount: true, posAmount: true, totalAmount: true }, _count: true }),
@@ -113,6 +130,20 @@ export default async function FuelDashboard({ searchParams }) {
       <Card className="p-5"><p className="text-xs text-gray-500">Recorded collections</p><p className="mt-1 text-2xl font-bold">{money(collections._sum.totalAmount || 0)}</p><p className="text-xs text-gray-500">Cash {money(collections._sum.cashAmount || 0)} · POS {money(collections._sum.posAmount || 0)}</p></Card>
       <Card className="p-5"><p className="text-xs text-gray-500">Bank deposits</p><p className="mt-1 text-2xl font-bold">{money(deposits._sum.amount || 0)}</p><p className="text-xs text-gray-500">{deposits._count} records</p></Card>
     </div>
+    {stockByProduct && <div>
+      <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">Remaining stock</h2>
+      {stockByProduct.length === 0 ? <Card className="p-5"><p className="text-sm text-gray-500">No tanks are set up at this station yet.</p></Card> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {stockByProduct.map((item) => {
+          const percent = item.capacity > 0 ? Math.max(0, Math.min(100, Math.round((item.litres / item.capacity) * 100))) : null;
+          return <Card key={item.name} className="p-5">
+            <p className="text-xs text-gray-500">{item.name}</p>
+            <p className="mt-1 text-2xl font-bold">{(Math.max(0, Math.round(item.litres * 1000) / 1000)).toLocaleString('en-NG')} L</p>
+            <p className="text-xs text-gray-500">{item.tanks} {item.tanks === 1 ? 'tank' : 'tanks'}{item.capacity > 0 ? ` · ${item.capacity.toLocaleString('en-NG')} L capacity` : ''}</p>
+            {percent != null && <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100"><div className={`h-full rounded-full ${percent < 20 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${percent}%` }} /></div>}
+          </Card>;
+        })}
+      </div>}
+    </div>}
     {role === 'cashier' && cashierRows && <Card className="overflow-hidden border-brand-200">
       <div className="border-b bg-brand-50 px-5 py-4">
         <h2 className="font-semibold text-gray-900">Cashier handover · {operatingDate}</h2>

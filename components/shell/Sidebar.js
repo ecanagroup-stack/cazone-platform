@@ -104,7 +104,7 @@ const FUEL_GROUPS = [
     { href: '/admin/fuel/collections', label: 'Cashier Entries', icon: FiCreditCard, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/fuel/collections', label: 'View Payments', icon: FiFileText, roles: ['cashier'] },
     { href: '/admin/fuel/collections', label: 'Bank Deposits', icon: FiCreditCard, roles: ['cashier', 'owner', 'manager'], liveOnly: true },
-    { href: '/admin/fuel/backfill', label: 'Historical Entries', icon: FiClock, roles: ['owner', 'manager', 'supervisor', 'cashier'] },
+    { href: '/admin/fuel/backfill', label: 'Historical Entries', icon: FiClock, roles: ['owner', 'manager', 'supervisor'] },
     { href: '/admin/fuel/summary-book', label: 'Summary Book', icon: FiBookOpen, roles: ['owner', 'manager', 'auditor', 'daily_auditor', 'external_auditor'] },
     { href: '/admin/fuel/shift', label: 'End Day', icon: FiClock, roles: ['owner', 'manager'], liveOnly: true },
     { href: '/admin/deliveries', label: 'Truck Offload', icon: FiTruck, roles: ['owner', 'manager'], liveOnly: true },

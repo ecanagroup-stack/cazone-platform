@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeFuelOffload, offloadVariance, reallocateOffload, canOffloadFuel, canViewFuelDeliveries } from '../lib/fuelDelivery.mjs';
+import { computeFuelOffload, computeBackfillDelivery, withOffloadFigures, offloadVariance, reallocateOffload, canOffloadFuel, canViewFuelDeliveries } from '../lib/fuelDelivery.mjs';
 
 const branchTanks = [
   { id: 't1', label: 'Tank 1', productId: 'pms' },
@@ -91,4 +91,29 @@ test('only owner and manager record a fuel offload; auditors may read the histor
   for (const role of ['staff', 'materials_manager', 'atc_manager', 'supervisor', 'cashier', 'auditor']) assert.equal(canOffloadFuel(role), false, role);
   assert.ok(canViewFuelDeliveries('auditor') && canViewFuelDeliveries('manager'));
   for (const role of ['staff', 'cashier', 'supervisor']) assert.equal(canViewFuelDeliveries(role), false, role);
+});
+
+test('a historical delivery needs the tank and the actual litres, and keeps declared optional', () => {
+  const full = computeBackfillDelivery({ ...base, tankId: 't1', declaredLoad: '33000', actualLitres: '32850.5' });
+  assert.deepEqual([full.declaredLoad, full.actual, full.variance, full.shortage, full.excess], [33000, 32850.5, -149.5, 149.5, 0]);
+  assert.deepEqual(full.tank, { tankId: 't1', tankLabel: 'Tank 1', openingDip: null, closingDip: null, offloaded: 32850.5 });
+  const over = computeBackfillDelivery({ ...base, tankId: 't2', declaredLoad: 1000, actualLitres: 1010 });
+  assert.deepEqual([over.variance, over.shortage, over.excess], [10, 0, 10]);
+  assert.throws(() => computeBackfillDelivery({ ...base, declaredLoad: 100, actualLitres: 100 }), /receiving tank/);
+  assert.throws(() => computeBackfillDelivery({ ...base, tankId: 'nope', actualLitres: 100 }), /does not belong/);
+  assert.throws(() => computeBackfillDelivery({ ...base, tankId: 't3', actualLitres: 100 }), /does not hold/);
+  assert.throws(() => computeBackfillDelivery({ ...base, tankId: 't1', declaredLoad: 100 }), /actual litres/);
+  assert.throws(() => computeBackfillDelivery({ ...base, tankId: 't1', actualLitres: 0 }), /positive/);
+  assert.throws(() => computeBackfillDelivery({ ...base, tankId: 't1', declaredLoad: 0, actualLitres: 5 }), /Declared load/);
+});
+
+test('with no declared load a historical delivery has no variance, not a zero shortage', () => {
+  for (const declaredLoad of [undefined, null, '']) {
+    const plain = computeBackfillDelivery({ ...base, tankId: 't1', declaredLoad, actualLitres: 8000 });
+    assert.deepEqual([plain.declaredLoad, plain.variance, plain.shortage, plain.excess], [null, null, 0, 0]);
+    assert.equal(plain.actual, 8000);
+  }
+  const figures = withOffloadFigures({ quantity: 8000, declaredLoad: null });
+  assert.deepEqual([figures.actualLitres, figures.offloadVariance, figures.shortage, figures.excess], [8000, null, 0, 0]);
+  assert.equal(withOffloadFigures({ quantity: 90, declaredLoad: 100 }).shortage, 10);
 });

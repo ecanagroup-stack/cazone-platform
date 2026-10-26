@@ -161,7 +161,7 @@ test('the branch-scoped write routes keep their checks', () => {
     'fuel/dispensers POST', 'fuel/dispensers/[id] PATCH',
     'fuel/pos-terminals POST', 'fuel/pos-terminals/[id] PATCH',
     'fuel/attendants POST', 'fuel/attendants/[id] PATCH', 'fuel/attendants/[id]/notes POST',
-    'fuel/collections GET', 'fuel/collections/[id]/void POST', 'fuel/backfill POST', 'fuel/audit-comments POST',
+    'fuel/collections GET', 'fuel/collections/[id]/void POST', 'fuel/backfill POST', 'fuel/backfill GET', 'fuel/audit-comments POST',
     'branches/[id] PATCH', 'deliveries POST', 'deliveries/[id]/correct POST', 'deliveries/[id]/arrive POST',
     'deliveries/[id]/assign POST', 'deliveries/[id]/loading POST',
     'deposits POST', 'deposits/[id] PATCH', 'deposits/[id]/correct POST', 'exceptions/[id] PATCH',

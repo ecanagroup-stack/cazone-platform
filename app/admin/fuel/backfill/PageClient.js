@@ -7,6 +7,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { PageHeader, Card, EmptyState, Field, FormButtons, inputCls, btnPrimaryCls, tableActionCls, NumberInput, OtpField } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
+import { fmtL } from '@/app/admin/deliveries/FuelOffload';
 
 function yesterdayIso() {
   const d = new Date();
@@ -28,6 +29,20 @@ const STEPS = [
 ];
 
 const blankShiftForm = { shiftLabel: '', openTime: '08:00', closeTime: '20:00', openingFloat: '' };
+const blankDeliveryForm = { productId: '', tankId: '', declaredLoad: '', actualLitres: '', costPerUnit: '', supplierName: '', vehicleId: '', driverName: '', driverPhone: '' };
+const blank = (value) => value === '' || value == null;
+
+// Shortage / excess of what was received against the waybill, as the old backfill form hinted it.
+// Nothing at all until both figures are in: without a declared load there is no claim to make.
+function deliveryHint(declaredLoad, actualLitres) {
+  if (blank(declaredLoad) || blank(actualLitres)) return null;
+  const variance = Math.round((Number(actualLitres) - Number(declaredLoad)) * 1000) / 1000;
+  if (!Number.isFinite(variance)) return null;
+  if (variance === 0) return { tone: 'text-emerald-600', text: 'No shortage: the full expected litres were discharged.' };
+  return variance < 0
+    ? { tone: 'text-red-600', text: `Driver shortage: ${fmtL(-variance)} L less than the expected litres` }
+    : { tone: 'text-emerald-600', text: `Excess: ${fmtL(variance)} L more than the expected litres` };
+}
 
 // Historical data entry for any Petrol Station business. A date can have any number of real shifts
 // at whatever times actually happened. OTP verification protects each new historical shift.
@@ -52,8 +67,10 @@ export default function BackfillPage() {
   const [readingForm, setReadingForm] = useState({ dispenserId: '', closing: '', rtt: '0', price: '' });
   const [readingsDone, setReadingsDone] = useState([]);
 
-  const [deliveryForm, setDeliveryForm] = useState({ productId: '', quantity: '', costPerUnit: '', supplierName: '' });
-  const [deliveriesDone, setDeliveriesDone] = useState([]);
+  const [deliveryForm, setDeliveryForm] = useState(blankDeliveryForm);
+  const [savedDeliveries, setSavedDeliveries] = useState([]); // this shift's saved historical deliveries
+  const [vehicles, setVehicles] = useState([]);
+  const [editingDeliveryId, setEditingDeliveryId] = useState(null);
 
   const [dipForm, setDipForm] = useState({ tankId: '', measured: '' });
   const [dipsDone, setDipsDone] = useState([]);
@@ -80,6 +97,18 @@ export default function BackfillPage() {
 
   useEffect(() => { if (step === 'shift') loadExistingShifts(); }, [step, loadExistingShifts]);
 
+  // Only an owner or manager may change a saved delivery (the server enforces it too).
+  const canEditDeliveries = ['owner', 'manager'].includes(session?.user?.role);
+
+  const loadDeliveries = useCallback(async () => {
+    if (!activeShift) return;
+    const r = await fetch(`/api/admin/fuel/backfill?shiftId=${activeShift.id}`);
+    const d = await r.json();
+    if (d.success) { setSavedDeliveries(d.data.deliveries); setVehicles(d.data.vehicles); }
+  }, [activeShift]);
+
+  useEffect(() => { if (step === 'deliveries') loadDeliveries(); }, [step, loadDeliveries]);
+
   const submitStep = async (body) => {
     setSubmitting(true);
     try {
@@ -88,7 +117,7 @@ export default function BackfillPage() {
       });
       const d = await r.json();
       if (!d.success) { toast.error(d.error); return null; }
-      return d.data;
+      return d.reused ? { ...d.data, reused: true } : d.data;
     } finally {
       setSubmitting(false);
     }
@@ -129,8 +158,39 @@ export default function BackfillPage() {
 
   const handleDelivery = async (e) => {
     e.preventDefault();
-    const data = await submitStep({ type: 'delivery', shiftId: activeShift.id, productId: deliveryForm.productId, quantity: deliveryForm.quantity, costPerUnit: Math.round(Number(deliveryForm.costPerUnit) * 100), supplierName: deliveryForm.supplierName });
-    if (data) { toast.success('Delivery added'); setDeliveriesDone((d) => [...d, { ...deliveryForm }]); setDeliveryForm({ productId: '', quantity: '', costPerUnit: '', supplierName: '' }); }
+    const f = deliveryForm;
+    const data = await submitStep({
+      type: editingDeliveryId ? 'updateDelivery' : 'delivery', deliveryId: editingDeliveryId || undefined, shiftId: activeShift.id,
+      productId: f.productId, tankId: f.tankId, declaredLoad: f.declaredLoad, actualLitres: f.actualLitres,
+      costPerUnit: blank(f.costPerUnit) ? '' : Math.round(Number(f.costPerUnit) * 100),
+      supplierName: f.supplierName, vehicleId: f.vehicleId || undefined, driverName: f.driverName, driverPhone: f.driverPhone,
+    });
+    if (data) {
+      toast.success(editingDeliveryId ? 'Delivery updated' : data.reused ? 'That delivery was already recorded' : 'Delivery added');
+      setDeliveryForm(blankDeliveryForm); setEditingDeliveryId(null);
+      loadDeliveries();
+    }
+  };
+
+  const startEditDelivery = (d) => {
+    setEditingDeliveryId(d.id);
+    setDeliveryForm({
+      productId: d.productId, tankId: d.tankId || d.tanks?.[0]?.tankId || '', declaredLoad: d.declaredLoad ?? '', actualLitres: String(d.quantity),
+      costPerUnit: d.costPerUnit == null ? '' : String(Number(d.costPerUnit) / 100), supplierName: d.supplier?.name || '',
+      vehicleId: d.vehicleId || '', driverName: d.driverName || '', driverPhone: d.driverPhone || '',
+    });
+  };
+
+  const cancelEditDelivery = () => { setEditingDeliveryId(null); setDeliveryForm(blankDeliveryForm); };
+
+  const handleDeleteDelivery = async (d) => {
+    if (!window.confirm(`Delete this ${fmtL(d.quantity)} L ${d.product?.name || ''} delivery? Its litres come back out of stock.`)) return;
+    const data = await submitStep({ type: 'deleteDelivery', deliveryId: d.id });
+    if (data) {
+      toast.success('Delivery deleted');
+      if (editingDeliveryId === d.id) cancelEditDelivery();
+      loadDeliveries();
+    }
   };
 
   const handleDip = async (e) => {
@@ -153,13 +213,13 @@ export default function BackfillPage() {
 
   const finishShift = () => {
     toast.success('Shift complete — add another shift for this date, or start a new date');
-    setActiveShift(null); setReadingsDone([]); setDeliveriesDone([]); setDipsDone([]); setPaymentsDone([]); setDepositsDone([]);
+    setActiveShift(null); setReadingsDone([]); setSavedDeliveries([]); cancelEditDelivery(); setDipsDone([]); setPaymentsDone([]); setDepositsDone([]);
     setStep('shift');
   };
 
   const startNewDate = () => {
     setDate(yesterdayIso()); setActiveShift(null); setExistingShifts(null);
-    setReadingsDone([]); setDeliveriesDone([]); setDipsDone([]); setPaymentsDone([]); setDepositsDone([]);
+    setReadingsDone([]); setSavedDeliveries([]); cancelEditDelivery(); setDipsDone([]); setPaymentsDone([]); setDepositsDone([]);
     setStep('setup');
   };
 
@@ -304,25 +364,109 @@ export default function BackfillPage() {
         </Card>
       )}
 
-      {step === 'deliveries' && activeShift && (
-        <Card className="p-5 max-w-lg">
-          <p className="text-sm text-gray-500 mb-4">{deliveriesDone.length} delivery(ies) added for this shift. Optional — skip if none.</p>
-          <form onSubmit={handleDelivery} className="space-y-4">
-            <Field label="Product" required>
-              <select value={deliveryForm.productId} onChange={(e) => setDeliveryForm({ ...deliveryForm, productId: e.target.value })} className={inputCls} required>
-                <option value="">Select...</option>
-                {reference.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Quantity" required><NumberInput value={deliveryForm.quantity} onChange={(e) => setDeliveryForm({ ...deliveryForm, quantity: e.target.value })} required /></Field>
-              <Field label="Cost per litre" required><NumberInput value={deliveryForm.costPerUnit} onChange={(e) => setDeliveryForm({ ...deliveryForm, costPerUnit: e.target.value })} required /></Field>
-            </div>
-            <Field label="Supplier"><input type="text" value={deliveryForm.supplierName} onChange={(e) => setDeliveryForm({ ...deliveryForm, supplierName: e.target.value })} className={inputCls} /></Field>
-            <FormButtons onCancel={() => setStep('dips')} submitting={submitting} submitLabel="Add Delivery" />
-          </form>
-        </Card>
-      )}
+      {step === 'deliveries' && activeShift && (() => {
+        const f = deliveryForm;
+        const setF = (patch) => setDeliveryForm({ ...f, ...patch });
+        const matchingTanks = (reference.tanks || []).filter((t) => t.productId === f.productId);
+        const hint = deliveryHint(f.declaredLoad, f.actualLitres);
+        const pickVehicle = (vehicleId) => {
+          const vehicle = vehicles.find((v) => v.id === vehicleId);
+          setF({ vehicleId, driverName: vehicle?.driverName || '', driverPhone: vehicle?.driverPhone || '' });
+        };
+        return (
+          <div className="max-w-2xl space-y-5">
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold mb-1">{savedDeliveries.length} delivery(ies) saved for this shift</h3>
+              {savedDeliveries.length === 0 ? (
+                <p className="text-xs text-gray-500">None yet. Deliveries are optional — skip if there were none.</p>
+              ) : (
+                <div className="space-y-2 mt-3">
+                  {savedDeliveries.map((d) => (
+                    <div key={d.id} className={`border rounded p-3 ${editingDeliveryId === d.id ? 'border-brand-600 bg-brand-50/40' : ''}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{d.product?.name} <span className="text-xs font-normal text-gray-500">into {(d.tanks?.length ? d.tanks.map((t) => t.tank?.label) : [d.tank?.label]).filter(Boolean).join(', ') || 'no tank recorded'}</span></p>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Expected {d.declaredLoad != null ? `${fmtL(d.declaredLoad)} L` : '—'} · Discharged {fmtL(d.actualLitres)} L
+                            {d.shortage > 0 && <span className="text-red-600 font-medium"> · Shortage {fmtL(d.shortage)} L</span>}
+                            {d.excess > 0 && <span className="text-emerald-600 font-medium"> · Excess {fmtL(d.excess)} L</span>}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {[d.supplier?.name, d.vehicle?.plateNumber, d.driverName, d.totalCost != null ? formatMoney(Number(d.totalCost) / 100) : null].filter(Boolean).join(' · ') || 'No supplier, truck or cost recorded'}
+                          </p>
+                        </div>
+                        {canEditDeliveries && (
+                          <div className="flex gap-3 shrink-0">
+                            <button type="button" onClick={() => startEditDelivery(d)} className={tableActionCls}>Edit</button>
+                            <button type="button" onClick={() => handleDeleteDelivery(d)} className="text-xs text-red-600 hover:underline">Delete</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold mb-1">{editingDeliveryId ? 'Edit delivery' : 'Add a delivery'}</h3>
+              <p className="text-xs text-gray-500 mb-4">Stock goes up by the actual litres discharged, never the expected litres. Enter both so a driver shortage is recorded. Pick the receiving tank.</p>
+              <form onSubmit={handleDelivery} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Fuel type" required>
+                    <select value={f.productId} onChange={(e) => {
+                      const tanksFor = (reference.tanks || []).filter((t) => t.productId === e.target.value);
+                      setF({ productId: e.target.value, tankId: tanksFor.length === 1 ? tanksFor[0].id : '' });
+                    }} className={inputCls} required>
+                      <option value="">Select...</option>
+                      {reference.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Receiving tank" required>
+                    <select value={f.tankId} onChange={(e) => setF({ tankId: e.target.value })} className={`${inputCls} ${!f.tankId && f.productId ? 'border-amber-300' : ''}`} required>
+                      <option value="">Select tank (required)...</option>
+                      {matchingTanks.map((t) => <option key={t.id} value={t.id}>{t.label}{t.capacity ? ` (${fmtL(t.capacity)} L)` : ''}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                {f.productId && matchingTanks.length === 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">This branch has no tank for that fuel type. Add one from Fuel Setup first.</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Expected litres (L)">
+                    <NumberInput value={f.declaredLoad} onChange={(e) => setF({ declaredLoad: e.target.value })} placeholder="Declared load on the waybill" />
+                  </Field>
+                  <Field label="Actual litres discharged (L)" required>
+                    <NumberInput value={f.actualLitres} onChange={(e) => setF({ actualLitres: e.target.value })} placeholder="What really went into the tank" required />
+                  </Field>
+                </div>
+                {hint && <p className={`text-xs font-medium -mt-2 ${hint.tone}`}>{hint.text}</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Cost per litre">
+                    <NumberInput value={f.costPerUnit} onChange={(e) => setF({ costPerUnit: e.target.value })} placeholder="Optional" />
+                  </Field>
+                  <Field label="Supplier"><input type="text" value={f.supplierName} onChange={(e) => setF({ supplierName: e.target.value })} className={inputCls} placeholder="Optional" /></Field>
+                </div>
+                {!blank(f.actualLitres) && !blank(f.costPerUnit) && (
+                  <p className="text-xs font-medium text-emerald-600 -mt-2">Total cost: {formatMoney(Number(f.actualLitres) * Number(f.costPerUnit))}</p>
+                )}
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Truck">
+                    <select value={f.vehicleId} onChange={(e) => pickVehicle(e.target.value)} className={inputCls}>
+                      <option value="">None</option>
+                      {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plateNumber}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Driver"><input type="text" value={f.driverName} onChange={(e) => setF({ driverName: e.target.value })} className={inputCls} placeholder="Optional" /></Field>
+                  <Field label="Driver phone"><input type="text" value={f.driverPhone} onChange={(e) => setF({ driverPhone: e.target.value })} className={inputCls} placeholder="Optional" /></Field>
+                </div>
+                <FormButtons onCancel={editingDeliveryId ? cancelEditDelivery : () => setStep('dips')} submitting={submitting} submitLabel={editingDeliveryId ? 'Save Changes' : 'Add Delivery'} />
+                {!editingDeliveryId && <p className="text-xs text-gray-500 -mt-2">Cancel skips on to Tank Dips.</p>}
+              </form>
+            </Card>
+          </div>
+        );
+      })()}
 
       {step === 'dips' && activeShift && (
         <Card className="p-5 max-w-lg">

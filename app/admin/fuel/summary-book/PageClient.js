@@ -10,6 +10,7 @@ import {
 } from '@/components/ui';
 import { formatMoney, formatDate, formatMinorMoney } from '@/lib/format';
 import { operatingDateAt } from '@/lib/fuelCollections.mjs';
+import { summaryBookTotals } from '@/lib/summaryBookTotals.mjs';
 import { FuelCorrectModal } from '../../deliveries/FuelOffload';
 
 function todayIso() {
@@ -71,6 +72,8 @@ export default function SummaryBookPage() {
     return <DayDetail branchId={branchId} date={detailDate} onBack={closeDay} />;
   }
 
+  const totals = summaryBookTotals(rows || []);
+
   return (
     <div>
       <PageHeader title="Summary Book" subtitle="Shift-by-shift, product-by-product reconciliation" />
@@ -98,6 +101,7 @@ export default function SummaryBookPage() {
                 { key: 'product', label: 'Product' },
                 { key: 'openingStock', label: 'Opening Stock', value: (r) => r.productId ? r.openingStock : '' },
                 { key: 'stockIn', label: 'Stock In', value: (r) => r.productId ? r.stockIn : '' },
+                { key: 'tolerance', label: 'Tolerance (L)', value: (r) => r.productId ? r.tolerance : '' },
                 { key: 'sales', label: 'Sales (L)', value: (r) => r.productId ? r.sales : '' },
                 { key: 'closingStock', label: 'Closing Stock' },
                 { key: 'price', label: 'Price', value: (r) => r.productId ? (r.price / 100).toFixed(2) : '' },
@@ -118,6 +122,7 @@ export default function SummaryBookPage() {
                     <th className="px-4 py-3 text-left font-medium">Product</th>
                     <th className="px-4 py-3 text-right font-medium">Opening</th>
                     <th className="px-4 py-3 text-right font-medium">Stock In</th>
+                    <th className="px-4 py-3 text-right font-medium">Tolerance (L)</th>
                     <th className="px-4 py-3 text-right font-medium">Sales (L)</th>
                     <th className="px-4 py-3 text-right font-medium">Closing</th>
                     <th className="px-4 py-3 text-right font-medium">Price</th>
@@ -127,7 +132,7 @@ export default function SummaryBookPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {rows.length === 0 && <EmptyRow colSpan={11} text="No shift activity in this range" />}
+                  {rows.length === 0 && <EmptyRow colSpan={12} text="No shift activity in this range" />}
                   {rows.map((r, i) => {
                     const dateStr = r.date.slice(0, 10);
                     return (
@@ -137,6 +142,7 @@ export default function SummaryBookPage() {
                         <td className="px-4 py-3 font-medium">{r.product}</td>
                         <td className="px-4 py-3 text-right">{r.productId ? `${r.openingStock.toLocaleString()} L` : '—'}</td>
                         <td className="px-4 py-3 text-right">{r.productId ? `${r.stockIn.toLocaleString()} L` : '—'}</td>
+                        <td className="px-4 py-3 text-right" title={r.productId ? `${r.tolerancePct}% of sales` : undefined}>{r.productId ? `${r.tolerance.toLocaleString()} L` : '—'}</td>
                         <td className="px-4 py-3 text-right">{r.productId ? `${r.sales.toLocaleString()} L` : '—'}</td>
                         <td className="px-4 py-3 text-right">{r.closingStock != null ? `${r.closingStock.toLocaleString()} L${r.closingStockSource === 'recorded_dips' ? ' (dip)' : ''}` : '—'}</td>
                         <td className="px-4 py-3 text-right">{r.productId ? formatMoney(r.price / 100) : '—'}</td>
@@ -149,9 +155,55 @@ export default function SummaryBookPage() {
                     );
                   })}
                 </tbody>
+                {rows.length > 0 && (
+                  <tfoot className="border-t-2 bg-gray-50 font-semibold">
+                    <tr>
+                      <td className="px-4 py-3" colSpan={3}>Total</td>
+                      <td className="px-4 py-3" />
+                      <td className="px-4 py-3 text-right">{totals.overall.stockIn.toLocaleString()} L</td>
+                      <td className="px-4 py-3 text-right">{totals.overall.tolerance.toLocaleString()} L</td>
+                      <td className="px-4 py-3 text-right">{totals.overall.sales.toLocaleString()} L</td>
+                      <td className="px-4 py-3" />
+                      <td className="px-4 py-3" />
+                      <td className="px-4 py-3 text-right">{formatMoney(totals.overall.revenue / 100)}</td>
+                      <td className="px-4 py-3 text-right">{totals.overall.shortage > 0 ? formatMoney(totals.overall.shortage / 100) : '—'}</td>
+                      <td className="px-4 py-3" />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </Card>
+
+          {totals.byProduct.length > 1 && (
+            <Card className="overflow-hidden mt-4">
+              <div className="px-4 py-3 border-b"><h3 className="font-semibold text-sm">Totals by product</h3></div>
+              <div className={tableScrollCls}>
+                <table className="w-full text-sm">
+                  <thead className={theadCls}>
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">Product</th>
+                      <th className="px-4 py-2 text-right font-medium">Stock In</th>
+                      <th className="px-4 py-2 text-right font-medium">Tolerance (L)</th>
+                      <th className="px-4 py-2 text-right font-medium">Sales (L)</th>
+                      <th className="px-4 py-2 text-right font-medium">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {totals.byProduct.map((p) => (
+                      <tr key={p.product}>
+                        <td className="px-4 py-2 font-medium">{p.product}</td>
+                        <td className="px-4 py-2 text-right">{p.stockIn.toLocaleString()} L</td>
+                        <td className="px-4 py-2 text-right">{p.tolerance.toLocaleString()} L</td>
+                        <td className="px-4 py-2 text-right">{p.sales.toLocaleString()} L</td>
+                        <td className="px-4 py-2 text-right">{formatMoney(p.revenue / 100)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>
@@ -493,6 +545,7 @@ function DayDetail({ branchId, date, onBack }) {
                   <table className="w-full text-sm">
                     <thead className={theadCls}>
                       <tr>
+                        <th className="px-4 py-2 text-left font-medium">Date of deposit</th>
                         <th className="px-4 py-2 text-right font-medium">Amount</th>
                         <th className="px-4 py-2 text-left font-medium">Bank</th>
                         <th className="px-4 py-2 text-left font-medium">Status</th>
@@ -500,9 +553,10 @@ function DayDetail({ branchId, date, onBack }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {shifts.flatMap((s) => s.deposits).length === 0 && <EmptyRow colSpan={4} text="No deposits" />}
+                      {shifts.flatMap((s) => s.deposits).length === 0 && <EmptyRow colSpan={5} text="No deposits" />}
                       {shifts.flatMap((s) => s.deposits).map((d) => (
                         <tr key={d.id}>
+                          <td className="px-4 py-2">{formatDate(d.depositDate ? d.depositDate.slice(0, 10) : operatingDateAt(new Date(d.createdAt)))}</td>
                           <td className="px-4 py-2 text-right font-semibold">{formatMoney(d.amount / 100)}</td>
                           <td className="px-4 py-2">{d.bankName || '—'}</td>
                           <td className="px-4 py-2"><StatusPill status={d.status} color={d.status === 'approved' ? 'green' : d.status === 'rejected' ? 'red' : 'amber'} /></td>

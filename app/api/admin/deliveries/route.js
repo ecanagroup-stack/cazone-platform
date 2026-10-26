@@ -8,24 +8,11 @@ import { ApiError } from '@/lib/apiError';
 import { isAtcProduct } from '@/lib/petroleumAtc.mjs';
 import { logAudit } from '@/lib/audit';
 import { notifyAlteration } from '@/lib/notify';
-import { computeFuelOffload, offloadVariance, canOffloadFuel, canViewFuelDeliveries } from '@/lib/fuelDelivery.mjs';
+import { computeFuelOffload, withOffloadFigures, canOffloadFuel, canViewFuelDeliveries, FUEL_VEHICLE_WHERE } from '@/lib/fuelDelivery.mjs';
 import { getAccessibleBranchIds, canAccessBranch, requireBranch } from '@/lib/branchAccess';
 import { optionalBusinessDate, backdatedAt, parseBusinessDate } from '@/lib/saleDates.mjs';
 import { requireBackdateOtp, assertBackdateOtpPresent, notifyBackdated } from '@/lib/backdating';
 import { jsonSafe } from '@/lib/jsonSafe';
-
-// The tankers a fuel branch can offload from: registered as a tanker, or already used for a fuel delivery
-// (same rule as the Fuel > Trucks list).
-const FUEL_VEHICLES = { isActive: true, OR: [{ type: 'tanker' }, { deliveries: { some: { branch: { service: { type: 'fuel_station' } } } } }] };
-
-// A delivery with its figures spelled out the way the fuel screens quote them: `quantity` is the ACTUAL
-// litres received, `declaredLoad` the waybill, and the variance is split into shortage / excess litres.
-function withOffloadFigures(delivery) {
-  const { variance, shortage, excess } = delivery.declaredLoad == null
-    ? { variance: null, shortage: 0, excess: 0 }
-    : offloadVariance(delivery.quantity, delivery.declaredLoad);
-  return { ...delivery, actualLitres: delivery.quantity, offloadVariance: variance, shortage, excess };
-}
 
 // Returns the branch's delivery history plus everything the "Record Delivery" form needs
 // (suppliers, this branch's service's products, current on-hand per product) in one call — same
@@ -59,7 +46,7 @@ export const GET = withOrg(async (request) => {
       prisma.tank.findMany({ where: { branchId, isActive: true }, orderBy: { label: 'asc' } }),
       // A fuel offload needs a registered tanker and an open shift to belong to.
       isFuel && canOffloadFuel(session.user.role)
-        ? prisma.vehicle.findMany({ where: FUEL_VEHICLES, select: { id: true, plateNumber: true, driverName: true, driverPhone: true, capacity: true }, orderBy: { plateNumber: 'asc' } })
+        ? prisma.vehicle.findMany({ where: FUEL_VEHICLE_WHERE, select: { id: true, plateNumber: true, driverName: true, driverPhone: true, capacity: true }, orderBy: { plateNumber: 'asc' } })
         : [],
       isFuel ? prisma.shift.findFirst({ where: { branchId, status: 'open' }, orderBy: { openedAt: 'desc' }, select: { id: true, operatingDate: true, openedAt: true } }) : null,
     ]);
@@ -95,7 +82,7 @@ async function recordFuelDelivery({ session, body, branch }) {
 
   const [product, vehicle, tanks] = await Promise.all([
     prisma.product.findFirst({ where: { id: productId, serviceId: branch.serviceId, isActive: true } }),
-    prisma.vehicle.findFirst({ where: { AND: [FUEL_VEHICLES, { id: String(body.vehicleId || '') }] } }),
+    prisma.vehicle.findFirst({ where: { AND: [FUEL_VEHICLE_WHERE, { id: String(body.vehicleId || '') }] } }),
     prisma.tank.findMany({ where: { branchId, isActive: true } }),
   ]);
   if (!product || isAtcProduct(product)) throw new ApiError('Choose a fuel product sold at this branch', 400);
