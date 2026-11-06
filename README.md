@@ -17,11 +17,12 @@ per-tank dips, auditable pump collections, stock reconciliation, and reports.
 For an existing database, run `npx prisma migrate deploy` before starting a new version. The
 fuel collection migration preserves previously recorded pump payments and assigns an operating
 date to existing shifts. `node scripts/verify-fuel-migration.mjs` checks those records after
-migration; `node --test tests/fuelCollections.test.mjs` checks the collection rules.
+migration; `npm test` runs the rule tests (`node --test tests/fuelCollections.test.mjs` runs just the
+collection rules).
 
 For scheduled fuel shift closure on Vercel, set `CRON_SECRET` in the project environment. The
 daily 11:00 UTC job closes only overdue shifts with approved pump readings, an initial collection
 for every selling pump, and a closing dip for every active tank. Incomplete shifts stay open.
 
-See `C:\Users\mail2\.claude\plans\federated-booping-sifakis.md` for the full design/decisions behind
-this repo (why Postgres/Prisma over Mongo, the Organization → Service → Branch model, tenant scoping).
+Design notes: Postgres/Prisma, an Organization → Service → Branch model, and tenant scoping through
+`lib/tenantScope.js` and the Prisma extension in `lib/prisma.js`.

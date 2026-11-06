@@ -58,7 +58,6 @@ export function OrgLogo({ org, dim = 'h-16 w-16', className = '' }) {
 }
 
 export const btnPrimaryCls = 'px-4 py-2 bg-brand-600 text-white rounded text-sm font-medium hover:bg-brand-700 disabled:opacity-50';
-export const btnDangerCls = 'px-4 py-2 bg-red-700 text-white rounded text-sm font-medium hover:bg-red-800 disabled:opacity-50';
 export const tableActionCls = 'text-sm font-medium text-brand-600 hover:text-brand-700';
 export const tableDangerActionCls = 'text-sm font-medium text-red-700 hover:text-red-800';
 

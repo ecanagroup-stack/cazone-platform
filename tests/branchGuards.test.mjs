@@ -25,7 +25,6 @@ const ORG_LEVEL = {
   // Fuel
   'fuel/trucks/[id] PATCH': 'Tankers are shared by every station in the business (Vehicle has no branch). Owner/manager only; taking a truck in or out of service is owner only, since it affects every station. The delivery history shown per truck is filtered by branch in GET fuel/trucks.',
   'fuel/trucks POST': 'Registers a business-wide tanker; Vehicle has no branch. Owner/manager only.',
-  'fuel/shift/[id]/dispensers/[dispenserId]/credit-fill POST': 'Retired endpoint, always answers 410 and touches no data.',
   'fuel/prices POST': 'Owner only (the route refuses everyone else), who sees every station; the target station is validated against the org.',
 
   // Branches, services and pricing
